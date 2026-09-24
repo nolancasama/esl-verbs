@@ -1,0 +1,11 @@
+{
+  "name": "esl-verbs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "English verb study quiz for Japanese students: 4 modes, typed Japanese and spoken English.",
+  "scripts": {
+    "test": "node --test test/",
+    "serve": "python -m http.server 8010"
+  }
+}
