@@ -5,7 +5,7 @@
   "type": "module",
   "description": "English verb study quiz for Japanese students: 4 modes, typed Japanese and spoken English.",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "serve": "python -m http.server 8010"
   }
 }

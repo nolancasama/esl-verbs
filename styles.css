@@ -1,0 +1,30 @@
+:root { font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; color: #17233a; background: #f4f7fb; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 280px; }
+button, input { font: inherit; }
+button { min-height: 56px; border: 0; border-radius: 12px; padding: .7rem 1.1rem; background: #1769e0; color: white; font-weight: 700; cursor: pointer; }
+button.secondary { background: #e4ebf7; color: #17233a; }
+button.danger { background: #b53131; }
+button:disabled { opacity: .55; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 4px solid #f5a623; outline-offset: 3px; }
+.app { width: min(900px, 100%); min-height: 100vh; margin: auto; padding: 24px; display: grid; align-content: center; gap: 18px; }
+.card { background: white; border-radius: 20px; padding: clamp(20px, 5vw, 48px); box-shadow: 0 4px 18px #17233a18; }
+.levels, .actions, .choices { display: grid; gap: 12px; }
+.level { text-align: left; height: auto; min-height: 78px; }
+.level small { display: block; font-weight: 400; margin-top: 4px; }
+.topline { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.hud { font-size: 1.25rem; font-weight: 800; }
+.streak { color: #a34a00; }
+.prompt { min-height: 10rem; display: grid; place-items: center; text-align: center; font-size: clamp(4rem, 14vw, 8rem); font-weight: 800; overflow-wrap: anywhere; }
+.audio-icon { font-size: 5rem; min-height: 8rem; }
+.choices button { font-size: 1.6rem; }
+@media (min-width: 600px) { .choices { grid-template-columns: 1fr 1fr; } }
+.answer { display: grid; gap: 12px; margin-top: 12px; }
+.answer input { min-height: 62px; width: 100%; padding: .5rem .8rem; border: 2px solid #8b9ab0; border-radius: 10px; font-size: 1.8rem; }
+.feedback { min-height: 1.5rem; font-weight: 700; font-size: 1.15rem; }
+.correct { color: #087a3f; } .wrong, .audio-error { color: #a32727; }
+.mic { font-size: 1.4rem; }
+.toggle { display: flex; gap: .6rem; align-items: center; min-height: 56px; font-weight: 700; font-size: 1.2rem; cursor: pointer; }
+.toggle input { width: 28px; height: 28px; }
+.missed { padding-left: 1.25rem; font-size: 1.3rem; line-height: 1.6; }
+@media (max-width: 500px) { .app { padding: 12px; } .card { padding: 20px; } .topline { align-items: flex-start; flex-direction: column; } }
