@@ -1,37 +1,45 @@
 {
-  "task": "Implement the esl-verbs MVP exactly as specified in SPEC.md: a static, no-build, 4-mode English verb quiz (typed Japanese answers for modes 1-2, tap-to-talk English speech recognition with interim-result matching for modes 3-4, mic-free 4-choice fallback, TTS prompts, 10-question rounds, end screen with practice-mistakes). One shared config-driven engine, not four implementations.",
+  "task": "Implement the frozen combat revision in .ai/combat-spec.md: engine-owned enemy intents with injected RNG, per-hero tactical mechanics (Fighter combo/break/counter, Mage power recovery, Ninja opening/dodge counter/chain), lightweight boss phase 2, intent/status UI, and a naive-vs-smart balance simulation.",
   "requirements": [
-    "Read SPEC.md fully first; it is the frozen design. src/vocab.js is the vocabulary source and must not be modified.",
-    "Create src/normalize.js, src/engine.js, src/speech.js, src/tts.js, src/app.js, index.html, styles.css per the SPEC Architecture section.",
-    "Speech matching checks every alternative of every result on each onresult event and accepts immediately without waiting for isFinal; a session ending with no match is 'Try again', never wrong.",
-    "Permission denied, unsupported SpeechRecognition, or 3 consecutive recognition errors switch on mic-free (マイクなし) automatically with the Japanese message from SPEC; the player can never get stuck.",
-    "Audio-only modes (2,4) never reveal the prompt when TTS fails; they show an error + Replay, while answering/Show answer still work.",
-    "Add focused node:test tests in test/ (no new dependencies, no jsdom): mode view-model for all 4 modes (prompt visible/hidden, input type, speak lang/text) including micFree switching modes 3/4 to choices; Japanese checking (primary, kanji alternate, katakana/hiragana equivalence, romaji e.g. 'noboru' for climb, wrong answer fails, 'のぼる ' with spaces passes); English normalization (capitalization, punctuation, leading 'to ') ; findMatch with a mocked results list where {transcript:'Climb.', isFinal:false} matches; TapToTalk with an injected fake SpeechRecognition class: an interim result triggers onCorrect and stop() immediately, not-allowed error triggers the unavailable callback; scoring (correct increments, wrong does not subtract, streak increments/resets, bestStreak preserved); createRound gives 10 unique items; practice round contains only missed ids; makeChoices returns 4 distinct choices with exactly one correct.",
-    "Every vocab `ja` is unique and every jaAccepted entry normalizes to a non-empty string — add a data-integrity test for this.",
-    "Record any meaningful design decision you make that SPEC.md does not already cover in DESIGN_DECISIONS.md (date 2026-09-24, what, why, rejected alternative). Update CURRENT_STATE.md with what exists, how to run it, and what still needs a real Chromebook/microphone test."
+    "Follow .ai/combat-spec.md exactly; it is the controller-approved design. Where it says 'suggest', tune numbers in src/battle-data.js as needed for the balance tests.",
+    "All battle mechanics live in src/battle-engine.js with numbers in src/battle-data.js; src/battle-ui.js only renders state/intents and replays engine events.",
+    "Enemy intent is chosen once by chooseEnemyIntent with an injected rng and displayed before the player acts; resolveEnemyPhase executes exactly the stored intent.",
+    "Every hero keeps exactly four skills; no new systems beyond the spec.",
+    "Update test/battle.test.js with every test listed in section 5 of the spec, including the naive-at-Power-2 winnability over several seeds and smart-beats-naive on tier 3-4.",
+    "Update hero kanaSummary wording per spec section 4.",
+    "Append a dated entry to DESIGN_DECISIONS.md recording the principle 'Easy to play casually; rewarding to understand deeply.', the per-hero identities, engine-owned enemy intents, boss phase 2, only-Mage-regenerates-Power, and any balance tuning; revise the 'Balance is guarded by a simulation test' line. Update CURRENT_STATE.md status/test counts/next steps (revise stale lines, don't append)."
   ],
   "constraints": [
-    "No frameworks, no bundler, no npm dependencies. Plain ES modules loaded by index.html via <script type=module>.",
-    "Do not add anything SPEC.md lists under 'No:'.",
-    "Keep it small: this is an MVP; no speculative abstractions.",
-    "Edit files with structured file tools, not shell heredocs/sed, for anything with regexes or Japanese text.",
-    "Do not modify src/vocab.js or SPEC.md."
+    "Do not modify vocabulary, normalization, quiz modes, STT, TTS, quiz scoring, campaign.js Power formula, campaign stage order, or Study mode.",
+    "Keep the ?debug=battle launcher working; adapt it only if createBattle's options change.",
+    "Placeholder art only; add at most small CSS/data-state effects (break flash, enraged tint, heavy-intent pulse).",
+    "Battle view must still fit 1366x768 without vertical scroll.",
+    "Do not store DOM state or the rng function in battle state.",
+    "Edit source with structured edit tools; if a shell edit hits a quoting/escaping failure, switch to file edit tools.",
+    "Do not commit. Do not delete .ai/combat-spec.md."
   ],
   "startingPoints": [
-    "SPEC.md",
-    "src/vocab.js",
-    "package.json",
-    "../esl-time/src/speech.js (read-only reference for recognition error handling; do not import or modify)"
+    ".ai/combat-spec.md",
+    "src/battle-data.js",
+    "src/battle-engine.js",
+    "src/battle-ui.js",
+    "src/app.js",
+    "src/battle-art.js",
+    "styles.css",
+    "test/battle.test.js",
+    "test/browser/playthrough.mjs",
+    "DESIGN_DECISIONS.md",
+    "CURRENT_STATE.md"
   ],
   "validation": ["npm test"],
   "behavioralAcceptance": {
     "owner": "controller",
-    "description": "Controller will serve the page and drive all 4 modes start-to-result in a real browser with mocked speech APIs."
+    "description": "Controller runs npm run test:browser with PLAYWRIGHT_PATH and screenshots a debug battle at 1366x768 to judge intent chips and feedback."
   },
   "category": "feature",
-  "complexity": "medium",
+  "complexity": "hard",
   "bounded": true,
-  "exploration": "none",
-  "risk": "low",
-  "expectedCost": "medium"
+  "exploration": "local",
+  "risk": "medium",
+  "expectedCost": "large"
 }

@@ -149,7 +149,7 @@ function showBattle(initialState, options) {
   let defenceHintRound = null;
   const onboardingHint = options.kind === 'adventure' && options.stage === 1 ? (state) => {
     if (state.round === 1) return { skill: 'basic', text: 'こうげきしてみよう！' };
-    if (defenceHintRound === null && (state.hero.hp < state.hero.maxHp / 2 || state.enemies.some((enemy) => enemy.charging))) defenceHintRound = state.round;
+    if (defenceHintRound === null && state.hero.hp < state.hero.maxHp / 2) defenceHintRound = state.round;
     return defenceHintRound === state.round ? { skill: 'defense', text: 'まもろう！' } : null;
   } : null;
   battleView = createBattleView(host, { state: initialState, hint: onboardingHint,

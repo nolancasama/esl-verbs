@@ -1,5 +1,5 @@
 import { ENEMIES, HEROES, SKILLS } from './battle-data.js';
-import { cycleTarget, resolveEnemyPhase, selectTarget, useSkill } from './battle-engine.js';
+import { cycleTarget, getEnemyIntent, resolveEnemyPhase, selectTarget, useSkill } from './battle-engine.js';
 import { getBattleArt } from './battle-art.js';
 
 const EVENT_MS = 400;
@@ -25,13 +25,38 @@ function hpBar(hp, maxHp, label) {
   </div>`;
 }
 
-function statusBadges(enemy) {
-  const data = ENEMIES[enemy.id];
+function statusBadges(enemy, openingUid) {
   const badges = [];
   if (enemy.guarding) badges.push('<span class="battle-status battle-status--guard">🛡 Guarding</span>');
   if (enemy.charging) badges.push('<span class="battle-status battle-status--charge">⚠️ Charging!</span>');
   if (enemy.tired) badges.push('<span class="battle-status battle-status--tired">💤 Tired!</span>');
-  return `<div class="battle-statuses">${badges.join('')}</div>${enemy.charging ? `<div class="battle-heavy-banner">⚠️ ${esc(data.heavyName)} NEXT TURN!</div>` : ''}`;
+  if (enemy.uid === openingUid) badges.push('<span class="battle-status battle-status--opening">👁 OPENING!</span>');
+  return `<div class="battle-statuses">${badges.join('')}</div>`;
+}
+
+function intentMarkup(state, enemy) {
+  if (state.turn !== 'player' || enemy.hp <= 0) return '';
+  const intent = getEnemyIntent(state, enemy.uid);
+  const data = ENEMIES[enemy.id];
+  const labels = {
+    attack: `⚔ ${data.attack} ATTACK`,
+    guard: '🛡 GUARD',
+    heal: '💚 HEAL',
+    summon: '💀 SUMMON',
+    charge: '⚡ POWERING UP',
+    heavy: `🔥 ${data.heavy} BIG ATTACK · ${data.heavyName}`,
+    rest: '💤 REST',
+    drain: `🩸 ${data.attack} DRAIN`,
+  };
+  return `<span class="battle-intent${intent === 'heavy' ? ' battle-intent--heavy' : ''}">${esc(labels[intent] || intent)}</span>`;
+}
+
+function heroStatuses(hero) {
+  const badges = [];
+  if (hero.combo) badges.push('<span class="battle-status battle-status--combo">💥 COMBO READY</span>');
+  if (hero.counter) badges.push('<span class="battle-status battle-status--counter">⚔ COUNTER READY</span>');
+  if (hero.openingUid !== null) badges.push('<span class="battle-status battle-status--opening">👁 OPENING</span>');
+  return `<div class="battle-statuses battle-statuses--hero">${badges.join('')}</div>`;
 }
 
 function eventMessage(event) {
@@ -44,6 +69,17 @@ function eventMessage(event) {
     case 'charge': return `⚠️ ${event.heavyName || 'Heavy attack'} NEXT TURN!`;
     case 'rest': return 'The enemy is tired!';
     case 'summon': return 'Another enemy appeared!';
+    case 'comboReady': return 'COMBO READY!';
+    case 'combo': return 'COMBO!';
+    case 'counterReady': return 'COUNTER READY!';
+    case 'counter': return 'COUNTER!';
+    case 'opening':
+    case 'opening-hit': return 'OPENING!';
+    case 'break': return 'BREAK!';
+    case 'power': return `+${event.amount} POWER`;
+    case 'barrierUp': return 'Barrier ready!';
+    case 'chain': return 'CHAIN!';
+    case 'enrage': return event.message;
     case 'defeat': return 'Enemy defeated!';
     case 'victory': return 'VICTORY!';
     case 'lost': return 'DEFEATED...';
@@ -82,13 +118,14 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
   function skillsMarkup() {
     const hero = HEROES[currentState.heroId];
     const activeHint = hintDetails(hint, currentState);
+    const danger = currentState.turn === 'player' && currentState.enemies.some((enemy) => enemy.hp > 0 && enemy.intent === 'heavy');
     return hero.skills.map((id, index) => {
       const skill = SKILLS[id];
       const locked = skill.tier > currentState.skillTier;
       const affordable = currentState.power >= skill.cost;
       const disabled = locked || !affordable || currentState.turn !== 'player' || playing;
       const reason = locked ? `Unlocks at skill tier ${skill.tier}` : !affordable ? `Need ${skill.cost} Power` : '';
-      const highlighted = activeHint && (activeHint.skillId === id || (activeHint.skill === 'basic' && index === 0) || (activeHint.skill === 'defense' && index === 1));
+      const highlighted = (danger && index === 1) || (activeHint && (activeHint.skillId === id || (activeHint.skill === 'basic' && index === 0) || (activeHint.skill === 'defense' && index === 1)));
       return `<button type="button" class="battle-skill${highlighted ? ' battle-skill--hint' : ''}" data-skill-id="${id}"
         ${disabled ? 'disabled' : ''} aria-describedby="${reason ? `skill-reason-${index}` : ''}" title="${esc(reason)}">
         <kbd>${index + 1}</kbd> <span>${esc(skill.name)} <small>${esc(skill.jaName)}</small></span>
@@ -102,13 +139,14 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     const data = ENEMIES[enemy.id];
     const alive = enemy.hp > 0;
     const selected = alive && enemy.uid === currentState.selectedUid;
-    return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}"
+    return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}${enemy.phase === 2 ? ' battle-enemy--enraged' : ''}"
       data-select-uid="${enemy.uid}" data-enemy-uid="${enemy.uid}" aria-pressed="${selected}" ${alive ? '' : 'disabled'}>
       <span class="battle-target-marker" aria-hidden="true">▼</span>
       <span class="battle-enemy__name">${esc(data.name)} <small>${esc(data.jaName)}</small></span>
+      ${intentMarkup(currentState, enemy)}
       <span class="battle-art-wrap">${getBattleArt(enemy.id, alive ? (enemy.charging ? 'charge' : enemy.guarding ? 'guard' : 'idle') : 'defeat')}</span>
       ${hpBar(enemy.hp, enemy.maxHp, data.name)}
-      ${statusBadges(enemy)}
+      ${statusBadges(enemy, currentState.hero.openingUid)}
     </button>`;
   }
 
@@ -116,6 +154,7 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     if (destroyed) return;
     const hero = HEROES[currentState.heroId];
     const activeHint = hintDetails(hint, currentState);
+    const danger = currentState.turn === 'player' && currentState.enemies.some((enemy) => enemy.hp > 0 && enemy.intent === 'heavy');
     const defaultMessage = currentState.turn === 'won' ? 'VICTORY!' : currentState.turn === 'lost' ? 'DEFEATED...' : currentState.turn === 'enemy' ? 'Enemy turn...' : 'Choose a skill.';
     container.innerHTML = `<section class="battle-view" aria-label="Battle">
       <div class="battle-topbar">
@@ -129,11 +168,12 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
           <div class="battle-art-wrap">${getBattleArt(hero.id, currentState.turn === 'won' ? 'victory' : currentState.turn === 'lost' ? 'defeat' : currentState.hero.defense || 'idle')}</div>
           ${hpBar(currentState.hero.hp, currentState.hero.maxHp, hero.name)}
           ${currentState.hero.defense ? `<span class="battle-status battle-status--guard">${currentState.hero.defense === 'dodge' ? '💨 Dodge ready' : '🛡 Guarding'}</span>` : ''}
+          ${heroStatuses(currentState.hero)}
         </article>
         <div class="battle-enemies">${currentState.enemies.map(enemyMarkup).join('')}</div>
       </div>
       <div class="battle-message" role="status" aria-live="polite">${esc(message || defaultMessage)}</div>
-      ${activeHint?.text ? `<div class="battle-hint">${esc(activeHint.text)}</div>` : ''}
+      ${danger || activeHint?.text ? `<div class="battle-hint">${esc(danger ? 'まもろう！' : activeHint.text)}</div>` : ''}
       <div class="battle-skills" aria-label="Skills">${skillsMarkup()}</div>
     </section>`;
   }
@@ -188,6 +228,26 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
       case 'charge': setSpriteState(event.target, 'charge'); break;
       case 'rest': setSpriteState(event.target, 'idle'); break;
       case 'summon': setSpriteState(event.source, 'cast'); break;
+      case 'comboReady': addFloater('hero', 'COMBO READY!', 'battle-floater--status'); break;
+      case 'combo': addFloater('hero', 'COMBO!', 'battle-floater--status'); break;
+      case 'counterReady': addFloater('hero', 'COUNTER READY!', 'battle-floater--status'); break;
+      case 'counter': addFloater(event.target, 'COUNTER!', 'battle-floater--status'); break;
+      case 'opening':
+      case 'opening-hit': addFloater(event.target, 'OPENING!', 'battle-floater--status'); break;
+      case 'break':
+        setSpriteState(event.target, 'broken');
+        addFloater(event.target, 'BREAK!', 'battle-floater--status');
+        break;
+      case 'power': addFloater('hero', `+${event.amount} POWER`, 'battle-floater--power'); break;
+      case 'barrierUp':
+        setSpriteState('hero', 'guard');
+        addFloater('hero', 'BARRIER!', 'battle-floater--shield');
+        break;
+      case 'chain': addFloater(event.target, 'CHAIN!', 'battle-floater--status'); break;
+      case 'enrage':
+        setSpriteState(event.target, 'enraged');
+        addFloater(event.target, event.message, 'battle-floater--status');
+        break;
       case 'defeat': setSpriteState(event.target, 'defeat'); break;
       case 'victory': setSpriteState('hero', 'victory'); break;
       case 'lost': setSpriteState('hero', 'defeat'); break;
@@ -317,4 +377,3 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     },
   };
 }
-

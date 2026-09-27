@@ -74,9 +74,10 @@ Git is the source of truth for detailed code-change history.
 - **Placeholder art in one module** (`battle-art.js`, inline SVG + CSS
   `data-state`). Rejected: ~40 per-state SVG files before the loop is
   validated.
-- **Balance is guarded by a simulation test** (every hero beats every
-  encounter at 2 Power with a simple policy). Numbers live only in
-  `battle-data.js`.
+- **Balance is guarded by simulation tests:** every hero beats every encounter
+  at 2 Power with a naive policy over several RNG seeds, 7 Power remains in
+  the tier-length ranges, and smart play beats naive play in aggregate across
+  tiers 3–4. Numbers live only in `battle-data.js`.
 - **Escape in Adventure asks before quitting**, because a stray Escape would
   otherwise throw away up to 40 answers.
 - **`?debug=battle` launcher** for tuning without replaying quizzes; uses the
@@ -99,6 +100,55 @@ Git is the source of truth for detailed code-change history.
 - A summoner only summons when none of its summon type is alive, and a
   summoned enemy first acts next phase, so summoning never adds surprise
   damage.
+
+## 2026-09-27 — frozen tactical combat revision
+
+- The guiding principle is **“Easy to play casually; rewarding to understand
+  deeply.”** Basic attacks plus defending against a shown big attack remain a
+  winning path, while class mechanics provide measurable rewards for timing.
+- Each hero keeps four skills and a distinct load: Fighter is the low-load
+  combo/Break/Guard-counter class; Mage protects, heals, and exploits enemy
+  states; Ninja times Openings, deterministic Dodge counters, and kill chains.
+- Enemy intents are engine-owned plain state. The engine chooses each intent
+  once with injected RNG, the UI displays it before the player acts, and the
+  enemy phase resolves that exact stored choice without rerolling. This
+  supersedes the original fixed-pattern approach.
+- Boss phase 2 stays lightweight: crossing the HP threshold changes AI
+  parameters in the same engine and emits one enrage event. It does not add a
+  second boss engine or cancel an already-shown intent.
+- Only Mage regenerates Power. Magic Bolt can gain at most 1 per player action
+  from charging/tired targets, and Barrier can gain at most 1 per enemy phase
+  from a resolved heavy; there is no passive or free-loop regeneration.
+- Initial tuning keeps the existing HP/attack values, sets combo and counter
+  bonuses to +4, Opening to +3 per Double Strike hit, and Shadow Strike to 11
+  damage with a 4-damage kill chain. Heavy cadences are data-driven: standard
+  heavy users act normally 2–3 times before CHARGING, while boss phase 2
+  shortens cadence to 1–2; Dragon stops resting, Giant Golem keeps resting,
+  Demon King raises its summon limit from 1 to 2, and Vampire Lord uses only
+  drain as its phase-2 normal action.
+- The necromancer heal was reduced from 4 to 2. With two starting skeletons,
+  a 4-point self-heal erased nearly all free-skill progress while the adds kept
+  attacking, which violated the multi-seed naive-at-2 requirement.
+- Bat HP was reduced from 7 to 5. Phase-2 Demon King can legally leave two bats
+  behind; at 7 HP, Mage needed two basic attacks per add plus a recovery turn,
+  exceeding the tier-4 Power-7 length bound. Five HP lets Magic Bolt clear an
+  add in one turn without changing summon behavior or damage pressure.
+  (This also shortens the tier-1/2 bat fights slightly.)
+- Vampire Lord's phase-1 drain chance is 0.5, not 0.75: at 0.75 its self-heal
+  kept pace with Magic Bolt and a naive Mage needed 11 turns at Power 7.
+- A shown intent never turns into something else. A Heal with nobody hurt, or
+  an illegal Summon, fizzles instead of becoming an attack, so the screen
+  never lies about incoming damage. Only Break changes an intent.
+- The charge turn is kept as its own intent (⚡ POWERING UP, then 🔥 BIG
+  ATTACK), giving two turns of warning and a visible window for Break,
+  Opening and Mage's Bolt exploit.
+- Dodge always fully avoids heavy attacks (previously it only zeroed whichever
+  hit came first), so "Dodge when the big attack shows" is always right.
+- COUNTER READY is one shared mechanic (Fighter Guard / Ninja Dodge vs a
+  heavy → +4 on the next attack) rather than Power, keeping Power recovery
+  the Mage's identity. Rejected: +1 Power for Fighter too.
+- The defense button pulses with まもろう！ in every battle whenever an enemy
+  shows a big attack. Not faded after repeated exposure yet.
 
 A useful rule:
 
