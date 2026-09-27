@@ -6,6 +6,7 @@
   "description": "English verb study quiz for Japanese students: 4 modes, typed Japanese and spoken English.",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "test:browser": "node test/browser/playthrough.mjs",
     "serve": "python -m http.server 8010"
   }
 }

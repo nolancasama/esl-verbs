@@ -85,6 +85,21 @@ Git is the source of truth for detailed code-change history.
   completed etc.) and battle sound effects — neither is needed to validate
   the loop.
 
+## 2026-09-27 — initial battle balance
+
+- Tuned by simulation so a plain player wins every encounter at 2 Power.
+  Bosses: 30–38 HP, 2-damage attacks, 9–12 damage telegraphed heavies — the
+  threat is the telegraphed move, which is what makes Guard/Barrier/Dodge
+  matter. Rejected: the first pass's 27-HP / 6-damage bosses, which never
+  threatened anyone.
+- Magic Bolt deals 5 (others' basic attack 4): the Mage has the least HP and
+  no single-target special, so its free attack is slightly stronger.
+- `captain-goblins` is captain + one goblin (not two): three attackers from
+  turn 1 made it unwinnable at 2 Power.
+- A summoner only summons when none of its summon type is alive, and a
+  summoned enemy first acts next phase, so summoning never adds surprise
+  damage.
+
 A useful rule:
 
 > If a future developer or AI could reasonably ask, "Why is it designed this way?", record the answer here.
