@@ -177,7 +177,7 @@ from the start; specials unlock at skill tier 1 (cost 2) and 2 (cost 3).
 | Hero | HP | Basic (0) | Defence (0) | Tier 1 (2 Power) | Tier 2 (3 Power) |
 |---|---|---|---|---|---|
 | Fighter / せんし — つよくて じょうぶ | 32 | Slash: 4 to target | Guard: next enemy phase damage ×0.4 | Power Slash: 10 to target | Cleave: 6 to all |
-| Mage / まほうつかい — まほうと かいふく | 25 | Magic Bolt: 4 to target | Barrier: next enemy phase damage ×0.5 | Heal: +12 HP (cap max) | Fireball: 7 to all |
+| Mage / まほうつかい — まほうと かいふく | 25 | Magic Bolt: 5 to target | Barrier: next enemy phase damage ×0.5 | Heal: +12 HP (cap max) | Fireball: 7 to all |
 | Ninja / にんじゃ — はやくて よける | 27 | Strike: 4 to target | Dodge: first hit of next enemy phase does 0, the rest ×0.5 | Double Strike: 4 + 4 to target | Shadow Strike: 10 to target + 4 to lowest-HP other enemy |
 
 Starting values; tune in `BALANCE` / `HEROES` only. Reduced damage is
@@ -220,7 +220,12 @@ vampireLord `[drain, attack, charge, heavy(Blood Moon)]`.
 
 - Tier 1: `slime` · `bat` · `mushroom`
 - Tier 2: `goblin-slime` · `bat-bat-mushroom` · `wolf-slime` · `goblin-goblin`
-- Tier 3: `golem` · `captain-goblins` · `necromancer-skeletons` · `shield-goblin-healer`
+- Tier 3: `golem` · `captain-goblins` (captain + one goblin) · `necromancer-skeletons` · `shield-goblin-healer`
+
+Final tuned numbers are in `src/battle-data.js` (the source of truth); bosses
+are 30–38 HP with 2-damage attacks and 9–12 damage telegraphed heavies. A
+summoned enemy first acts in the following enemy phase; a summoner only
+summons when none of its `summonId` enemies are alive.
 - Tier 4: `dragon` · `demon-king` · `giant-golem` · `vampire-lord`
 
 ## Battle engine contract (`src/battle-engine.js`, pure, no DOM)
@@ -321,12 +326,13 @@ battle end: `Retry`, `Random encounter (same tier)`, `Back to debug`. Uses
 ## Balance acceptance (automated)
 
 A scripted policy (defend when any enemy is charging; Mage heals below 50% HP
-when affordable; otherwise best affordable damage skill, else basic attack, on
-the lowest-HP enemy) must, for every hero × every encounter at its campaign
-skill tier:
+when affordable; otherwise the affordable attack with the most damage this
+turn, on a summoner/healer first, else the lowest-HP enemy) must, for every
+hero × every encounter at its campaign skill tier:
 - win at Power 2;
-- at Power 7, finish within the player-turn range for its tier
-  (1: 2–4 · 2: 3–6 · 3: 4–7 · 4: 5–9);
+- at Power 7, win within the tier's approximate turn target + 1
+  (targets 1: 2–4 · 2: 3–6 · 3: 4–7 · 4: 5–9; a class that counters an
+  encounter, e.g. Fireball vs groups, may finish faster);
 - at Power 12, take no more turns than at Power 2, and strictly fewer for tiers 3–4.
 
 ## Not in this version
