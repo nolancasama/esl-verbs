@@ -7,7 +7,7 @@ import { HEROES, ENCOUNTERS, SKILLS } from './battle-data.js';
 import { chooseEncounter, createBattle, skillTierForStage } from './battle-engine.js';
 import { battlePowerFor, campaignSummary, createCampaign, recordStage, retryPower } from './campaign.js';
 import { createBattleView } from './battle-ui.js';
-import { battleArt } from './battle-art.js';
+import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, getIcon } from './battle-art.js';
 
 const app = document.querySelector('#app');
 const MIC_FREE_KEY = 'esl-verbs-mic-free';
@@ -36,7 +36,9 @@ function mainMenu() {
   clearScreen(); round = null; quizContext = null; campaign = null; stageResult = null; screen = 'menu';
   const card = element('section', 'card menu-card'); card.append(element('h1', 'game-title', 'ESL VERBS'));
   const actions = element('div', 'menu-actions');
-  const adventure = element('button', 'menu-choice adventure-choice', 'ADVENTURE / ぼうけん'); adventure.onclick = heroSelect;
+  const adventure = element('button', 'menu-choice adventure-choice px-button'); adventure.onclick = heroSelect;
+  const trio = element('span', 'adventure-trio'); trio.setAttribute('aria-hidden', 'true'); trio.innerHTML = ART_IDS.heroes.map((id) => battleArt(id)).join('');
+  adventure.append(trio, element('span', '', 'ADVENTURE'), element('small', '', 'ぼうけん'));
   const study = element('button', 'menu-choice', 'STUDY / れんしゅう'); study.onclick = levelSelect;
   actions.append(adventure, study); card.append(actions, micToggle()); app.append(card);
 }
@@ -53,14 +55,17 @@ function levelSelect() {
   card.append(levels, micToggle()); app.append(card);
 }
 
+function rpgScreen() { app.className = 'app rpg-app'; }
 function heroSelect() {
-  clearScreen(); screen = 'hero-select'; const card = element('section', 'card wide-card');
-  const top = element('div', 'topline'); top.append(element('h1', '', 'Choose Hero / ヒーローをえらぼう'));
-  const back = element('button', 'secondary', '← Main Menu'); back.onclick = mainMenu; top.append(back); card.append(top);
+  clearScreen(); rpgScreen(); screen = 'hero-select'; const card = element('section', 'hero-select px-panel');
+  const top = element('div', 'topline'); const title = element('h1', '', 'CHOOSE YOUR HERO'); title.append(element('small', '', 'ヒーローをえらぼう'));
+  const back = element('button', 'secondary px-button', '← Main Menu'); back.onclick = mainMenu; top.append(title, back); card.append(top);
   const grid = element('div', 'hero-grid');
   Object.values(HEROES).forEach((hero) => {
-    const button = element('button', 'hero-card'); button.dataset.hero = hero.id; const art = element('span', 'hero-card-art'); art.innerHTML = battleArt(hero.id);
-    button.append(art, element('strong', '', `${hero.name} / ${hero.jaName}`), element('span', '', hero.kanaSummary), element('small', '', hero.summary));
+    const button = element('button', 'hero-card px-button'); button.dataset.hero = hero.id; const art = element('span', 'hero-card-art'); art.innerHTML = battleArt(hero.id);
+    art.firstElementChild?.setAttribute('aria-hidden', 'true');
+    button.append(art, element('strong', '', hero.name.toUpperCase()), element('span', 'hero-ja', hero.jaName), element('span', 'hero-kana', hero.kanaSummary), element('small', '', hero.summary));
+    button.setAttribute('aria-label', `${hero.name} / ${hero.jaName}: ${hero.kanaSummary} ${hero.summary}`);
     button.onclick = () => startCampaign(hero.id); grid.append(button);
   }); card.append(grid); app.append(card);
 }
@@ -136,9 +141,11 @@ function endScreen() {
 
 function finishAdventureStage() {
   stopMedia(); const stage = campaign.stage; const encounter = chooseEncounter(stage); campaign = recordStage(campaign, round, encounter.id); stageResult = campaign.stageResults.at(-1);
-  screen = 'stage-complete'; app.replaceChildren(); const card = element('section', 'card centered'); const menu = element('button', 'secondary corner-button', '← Menu'); menu.onclick = confirmQuit; card.append(menu);
-  card.append(element('h1', '', `STAGE ${stage} COMPLETE`), element('div', 'stage-score', `${stageResult.correct} / ${stageResult.total}`), element('div', 'power-meter large', `⚡ Battle Power: ${stageResult.battlePower}`));
-  const battle = element('button', 'battle-start', 'BATTLE!'); battle.onclick = () => startAdventureBattle(false); card.append(battle); app.append(card); queueMicrotask(() => battle.focus());
+  screen = 'stage-complete'; app.replaceChildren(); rpgScreen(); const card = element('section', 'rpg-card px-panel'); const menu = element('button', 'secondary corner-button px-button', '← Menu'); menu.onclick = confirmQuit; card.append(menu);
+  const scene = element('div', `rpg-stage-scene ${backdropClass(stage)}`); scene.innerHTML = battleArt(campaign.heroId, 'victory'); scene.firstElementChild?.setAttribute('aria-hidden', 'true');
+  const power = element('div', 'rpg-power px-panel'); power.innerHTML = getIcon('power'); power.append(`Battle Power: ${stageResult.battlePower}`);
+  card.append(element('h1', 'rpg-title', `STAGE ${stage} COMPLETE`), scene, element('div', 'rpg-score', `${stageResult.correct} / ${stageResult.total}`), power);
+  const battle = element('button', 'battle-start px-button', 'BATTLE!'); battle.onclick = () => startAdventureBattle(false); card.append(battle); app.append(card); queueMicrotask(() => battle.focus());
 }
 function startAdventureBattle(retry) {
   const stage = stageResult.mode; const state = createBattle({ heroId: campaign.heroId, encounterId: stageResult.encounterId, power: retry ? retryPower(stageResult) : stageResult.battlePower, skillTier: skillTierForStage(stage) });
@@ -157,19 +164,31 @@ function showBattle(initialState, options) {
     onAction: (nextState) => { if (nextState?.turn === 'won' || nextState?.turn === 'lost') battleEnded(nextState, options); }, onSelect: () => {} });
 }
 function battleEnded(state, options) { if (options.kind === 'debug') debugBattleEnd(state, options); else if (state.turn === 'won') adventureVictory(options.stage); else adventureDefeat(); }
+function heroPose(state, stage) {
+  const scene = element('div', `rpg-stage-scene rpg-hero-pose ${backdropClass(stage)}`); scene.innerHTML = battleArt(campaign.heroId, state);
+  scene.firstElementChild?.setAttribute('aria-hidden', 'true'); return scene;
+}
 function adventureVictory(stage) {
-  clearScreen(); screen = 'battle-result'; const card = element('section', 'card centered result-card'); card.append(element('h1', 'victory-title', 'VICTORY!'));
-  if (stage <= 2) { const skill = SKILLS[HEROES[campaign.heroId].skills[stage + 1]]; card.append(element('h2', 'unlock', 'NEW SKILL!'), element('p', '', `${skill.name} / ${skill.jaName} · ${'⚡'.repeat(skill.cost)}`)); }
-  const next = element('button', '', stage === 4 ? 'CAMPAIGN RESULTS' : 'NEXT STAGE'); next.onclick = stage === 4 ? campaignResults : () => startRound(campaign.stage, createRound(VOCABULARY), 'adventure'); card.append(next); app.append(card); queueMicrotask(() => next.focus());
+  clearScreen(); rpgScreen(); screen = 'battle-result'; const card = element('section', 'rpg-card px-panel result-card');
+  const title = element('h1', `rpg-title${stage === 4 ? ' rpg-burst' : ''}`, 'VICTORY!'); card.append(title, heroPose('victory', stage));
+  if (stage === 4) card.append(element('h2', 'rpg-title', 'VERB MASTER!'));
+  if (stage <= 2) {
+    const skill = SKILLS[HEROES[campaign.heroId].skills[stage + 1]]; const reward = element('div', 'rpg-reward px-panel'); reward.innerHTML = getIcon(skill.id);
+    const line = element('p'); line.append(element('b', '', skill.name.toUpperCase()), ` / ${skill.jaName} · ⚡${skill.cost}`);
+    reward.append(element('h2', '', 'NEW SKILL!'), line); card.append(reward);
+  }
+  const next = element('button', 'px-button', stage === 4 ? 'CAMPAIGN RESULTS' : 'NEXT STAGE'); next.onclick = stage === 4 ? campaignResults : () => startRound(campaign.stage, createRound(VOCABULARY), 'adventure'); card.append(next); app.append(card); queueMicrotask(() => next.focus());
 }
 function adventureDefeat() {
-  clearScreen(); screen = 'battle-result'; const card = element('section', 'card centered result-card'); card.append(element('h1', 'defeat-title', 'DEFEATED... もういちど！'));
-  const retry = element('button', '', `RETRY BATTLE (⚡ ${retryPower(stageResult)})`); retry.onclick = () => startAdventureBattle(true); const menu = element('button', 'secondary', 'MAIN MENU'); menu.onclick = mainMenu; card.append(retry, menu); app.append(card);
+  clearScreen(); rpgScreen(); screen = 'battle-result'; const card = element('section', 'rpg-card px-panel result-card defeat-card');
+  const title = element('h1', 'rpg-title', 'DEFEATED... '); title.append(element('span', 'rpg-ja', 'もういちど！'));
+  card.append(title, heroPose('defeat', stageResult.mode));
+  const retry = element('button', 'px-button', `RETRY BATTLE (⚡ ${retryPower(stageResult)})`); retry.onclick = () => startAdventureBattle(true); const menu = element('button', 'secondary px-button', 'MAIN MENU'); menu.onclick = mainMenu; card.append(retry, menu); app.append(card); queueMicrotask(() => retry.focus());
 }
 
 function campaignResults() {
   clearScreen(); screen = 'campaign-results'; const summary = campaignSummary(campaign); const hero = HEROES[campaign.heroId]; const card = element('section', 'card wide-card'); card.append(element('h1', 'victory-title', 'VICTORY! VERB MASTER!'));
-  const heroLine = element('div', 'results-hero'); const art = element('span', 'mini-art'); art.innerHTML = battleArt(hero.id); heroLine.append(art, element('strong', '', `${hero.name} / ${hero.jaName}`)); card.append(heroLine);
+  const heroLine = element('div', 'results-hero'); const art = element('span', 'mini-art'); art.innerHTML = battleArt(hero.id, 'victory'); art.firstElementChild?.setAttribute('aria-hidden', 'true'); heroLine.append(art, element('strong', '', `${hero.name} / ${hero.jaName}`)); card.append(heroLine);
   card.append(element('div', 'stage-score', `${summary.totalCorrect} / ${summary.totalQuestions}`), element('p', '', `Best streak: ${summary.bestStreak}`));
   const scores = element('div', 'stage-results'); campaign.stageResults.forEach((result, index) => scores.append(element('span', '', `Stage ${index + 1}: ${result.correct} / ${result.total}`))); card.append(scores);
   const missed = practiceItems(VOCABULARY, summary.missedIds);
@@ -197,8 +216,32 @@ function debugLauncher() {
   for (let tier = 1; tier <= 4; tier += 1) { const group = document.createElement('optgroup'); group.label = `Tier ${tier}`; Object.values(ENCOUNTERS).filter((x) => x.tier === tier).forEach((x) => { const option = element('option', '', x.id); option.value = x.id; group.append(option); }); encounter.append(group); } encounterWrap.append(encounter);
   const power = numberField('Power', 0, 99, 0); const skill = selectField('Skill tier', [[0, '0'], [1, '1'], [2, '2']]); const hp = numberField('Hero HP (blank = full)', 0, 99, ''); hp.input.value = '';
   const start = element('button', '', 'START BATTLE'); form.append(hero.label, encounterWrap, power.label, skill.label, hp.label, start);
+  if (debugConfig) { hero.select.value = debugConfig.heroId; encounter.value = debugConfig.encounterId; power.input.value = debugConfig.power; skill.select.value = debugConfig.skillTier; }
   form.onsubmit = (event) => { event.preventDefault(); debugConfig = { heroId: hero.select.value, encounterId: encounter.value, power: Number(power.input.value), skillTier: Number(skill.select.value), heroHp: hp.input.value === '' ? undefined : Number(hp.input.value) }; startDebugBattle(debugConfig); };
-  card.append(form); app.append(card);
+  const gallery = element('button', 'secondary', 'SPRITE GALLERY'); gallery.type = 'button'; gallery.onclick = artGallery;
+  card.append(form, gallery); app.append(card);
+}
+
+/** ?debug=art: every character in any state, for reviewing the pixel art. */
+function artGallery() {
+  clearScreen(); screen = 'debug-art'; app.className = 'app rpg-app'; const page = element('section', 'art-gallery'); page.append(element('h1', '', 'SPRITE GALLERY'));
+  const controls = element('div', 'art-controls'); const state = selectField('State', SPRITE_STATES.map((x) => [x, x])); const who = selectField('Character', [['', 'all characters'], ...[...ART_IDS.heroes, ...ART_IDS.enemies].map((x) => [x, x])]);
+  const variant = selectField('Variant', [['', 'normal'], ['enraged', 'boss phase 2']]); const back = element('button', 'secondary', 'Back to debug'); back.onclick = debugLauncher;
+  const preview = (label, show) => { const button = element('button', 'secondary', label); button.onclick = () => {
+    const heroId = who.select.value && HEROES[who.select.value] ? who.select.value : 'fighter';
+    campaign = { ...createCampaign(heroId), stage: 2 }; stageResult = { mode: 4, battlePower: 7, correct: 7, total: 10, encounterId: 'dragon' }; show();
+  }; return button; };
+  controls.append(state.label, who.label, variant.label, preview('Victory', () => adventureVictory(1)), preview('Final victory', () => adventureVictory(4)), preview('Defeat', adventureDefeat), back);
+  const rows = element('div'); page.append(controls, rows);
+  const cell = (id, row) => `<div class="art-cell">${battleArt(id, row, { variant: variant.select.value })}<span>${id} · ${row}</span></div>`;
+  const draw = () => {
+    const id = who.select.value;
+    rows.innerHTML = id
+      ? `<div class="art-row">${SPRITE_STATES.map((row) => cell(id, row)).join('')}</div>`
+      : `<h2>HEROES</h2><div class="art-row">${ART_IDS.heroes.map((x) => cell(x, state.select.value)).join('')}</div><h2>ENEMIES</h2><div class="art-row">${ART_IDS.enemies.map((x) => cell(x, state.select.value)).join('')}</div>`;
+    rows.insertAdjacentHTML('beforeend', `<h2>BACKDROPS</h2><div class="art-row">${[1, 2, 3, 4].map((s) => `<div class="rpg-stage-scene ${backdropClass(s)}" style="width:384px"></div>`).join('')}</div>`);
+  };
+  [state.select, who.select, variant.select].forEach((control) => { control.onchange = draw; }); draw(); app.append(page);
 }
 function selectField(name, options) { const label = element('label', '', name); const select = document.createElement('select'); options.forEach(([value, textValue]) => { const option = element('option', '', textValue); option.value = value; select.append(option); }); label.append(select); return { label, select }; }
 function numberField(name, min, max, value) { const label = element('label', '', name); const input = document.createElement('input'); input.type = 'number'; input.min = min; input.max = max; input.value = value; label.append(input); return { label, input }; }
@@ -214,4 +257,5 @@ document.addEventListener('keydown', (event) => {
   if (round && event.key >= '1' && event.key <= '4' && document.querySelector('.choices') && viewModel(round.mode, currentItem(), { micFree }).input === 'choices') document.querySelectorAll('.choices button')[Number(event.key) - 1]?.click();
 });
 
-if (new URLSearchParams(location.search).get('debug') === 'battle') debugLauncher(); else mainMenu();
+const debugMode = new URLSearchParams(location.search).get('debug');
+if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else mainMenu();

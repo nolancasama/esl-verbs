@@ -1,14 +1,18 @@
-import { ENEMIES, HEROES, SKILLS } from './battle-data.js';
+import { ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
 import { cycleTarget, getEnemyIntent, resolveEnemyPhase, selectTarget, useSkill } from './battle-engine.js';
-import { getBattleArt } from './battle-art.js';
+import {
+  backdropClass, createEffectsPlayer, enemyRestState, eventSpriteStates, getBarrierArt, getBattleArt, getIcon, heroRestState,
+} from './battle-art.js';
 
 const EVENT_MS = 400;
 const REDUCED_EVENT_MS = 1;
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const hpPercent = (hp, maxHp) => Math.max(0, Math.min(100, (hp / maxHp) * 100));
 
-function costLabel(cost) {
-  return cost ? '⚡'.repeat(cost) : 'FREE';
+function costMarkup(skill, locked) {
+  if (locked) return `<span class="battle-skill__cost battle-skill__cost--locked">${getIcon('lock')} LOCKED</span>`;
+  if (!skill.cost) return '<span class="battle-skill__cost battle-skill__cost--free">FREE</span>';
+  return `<span class="battle-skill__cost" aria-label="${skill.cost} Power">${getIcon('power').repeat(skill.cost)} ${skill.cost}</span>`;
 }
 
 function hintDetails(hint, state) {
@@ -19,43 +23,53 @@ function hintDetails(hint, state) {
 }
 
 function hpBar(hp, maxHp, label) {
-  return `<div class="battle-hp" aria-label="${esc(label)} HP ${hp} of ${maxHp}">
+  const ratio = hp / maxHp;
+  const tone = ratio <= 0.25 ? ' battle-hp--danger' : ratio <= 0.5 ? ' battle-hp--low' : '';
+  return `<div class="battle-hp${tone}" aria-label="${esc(label)} HP ${hp} of ${maxHp}">
+    <span class="battle-hp__label" aria-hidden="true">HP</span>
     <div class="battle-hp__track"><span style="width:${hpPercent(hp, maxHp)}%"></span></div>
-    <strong>${hp} / ${maxHp}</strong>
+    <strong>${hp}/${maxHp}</strong>
   </div>`;
 }
 
+const status = (kind, icon, text) => `<span class="battle-status battle-status--${kind}">${getIcon(icon)}${text}</span>`;
+
 function statusBadges(enemy, openingUid) {
   const badges = [];
-  if (enemy.guarding) badges.push('<span class="battle-status battle-status--guard">🛡 Guarding</span>');
-  if (enemy.charging) badges.push('<span class="battle-status battle-status--charge">⚠️ Charging!</span>');
-  if (enemy.tired) badges.push('<span class="battle-status battle-status--tired">💤 Tired!</span>');
-  if (enemy.uid === openingUid) badges.push('<span class="battle-status battle-status--opening">👁 OPENING!</span>');
-  return `<div class="battle-statuses">${badges.join('')}</div>`;
+  if (enemy.phase === 2) badges.push(status('angry', 'heavy', 'ANGRY!'));
+  if (enemy.guarding) badges.push(status('guard', 'guard', 'Guarding'));
+  if (enemy.charging) badges.push(status('charge', 'charge', 'Charging!'));
+  if (enemy.tired) badges.push(status('tired', 'rest', 'Tired!'));
+  if (enemy.uid === openingUid) badges.push(status('opening', 'opening', 'OPENING!'));
+  return badges.join('');
 }
+
+const INTENT_ICON = { attack: 'attack', guard: 'guard', heal: 'heal', summon: 'summon', charge: 'charge', heavy: 'heavy', rest: 'rest', drain: 'drain' };
+const INTENT_TONE = { heavy: ' battle-intent--heavy', charge: ' battle-intent--charge', heal: ' battle-intent--support', summon: ' battle-intent--support' };
 
 function intentMarkup(state, enemy) {
   if (state.turn !== 'player' || enemy.hp <= 0) return '';
   const intent = getEnemyIntent(state, enemy.uid);
   const data = ENEMIES[enemy.id];
   const labels = {
-    attack: `⚔ ${data.attack} ATTACK`,
-    guard: '🛡 GUARD',
-    heal: '💚 HEAL',
-    summon: '💀 SUMMON',
-    charge: '⚡ POWERING UP',
-    heavy: `🔥 ${data.heavy} BIG ATTACK · ${data.heavyName}`,
-    rest: '💤 REST',
-    drain: `🩸 ${data.attack} DRAIN`,
+    attack: `${data.attack} ATTACK`,
+    guard: 'GUARD',
+    heal: 'HEAL',
+    summon: 'SUMMON',
+    charge: 'POWERING UP',
+    heavy: `${data.heavy} BIG ATTACK · ${data.heavyName}`,
+    rest: 'REST',
+    drain: `${data.attack} DRAIN`,
   };
-  return `<span class="battle-intent${intent === 'heavy' ? ' battle-intent--heavy' : ''}">${esc(labels[intent] || intent)}</span>`;
+  return `<span class="battle-intent${INTENT_TONE[intent] || ''}">${getIcon(INTENT_ICON[intent] || 'attack')}${esc(labels[intent] || intent)}</span>`;
 }
 
 function heroStatuses(hero) {
   const badges = [];
-  if (hero.combo) badges.push('<span class="battle-status battle-status--combo">💥 COMBO READY</span>');
-  if (hero.counter) badges.push('<span class="battle-status battle-status--counter">⚔ COUNTER READY</span>');
-  if (hero.openingUid !== null) badges.push('<span class="battle-status battle-status--opening">👁 OPENING</span>');
+  if (hero.defense) badges.push(hero.defense === 'dodge' ? status('guard', 'dodge', 'Dodge ready') : hero.defense === 'barrier' ? status('guard', 'barrier', 'Barrier') : status('guard', 'guard', 'Guarding'));
+  if (hero.combo) badges.push(status('combo', 'combo', 'COMBO READY'));
+  if (hero.counter) badges.push(status('counter', 'counter', 'COUNTER READY'));
+  if (hero.openingUid !== null) badges.push(status('opening', 'opening', 'OPENING'));
   return `<div class="battle-statuses battle-statuses--hero">${badges.join('')}</div>`;
 }
 
@@ -104,6 +118,8 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
   let activeTimer = null;
   let finishDelay = null;
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const effects = createEffectsPlayer(container, { reducedMotion });
+  const stage = ENCOUNTERS[state.encounterId]?.tier ?? 1;
 
   function sprite(target) {
     const selector = target === 'hero' ? '[data-combatant="hero"]' : `[data-enemy-uid="${target}"]`;
@@ -112,7 +128,9 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
 
   function setSpriteState(target, value) {
     const node = sprite(target);
-    if (node) node.dataset.state = value;
+    if (!node) return;
+    if (node.dataset.state === value) { node.dataset.state = ''; void node.offsetWidth; } // restart the same row
+    node.dataset.state = value;
   }
 
   function skillsMarkup() {
@@ -126,10 +144,10 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
       const disabled = locked || !affordable || currentState.turn !== 'player' || playing;
       const reason = locked ? `Unlocks at skill tier ${skill.tier}` : !affordable ? `Need ${skill.cost} Power` : '';
       const highlighted = (danger && index === 1) || (activeHint && (activeHint.skillId === id || (activeHint.skill === 'basic' && index === 0) || (activeHint.skill === 'defense' && index === 1)));
-      return `<button type="button" class="battle-skill${highlighted ? ' battle-skill--hint' : ''}" data-skill-id="${id}"
+      return `<button type="button" class="battle-skill px-button${highlighted ? ' battle-skill--hint' : ''}" data-skill-id="${id}"
         ${disabled ? 'disabled' : ''} aria-describedby="${reason ? `skill-reason-${index}` : ''}" title="${esc(reason)}">
-        <kbd>${index + 1}</kbd> <span>${esc(skill.name)} <small>${esc(skill.jaName)}</small></span>
-        <span class="battle-skill__cost">${locked ? '🔒 LOCKED' : costLabel(skill.cost)}</span>
+        <kbd>${index + 1}</kbd>${getIcon(id)}<span class="battle-skill__name">${esc(skill.name)} <small>${esc(skill.jaName)}</small></span>
+        ${costMarkup(skill, locked)}
         ${reason ? `<span class="sr-only" id="skill-reason-${index}">${esc(reason)}</span>` : ''}
       </button>`;
     }).join('');
@@ -141,40 +159,47 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     const selected = alive && enemy.uid === currentState.selectedUid;
     return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}${enemy.phase === 2 ? ' battle-enemy--enraged' : ''}"
       data-select-uid="${enemy.uid}" data-enemy-uid="${enemy.uid}" aria-pressed="${selected}" ${alive ? '' : 'disabled'}>
-      <span class="battle-target-marker" aria-hidden="true">▼</span>
-      <span class="battle-enemy__name">${esc(data.name)} <small>${esc(data.jaName)}</small></span>
-      ${intentMarkup(currentState, enemy)}
-      <span class="battle-art-wrap">${getBattleArt(enemy.id, alive ? (enemy.charging ? 'charge' : enemy.guarding ? 'guard' : 'idle') : 'defeat')}</span>
-      ${hpBar(enemy.hp, enemy.maxHp, data.name)}
-      ${statusBadges(enemy, currentState.hero.openingUid)}
+      <span class="battle-target-marker" aria-hidden="true">${getIcon('cursor')}</span>
+      <span class="battle-enemy__plate px-panel">
+        <span class="battle-enemy__name">${esc(data.name)}<small>${esc(data.jaName)}</small></span>
+        ${hpBar(enemy.hp, enemy.maxHp, data.name)}
+      </span>
+      <span class="battle-cues">${intentMarkup(currentState, enemy)}${statusBadges(enemy, currentState.hero.openingUid)}</span>
+      <span class="battle-art-wrap">${getBattleArt(enemy.id, enemyRestState(enemy), { variant: enemy.phase === 2 ? 'enraged' : '' })}</span>
     </button>`;
   }
 
   function render(message) {
     if (destroyed) return;
+    effects.clear();
     const hero = HEROES[currentState.heroId];
     const activeHint = hintDetails(hint, currentState);
     const danger = currentState.turn === 'player' && currentState.enemies.some((enemy) => enemy.hp > 0 && enemy.intent === 'heavy');
     const defaultMessage = currentState.turn === 'won' ? 'VICTORY!' : currentState.turn === 'lost' ? 'DEFEATED...' : currentState.turn === 'enemy' ? 'Enemy turn...' : 'Choose a skill.';
-    container.innerHTML = `<section class="battle-view" aria-label="Battle">
+    container.innerHTML = `<section class="battle-view stage-${stage}" aria-label="Battle">
       <div class="battle-topbar">
-        <button type="button" class="secondary battle-exit" data-battle-exit>← Menu</button>
-        <div class="battle-power" aria-label="Power ${currentState.power}">⚡ POWER <strong>${currentState.power}</strong></div>
-        <div class="battle-round">TURN ${currentState.round}</div>
+        <button type="button" class="secondary battle-exit px-button" data-battle-exit>← Menu</button>
+        <div class="battle-power px-panel" aria-label="Power ${currentState.power}">${getIcon('power')}POWER <strong>${currentState.power}</strong></div>
+        <div class="battle-round px-panel">TURN ${currentState.round}</div>
       </div>
-      <div class="battle-field">
-        <article class="battle-hero" data-combatant="hero">
-          <h2>${esc(hero.name)} <small>${esc(hero.jaName)}</small></h2>
-          <div class="battle-art-wrap">${getBattleArt(hero.id, currentState.turn === 'won' ? 'victory' : currentState.turn === 'lost' ? 'defeat' : currentState.hero.defense || 'idle')}</div>
-          ${hpBar(currentState.hero.hp, currentState.hero.maxHp, hero.name)}
-          ${currentState.hero.defense ? `<span class="battle-status battle-status--guard">${currentState.hero.defense === 'dodge' ? '💨 Dodge ready' : '🛡 Guarding'}</span>` : ''}
-          ${heroStatuses(currentState.hero)}
+      <div class="battle-field ${backdropClass(stage)}">
+        <article class="battle-hero" data-combatant="hero" aria-label="${esc(hero.name)}">
+          <div class="battle-art-wrap">${getBattleArt(hero.id, heroRestState(currentState))}${currentState.hero.defense === 'barrier' ? getBarrierArt() : ''}</div>
         </article>
         <div class="battle-enemies">${currentState.enemies.map(enemyMarkup).join('')}</div>
       </div>
-      <div class="battle-message" role="status" aria-live="polite">${esc(message || defaultMessage)}</div>
-      ${danger || activeHint?.text ? `<div class="battle-hint">${esc(danger ? 'まもろう！' : activeHint.text)}</div>` : ''}
-      <div class="battle-skills" aria-label="Skills">${skillsMarkup()}</div>
+      <div class="battle-lower">
+        <div class="battle-message-box px-panel">
+          <div class="battle-message" role="status" aria-live="polite">${esc(message || defaultMessage)}</div>
+          ${danger || activeHint?.text ? `<div class="battle-hint">${esc(danger ? 'まもろう！' : activeHint.text)}</div>` : ''}
+        </div>
+        <div class="battle-hero-panel px-panel">
+          <h2>${esc(hero.name)} <small>${esc(hero.jaName)}</small></h2>
+          ${hpBar(currentState.hero.hp, currentState.hero.maxHp, hero.name)}
+          ${heroStatuses(currentState.hero)}
+        </div>
+        <div class="battle-skills" aria-label="Skills">${skillsMarkup()}</div>
+      </div>
     </section>`;
   }
 
@@ -191,7 +216,7 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
 
   function addFloater(target, textValue, className) {
     const selector = target === 'hero' ? '[data-combatant="hero"]' : `[data-enemy-uid="${target}"]`;
-    const parent = container.querySelector(selector);
+    const parent = container.querySelector(`${selector} .battle-art-wrap`);
     if (!parent) return;
     const node = document.createElement('span');
     node.className = `battle-floater ${className}`;
@@ -202,55 +227,24 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
   function applyEvent(event) {
     const message = container.querySelector('.battle-message');
     if (message) message.textContent = eventMessage(event);
+    for (const [target, spriteState] of eventSpriteStates(event)) setSpriteState(target, spriteState);
+    effects.play(event, currentState);
     switch (event.type) {
-      case 'attack': {
-        const actor = event.source ?? 'hero';
-        const skill = event.skillId && SKILLS[event.skillId];
-        setSpriteState(actor, skill?.kind === 'heal' ? 'cast' : skill?.tier ? 'special' : 'attack');
-        break;
-      }
-      case 'damage':
-        setSpriteState(event.target, event.amount === 0 ? 'dodge' : 'hit');
-        addFloater(event.target, event.amount === 0 ? 'DODGE!' : `−${event.amount}`, 'battle-floater--damage');
-        break;
-      case 'heal':
-        setSpriteState(event.target, 'cast');
-        addFloater(event.target, `+${event.amount} HP`, 'battle-floater--heal');
-        break;
-      case 'defend':
-        setSpriteState('hero', event.defense === 'dodge' ? 'dodge' : 'guard');
-        addFloater('hero', '🛡', 'battle-floater--shield');
-        break;
-      case 'guard':
-        setSpriteState(event.target, 'guard');
-        addFloater(event.target, '🛡', 'battle-floater--shield');
-        break;
-      case 'charge': setSpriteState(event.target, 'charge'); break;
-      case 'rest': setSpriteState(event.target, 'idle'); break;
-      case 'summon': setSpriteState(event.source, 'cast'); break;
+      case 'damage': addFloater(event.target, event.amount === 0 ? 'DODGE!' : `-${event.amount}`, 'battle-floater--damage'); break;
+      case 'heal': addFloater(event.target, `+${event.amount} HP`, 'battle-floater--heal'); break;
+      case 'defend': addFloater('hero', event.defense === 'dodge' ? 'READY!' : event.defense === 'barrier' ? 'BARRIER!' : 'GUARD!', 'battle-floater--shield'); break;
+      case 'guard': addFloater(event.target, 'GUARD!', 'battle-floater--shield'); break;
       case 'comboReady': addFloater('hero', 'COMBO READY!', 'battle-floater--status'); break;
       case 'combo': addFloater('hero', 'COMBO!', 'battle-floater--status'); break;
       case 'counterReady': addFloater('hero', 'COUNTER READY!', 'battle-floater--status'); break;
       case 'counter': addFloater(event.target, 'COUNTER!', 'battle-floater--status'); break;
       case 'opening':
       case 'opening-hit': addFloater(event.target, 'OPENING!', 'battle-floater--status'); break;
-      case 'break':
-        setSpriteState(event.target, 'broken');
-        addFloater(event.target, 'BREAK!', 'battle-floater--status');
-        break;
+      case 'break': addFloater(event.target, 'BREAK!', 'battle-floater--status'); break;
       case 'power': addFloater('hero', `+${event.amount} POWER`, 'battle-floater--power'); break;
-      case 'barrierUp':
-        setSpriteState('hero', 'guard');
-        addFloater('hero', 'BARRIER!', 'battle-floater--shield');
-        break;
+      case 'barrierUp': addFloater('hero', 'BARRIER!', 'battle-floater--shield'); break;
       case 'chain': addFloater(event.target, 'CHAIN!', 'battle-floater--status'); break;
-      case 'enrage':
-        setSpriteState(event.target, 'enraged');
-        addFloater(event.target, event.message, 'battle-floater--status');
-        break;
-      case 'defeat': setSpriteState(event.target, 'defeat'); break;
-      case 'victory': setSpriteState('hero', 'victory'); break;
-      case 'lost': setSpriteState('hero', 'defeat'); break;
+      case 'enrage': addFloater(event.target, 'ENRAGED!', 'battle-floater--status'); break;
       default: break;
     }
   }
@@ -371,6 +365,7 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
       const resolve = finishDelay;
       finishDelay = null;
       resolve?.();
+      effects.destroy();
       container.removeEventListener('click', onClick, true);
       document.removeEventListener('keydown', onKeydown);
       container.replaceChildren();

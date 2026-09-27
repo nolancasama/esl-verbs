@@ -150,6 +150,43 @@ Git is the source of truth for detailed code-change history.
 - The defense button pulses with まもろう！ in every battle whenever an enemy
   shows a big attack. Not faded after repeated exposure yet.
 
+## 2026-09-28 — first cohesive pixel-art pass for Adventure
+
+- **Placeholder SVG battle art replaced by original, locally generated pixel
+  art.** Every hero, enemy, boss, icon, effect and stage backdrop is drawn on a
+  small integer grid (heroes 48×48, enemies 26–46 px, large foes ~50 px,
+  bosses 64–88 px) from one shared palette (`src/pixel-palette.js`), then
+  rasterized once at runtime into a PNG sprite sheet on a `<canvas>` and shown
+  with nearest-neighbour integer scaling (`--px` 2/3/4 by viewport). Rejected:
+  smooth SVG with `image-rendering: pixelated` (not real pixels), committed PNG
+  files (needs an encoder/build step; grids in source are easier to revise),
+  and any third-party or traced game assets.
+- **Heroes use a paper-doll rig with hand-pixelled heads.** Poses are
+  parameter sets (hip, shoulders, hands, feet, weapon angle) and each figure is
+  auto-outlined, so new key poses are cheap. Enemies are primitives plus
+  mirroring; their generic rows (hit flash, lunge, ordered-dither defeat,
+  dimmed/slumped tired, palette-swapped charge) are derived in one place.
+- **One sheet per character, one row per semantic state** (`SPRITE_STATES` in
+  `battle-art.js`: idle, attack, special, guard, cast, dodge, hit, charge,
+  defeat, victory, broken, enraged, tired, heal, barrier, counter, shadow).
+  CSS plays a row with `steps()`; each state has its own keyframes name so a
+  state change always restarts. The UI only sets `data-state`, and
+  `eventSpriteStates()` maps engine events to states, so battle logic never
+  knows how art is drawn and never waits on animation.
+- **Boss phase 2 is a separate sheet variant** (palette swap + pose/aura), not a
+  CSS filter, so the change is visible in the art itself.
+- **Effects are cosmetic DOM nodes** from `createEffectsPlayer` (slashes,
+  projectiles, heal/drain orbs, barrier dome, BREAK shards, summon rune, boss
+  burst, small stepped shake/flash). They are skipped entirely under
+  reduced motion and dropped on each re-render.
+- **Readability over retro purity.** The pixel font (Press Start 2P, OFL,
+  bundled in `assets/fonts/`) is used only for short English labels, numbers
+  and floaters. Japanese, intents and enemy names stay in the system font.
+  Adventure CSS moved to `rpg.css`; Study quiz styles are unchanged.
+- **Battle mechanics, balance and the event contract were intentionally not
+  changed** by this pass. The only UI-state change: a tired enemy now shows
+  its own `tired` row instead of `idle`.
+
 A useful rule:
 
 > If a future developer or AI could reasonably ask, "Why is it designed this way?", record the answer here.

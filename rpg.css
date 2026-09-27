@@ -1,0 +1,337 @@
+/* Adventure / RPG presentation. Study-mode styles live in styles.css. */
+@font-face {
+  font-family: "PressStart";
+  src: url("assets/fonts/press-start-2p-latin.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --px: 3;
+  --b: 3px;
+  --pixel-font: "PressStart", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", monospace;
+  --ink: #1a1c2c;
+  --night: #141726;
+  --panel: #283374;
+  --panel-deep: #1d2556;
+  --edge: #f4f1ea;
+  --gold: #ffd35a;
+  --gold-deep: #f28a2e;
+  --red: #d8413a;
+  --hp: #54c46a;
+  --hp-low: #f2b33c;
+  --hp-danger: #e0503f;
+  --violet: #7a4cc0;
+}
+
+/* ---------------------------------------------------------------- pixel UI */
+.px-font { font-family: var(--pixel-font); font-weight: 400; letter-spacing: 0; }
+.px-panel {
+  background: var(--panel);
+  color: #fff;
+  border: var(--b) solid var(--edge);
+  border-radius: 0;
+  box-shadow: var(--b) 0 0 0 var(--ink), calc(var(--b) * -1) 0 0 0 var(--ink), 0 var(--b) 0 0 var(--ink), 0 calc(var(--b) * -1) 0 0 var(--ink), inset 0 calc(var(--b) * -2) 0 0 var(--panel-deep);
+}
+.px-button {
+  font-family: var(--pixel-font);
+  font-weight: 400;
+  border-radius: 0;
+  border: var(--b) solid var(--edge);
+  box-shadow: var(--b) 0 0 0 var(--ink), calc(var(--b) * -1) 0 0 0 var(--ink), 0 var(--b) 0 0 var(--ink), 0 calc(var(--b) * -1) 0 0 var(--ink), inset 0 calc(var(--b) * -2) 0 0 #0004;
+  background: var(--violet);
+  color: #fff;
+  line-height: 1.5;
+}
+.px-button:active:not(:disabled) { box-shadow: var(--b) 0 0 0 var(--ink), calc(var(--b) * -1) 0 0 0 var(--ink), 0 var(--b) 0 0 var(--ink), 0 calc(var(--b) * -1) 0 0 var(--ink), inset 0 var(--b) 0 0 #0004; }
+.px-button.secondary { background: #3b4470; color: #fff; }
+.px-button:focus-visible, .battle-skill:focus-visible, .battle-enemy:focus-visible, .hero-card:focus-visible {
+  outline: 4px solid var(--gold); outline-offset: 5px;
+}
+.px-icon {
+  display: inline-block; flex: none; vertical-align: middle;
+  width: calc(var(--fw) * var(--icon, 2) * 1px); height: calc(var(--fh) * var(--icon, 2) * 1px);
+  background-size: 100% 100%; image-rendering: pixelated; image-rendering: crisp-edges;
+}
+
+/* ------------------------------------------------------------ sprite sheets */
+.px-sprite {
+  --row: 0; --n: 2; --last: 0;
+  display: inline-block; flex: none;
+  width: calc(var(--fw) * var(--px) * 1px);
+  height: calc(var(--fh) * var(--px) * 1px);
+  background-repeat: no-repeat;
+  background-size: calc(var(--sw) * var(--px) * 1px) calc(var(--sh) * var(--px) * 1px);
+  background-position: 0 calc(var(--row) * var(--fh) * var(--px) * -1px);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.px-missing { width: 96px; height: 96px; display: grid; place-items: center; background: #8993a3; color: #fff; font-size: 3rem; }
+/* Each state owns its keyframes name so switching states always restarts playback. */
+.px-sprite[data-state="idle"]    { --row: 0;  --n: 2; animation: px-idle .9s steps(2) infinite; }
+.px-sprite[data-state="attack"]  { --row: 1;  --n: 4; --last: 3; animation: px-attack .4s steps(4, jump-none) forwards; }
+.px-sprite[data-state="special"] { --row: 2;  --n: 4; --last: 3; animation: px-special .44s steps(4, jump-none) forwards; }
+.px-sprite[data-state="guard"]   { --row: 3;  --n: 2; --last: 1; animation: px-guard .3s steps(2, jump-none) forwards; }
+.px-sprite[data-state="cast"]    { --row: 4;  --n: 4; --last: 3; animation: px-cast .4s steps(4, jump-none) forwards; }
+.px-sprite[data-state="dodge"]   { --row: 5;  --n: 3; --last: 2; animation: px-dodge .33s steps(3, jump-none) forwards; }
+.px-sprite[data-state="hit"]     { --row: 6;  --n: 3; --last: 2; animation: px-hit .3s steps(3, jump-none) forwards; }
+.px-sprite[data-state="charge"]  { --row: 7;  --n: 2; animation: px-charge .5s steps(2) infinite; }
+.px-sprite[data-state="defeat"]  { --row: 8;  --n: 4; --last: 3; animation: px-defeat .5s steps(4, jump-none) forwards; }
+.px-sprite[data-state="victory"] { --row: 9;  --n: 2; animation: px-victory .6s steps(2) infinite; }
+.px-sprite[data-state="broken"]  { --row: 10; --n: 3; --last: 2; animation: px-broken .36s steps(3, jump-none) forwards; }
+.px-sprite[data-state="enraged"] { --row: 11; --n: 2; animation: px-enraged .3s steps(2) infinite; }
+.px-sprite[data-state="tired"]   { --row: 12; --n: 2; animation: px-tired 1.4s steps(2) infinite; }
+.px-sprite[data-state="heal"]    { --row: 13; --n: 3; --last: 2; animation: px-heal .36s steps(3, jump-none) forwards; }
+.px-sprite[data-state="barrier"] { --row: 14; --n: 2; --last: 1; animation: px-barrier .3s steps(2, jump-none) forwards; }
+.px-sprite[data-state="counter"] { --row: 15; --n: 4; --last: 3; animation: px-counter .4s steps(4, jump-none) forwards; }
+.px-sprite[data-state="shadow"]  { --row: 16; --n: 4; --last: 3; animation: px-shadow .44s steps(4, jump-none) forwards; }
+@keyframes px-idle    { to { background-position-x: calc(var(--n) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-charge  { to { background-position-x: calc(var(--n) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-victory { to { background-position-x: calc(var(--n) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-enraged { to { background-position-x: calc(var(--n) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-tired   { to { background-position-x: calc(var(--n) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-attack  { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-special { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-guard   { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-cast    { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-dodge   { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-hit     { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-defeat  { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-broken  { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-heal    { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-barrier { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-counter { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-shadow  { to { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); } }
+.px-summoned { animation: px-summon-in .42s steps(4) both, px-idle .9s steps(2) .42s infinite; }
+@keyframes px-summon-in { 0% { opacity: 0; } 25% { opacity: .25; } 50% { opacity: .5; } 75% { opacity: .75; } 100% { opacity: 1; } }
+
+/* ------------------------------------------------------------------ effects */
+.px-fx {
+  position: absolute; z-index: 6; pointer-events: none;
+  width: calc(var(--fw) * var(--px) * 1px); height: calc(var(--fh) * var(--px) * 1px);
+  background-repeat: no-repeat; background-position: 0 0;
+  background-size: calc(var(--sw) * var(--px) * 1px) calc(var(--sh) * var(--px) * 1px);
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  transform: translate(-50%, -50%);
+  animation: px-fx var(--dur) steps(var(--n)) forwards;
+}
+.px-fx--flip { transform: translate(-50%, -50%) scaleX(-1); }
+.px-fx--loop { animation: px-fx 240ms steps(var(--n)) infinite; }
+.px-proj { animation: px-fx 200ms steps(var(--n)) infinite, px-travel var(--travel) steps(6) forwards; }
+@keyframes px-fx { to { background-position-x: calc(var(--n) * var(--fw) * var(--px) * -1px); } }
+@keyframes px-travel { to { translate: var(--dx) var(--dy); } }
+.px-streak {
+  position: absolute; z-index: 5; pointer-events: none; transform-origin: 0 50%;
+  height: calc(var(--px) * 4px); margin-top: calc(var(--px) * -2px);
+  background: repeating-linear-gradient(90deg, #fff4b0 0 calc(var(--px) * 6px), #fff calc(var(--px) * 6px) calc(var(--px) * 8px), transparent calc(var(--px) * 8px) calc(var(--px) * 10px));
+  animation: px-streak .3s steps(3) forwards;
+}
+.px-streak--dark { background: repeating-linear-gradient(90deg, #43287a 0 calc(var(--px) * 5px), #bd92f2 calc(var(--px) * 5px) calc(var(--px) * 8px), transparent calc(var(--px) * 8px) calc(var(--px) * 10px)); }
+@keyframes px-streak { 0%, 66% { opacity: 1; } 100% { opacity: 0; } }
+.px-shake { animation: px-shake .24s steps(4); }
+.px-shake--big { animation: px-shake-big .32s steps(6); }
+@keyframes px-shake { 25% { translate: calc(var(--px) * -1px) 0; } 50% { translate: calc(var(--px) * 1px) 0; } 75% { translate: calc(var(--px) * -1px) 0; } }
+@keyframes px-shake-big { 16% { translate: calc(var(--px) * -2px) 0; } 33% { translate: calc(var(--px) * 2px) calc(var(--px) * 1px); } 50% { translate: calc(var(--px) * -2px) 0; } 66% { translate: calc(var(--px) * 1px) calc(var(--px) * -1px); } 83% { translate: calc(var(--px) * -1px) 0; } }
+.px-flash::after, .px-flash--red::after { content: ""; position: absolute; inset: 0; z-index: 7; pointer-events: none; background: #fff; animation: px-flash .36s steps(3) forwards; }
+.px-flash--red::after { background: #ff6b4a; }
+@keyframes px-flash { from { opacity: .7; } to { opacity: 0; } }
+
+/* ------------------------------------------------------------------ battle */
+.battle-app { width: 100%; max-width: none; height: 100vh; min-height: 600px; padding: 8px; align-content: stretch; overflow: hidden; background: var(--night); }
+.battle-host, .battle-view { width: 100%; height: 100%; }
+.battle-view {
+  position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 8px;
+  width: min(1400px, 100%); margin: 0 auto; padding: 8px 10px 10px; overflow: hidden; color: #fff;
+}
+.battle-topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+.battle-exit { justify-self: start; min-height: 48px; padding: .4rem 1rem; font-size: 12px; }
+.battle-power { display: flex; align-items: center; gap: 12px; padding: 8px 20px; font-family: var(--pixel-font); font-size: 16px; color: var(--gold); --icon: 3; }
+.battle-power strong { font-size: 24px; font-weight: 400; color: #fff; min-width: 1.2em; }
+.battle-round { justify-self: end; padding: 8px 14px; font-family: var(--pixel-font); font-size: 12px; }
+
+.battle-field {
+  position: relative; display: grid; grid-template-columns: minmax(170px, .55fr) minmax(300px, 1.8fr); align-items: end; gap: 10px;
+  min-height: 0; padding: 0 18px calc(var(--px) * 5px); overflow: hidden;
+  background-repeat: repeat-x; background-position: left bottom;
+  background-size: calc(192px * var(--px)) calc(112px * var(--px));
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  border: var(--b) solid var(--ink); outline: var(--b) solid var(--edge); outline-offset: 0;
+}
+.battle-view.stage-1 .battle-field { background-color: #8fd0f2; }
+.battle-view.stage-2 .battle-field { background-color: #f2b88a; }
+.battle-view.stage-3 .battle-field { background-color: #373d5e; }
+.battle-view.stage-4 .battle-field { background-color: #3a2350; }
+.battle-hero { position: relative; display: grid; justify-items: center; align-content: end; min-width: 0; }
+.battle-art-wrap { position: relative; display: grid; justify-items: center; align-items: end; }
+.battle-hero .px-fx-barrier { position: absolute; left: 50%; top: auto; bottom: calc(var(--px) * -2px); transform: translateX(-50%); }
+.battle-enemies { display: flex; justify-content: space-evenly; align-items: end; gap: 6px; min-width: 0; padding-bottom: calc(var(--px) * 7px); }
+.battle-enemy {
+  position: relative; display: grid; justify-items: center; align-content: end; gap: 3px;
+  min-width: 0; min-height: 0; height: auto; padding: 0 2px; background: transparent; color: #fff; border: 0; border-radius: 0; box-shadow: none;
+}
+.battle-enemy:disabled { opacity: 1; }
+.battle-enemy:disabled .battle-enemy__plate { opacity: .45; }
+.battle-target-marker { visibility: hidden; height: 22px; --icon: 2; }
+.battle-target-marker .px-icon { transform: rotate(90deg); animation: px-bob .6s steps(2) infinite; }
+@keyframes px-bob { 50% { translate: 0 4px; } }
+.battle-enemy--selected .battle-target-marker { visibility: visible; }
+.battle-enemy__plate { display: grid; gap: 3px; width: 100%; min-width: 132px; max-width: 200px; padding: 4px 8px 5px; text-align: center; }
+.battle-enemy--selected .battle-enemy__plate { border-color: var(--gold); }
+.battle-enemy__name { font-weight: 900; font-size: .85rem; line-height: 1.1; white-space: nowrap; }
+.battle-enemy__name small { font-weight: 600; font-size: .75rem; opacity: .9; margin-left: 4px; }
+.battle-cues { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; min-height: 28px; max-width: 260px; }
+.battle-intent {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 2px 8px 2px 4px;
+  background: #fffbe8; color: var(--ink); border: var(--b) solid var(--ink);
+  font-size: .8rem; font-weight: 900; line-height: 1.1; white-space: nowrap; --icon: 2;
+}
+.battle-intent--heavy { background: var(--red); color: #fff; animation: px-blink .7s steps(2) infinite; }
+@keyframes px-blink { 50% { background: #8e2436; } }
+.battle-intent--support { background: #d8f7c8; }
+.battle-intent--charge { background: var(--gold); }
+
+.battle-hp { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; font-family: var(--pixel-font); font-size: 10px; }
+.battle-hp__label { color: var(--gold); }
+.battle-hp__track { height: calc(var(--b) * 4); border: var(--b) solid var(--ink); background: #3a2a3a; box-shadow: 0 0 0 2px var(--edge); }
+.battle-hp__track span { display: block; height: 100%; background: var(--hp); box-shadow: inset 0 var(--b) 0 0 #ffffff55; transition: width .2s steps(4); }
+.battle-hp--low .battle-hp__track span { background: var(--hp-low); }
+.battle-hp--danger .battle-hp__track span { background: var(--hp-danger); }
+.battle-hp strong { font-weight: 400; white-space: nowrap; }
+
+.battle-status { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 2px solid var(--ink); background: #eef2f8; color: var(--ink); font-size: .74rem; font-weight: 900; white-space: nowrap; --icon: 2; }
+.battle-status--combo, .battle-status--counter, .battle-status--opening { background: var(--gold); }
+.battle-status--charge, .battle-status--angry { background: var(--red); color: #fff; }
+.battle-status--guard { background: #b8d4ff; }
+.battle-status--tired { background: #c9d2e8; }
+
+.battle-lower { display: grid; grid-template-columns: minmax(230px, 280px) 1fr; gap: 12px; align-items: stretch; }
+.battle-message-box { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; padding: 6px 16px; }
+.battle-message { font-family: var(--pixel-font); font-size: 16px; line-height: 1.5; }
+.battle-hint { color: var(--gold); font-size: 1.15rem; font-weight: 900; white-space: nowrap; }
+.battle-hero-panel { display: grid; align-content: center; gap: 6px; padding: 8px 12px; }
+.battle-hero-panel h2 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-family: var(--pixel-font); font-weight: 400; font-size: 14px; color: var(--gold); }
+.battle-hero-panel h2 small { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: .85rem; font-weight: 700; color: #fff; }
+.battle-hero-panel .battle-hp { font-size: 12px; }
+.battle-statuses { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; }
+
+.battle-skills { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 3px; }
+.battle-skill {
+  position: relative; min-width: 0; min-height: 76px; display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 8px;
+  padding: 8px 10px; text-align: left; background: var(--panel); --icon: 3;
+}
+.battle-skill:nth-child(2) { background: #2d4f7a; }
+.battle-skill:disabled { opacity: 1; background: #3a3d52; color: #aab0c4; }
+.battle-skill:disabled .px-icon { filter: grayscale(1) brightness(.8); }
+.battle-skill kbd { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 4px; background: var(--edge); color: var(--ink); border: 2px solid var(--ink); font-family: var(--pixel-font); font-size: 12px; }
+.battle-skill__name { display: grid; gap: 4px; min-width: 0; font-family: var(--pixel-font); font-size: 12px; line-height: 1.3; text-transform: uppercase; }
+.battle-skill__name small { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-weight: 700; font-size: .85rem; text-transform: none; }
+.battle-skill__cost { position: absolute; top: -12px; right: 8px; display: flex; align-items: center; gap: 1px; padding: 2px 6px; background: var(--ink); color: var(--gold); border: 2px solid var(--edge); font-family: var(--pixel-font); font-size: 10px; --icon: 1.5; }
+.battle-skill__cost--free { color: #b8f5a0; }
+.battle-skill__cost--locked { color: #fff; }
+.battle-skill--hint { outline: 5px solid var(--gold); outline-offset: 3px; animation: px-hint .7s steps(2) infinite; }
+@keyframes px-hint { 50% { outline-color: #fff4b0; } }
+
+.battle-floater {
+  position: absolute; z-index: 8; left: 50%; top: 22%; pointer-events: none; white-space: nowrap;
+  font-family: var(--pixel-font); font-size: 22px; line-height: 1;
+  color: #fff; translate: -50% 0;
+  text-shadow: 3px 0 var(--ink), -3px 0 var(--ink), 0 3px var(--ink), 0 -3px var(--ink), 3px 3px var(--ink), -3px 3px var(--ink), 3px -3px var(--ink), -3px -3px var(--ink);
+  animation: px-float .44s steps(4) forwards;
+}
+.battle-floater--damage { color: #ff6b5a; font-size: 26px; }
+.battle-floater--heal { color: #9be26a; }
+.battle-floater--shield { color: #9ff3ee; }
+.battle-floater--power { color: var(--gold); }
+.battle-floater--status { color: var(--gold); font-size: 18px; }
+@keyframes px-float { 0% { translate: -50% 6px; } 25% { translate: -50% -12px; } 50% { translate: -50% -18px; } 100% { translate: -50% -24px; } }
+
+/* ----------------------------------------------------------- RPG screens */
+.app.rpg-app { width: 100%; max-width: none; background: var(--night); }
+.rpg-screen { background: var(--panel); color: #fff; }
+.rpg-card {
+  width: min(760px, 100%); margin: auto; padding: clamp(18px, 4vw, 36px); display: grid; gap: 16px; justify-items: center; text-align: center;
+}
+.rpg-card h1, .rpg-card h2 { margin: 0; font-family: var(--pixel-font); font-weight: 400; line-height: 1.4; }
+.rpg-title { font-size: clamp(22px, 4vw, 40px); color: var(--gold); text-shadow: 4px 4px 0 var(--ink); }
+.rpg-subtitle { font-size: 16px; color: #fff; }
+.rpg-card .px-button { min-width: min(340px, 100%); min-height: 60px; font-size: 16px; }
+.rpg-card .corner-button { justify-self: start; min-width: 0; font-size: 12px; min-height: 48px; }
+.rpg-stage { padding: 6px 14px; background: var(--ink); color: var(--gold); font-family: var(--pixel-font); font-size: 12px; }
+.rpg-score { font-family: var(--pixel-font); font-size: clamp(24px, 5vw, 40px); }
+.rpg-power { display: inline-flex; align-items: center; gap: 12px; padding: 10px 18px; font-family: var(--pixel-font); font-size: 18px; color: var(--gold); --icon: 3; }
+.rpg-stage-scene { width: 100%; height: 224px; padding-bottom: 12px; background-repeat: repeat-x; background-position: left bottom; background-size: 384px 224px; image-rendering: pixelated; border: var(--b) solid var(--ink); display: flex; align-items: end; justify-content: center; }
+.rpg-hero-pose { --px: 4; }
+.rpg-reward { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 14px; padding: 12px 20px; text-align: left; --icon: 4; }
+.rpg-reward .px-icon { grid-row: span 2; }
+.rpg-reward h2 { font-size: 16px; color: var(--gold); animation: px-blink-text .5s steps(2) 3; }
+.rpg-reward p { margin: 0; font-size: 1.15rem; font-weight: 800; }
+.rpg-reward p b { font-family: var(--pixel-font); font-weight: 400; font-size: 14px; }
+@keyframes px-blink-text { 50% { color: #fff; } }
+.rpg-ja { font-size: 1.6rem; font-weight: 900; color: #fff; }
+.rpg-burst { position: relative; isolation: isolate; }
+.rpg-burst::before { content: ""; position: absolute; inset: -30px calc(50% - 150px); border-radius: 50%; z-index: -1; background: radial-gradient(circle, #fff4b0 0 20%, transparent 21%), repeating-conic-gradient(#ffd35a33 0 10deg, transparent 10deg 20deg); animation: px-flash-in .6s steps(3) both; }
+@keyframes px-flash-in { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+.defeat-card .rpg-title { color: #c9d2e8; }
+
+.adventure-choice { display: grid; justify-items: center; gap: 10px; padding: 14px 18px 18px; background: var(--violet); font-size: clamp(16px, 3vw, 22px); }
+.adventure-choice .adventure-trio { display: flex; gap: 4px; --px: 2; pointer-events: none; }
+.adventure-choice small { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-weight: 800; font-size: 1.1rem; }
+
+.hero-select { width: min(1100px, 100%); margin: auto; padding: 22px; display: grid; gap: 18px; }
+.hero-select .topline h1 { margin: 0; font-family: var(--pixel-font); font-weight: 400; font-size: clamp(16px, 2.4vw, 24px); color: var(--gold); line-height: 1.5; }
+.hero-select .topline h1 small { display: block; font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-weight: 800; font-size: 1.1rem; color: #fff; }
+.hero-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+.hero-card { position: relative; display: grid; justify-items: center; align-content: start; gap: 6px; min-height: 0; padding: 12px 10px 16px; background: var(--panel-deep); }
+.hero-card-art { display: flex; justify-content: center; align-items: end; width: 100%; --px: 4; background: linear-gradient(#0000 0 76%, #3d6f4c 76% 80%, #2f5a3d 80%); border: var(--b) solid var(--ink); }
+.hero-card strong { font-family: var(--pixel-font); font-weight: 400; font-size: 18px; color: var(--gold); }
+.hero-card .hero-ja { font-size: 1.15rem; font-weight: 800; }
+.hero-card .hero-kana { font-size: 1.25rem; font-weight: 900; color: #fff4b0; }
+.hero-card small { font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 1.05rem; font-weight: 700; }
+.hero-card:hover .px-sprite, .hero-card:focus-visible .px-sprite { --row: 9; --n: 2; animation: px-victory .6s steps(2) infinite; }
+.hero-card:focus-visible::before, .hero-card:hover::before { content: ""; position: absolute; left: -26px; top: 40%; width: 22px; height: 22px; background: var(--gold); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+
+.results-hero { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 1.5rem; }
+.mini-art { --px: 2; display: inline-flex; }
+.stage-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-weight: 700; }
+.stage-results span { padding: 10px; border-radius: 10px; background: #eef2f8; }
+.victory-title { color: #885400; font-size: clamp(2rem, 7vw, 4rem); margin: 0; font-family: var(--pixel-font); font-weight: 400; line-height: 1.3; }
+
+/* --------------------------------------------------------- debug gallery */
+.art-gallery { width: min(1400px, 100%); margin: 0 auto; display: grid; gap: 14px; background: var(--night); color: #fff; padding: 16px; }
+.art-gallery h1, .art-gallery h2 { margin: 0; font-family: var(--pixel-font); font-weight: 400; font-size: 16px; color: var(--gold); }
+.art-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.art-controls select { min-height: 48px; font-size: 1rem; }
+.art-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; padding: 10px; background: #5f8a5a; background: linear-gradient(#7fb6d6 0 70%, #6a9f58 70%); }
+.art-cell { display: grid; justify-items: center; gap: 2px; font-size: .75rem; color: var(--ink); font-weight: 800; }
+
+/* ------------------------------------------------------------- viewports */
+@media (min-height: 740px) and (min-width: 1200px) { .battle-view { --px: 4; } }
+@media (max-height: 660px) and (min-width: 701px) { .battle-skill { min-height: 64px; } .battle-message-box { min-height: 42px; } }
+@media (max-height: 560px) and (min-width: 701px) { .battle-view { --px: 2; } }
+@media (max-width: 1100px) and (min-width: 701px) {
+  .battle-lower { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  :root { --px: 2; }
+  .hero-grid { grid-template-columns: 1fr; }
+  .stage-results { grid-template-columns: 1fr 1fr; }
+  .battle-app { height: auto; min-height: 100vh; overflow: visible; }
+  .battle-view { min-height: 100vh; grid-template-rows: auto auto auto auto; overflow: visible; }
+  .battle-field { grid-template-columns: 1fr; min-height: 420px; padding: 8px; }
+  .battle-enemies { flex-wrap: wrap; padding-bottom: 0; }
+  .battle-hero { order: 2; justify-items: start; }
+  .battle-skill { grid-template-columns: auto minmax(0, 1fr); }
+  .battle-skill > .px-icon { display: none; }
+  .battle-enemy__plate { min-width: 120px; }
+  .battle-lower { grid-template-columns: 1fr; }
+  .battle-skills { grid-template-columns: 1fr 1fr; }
+  .battle-topbar { grid-template-columns: auto 1fr; }
+  .battle-round { display: none; }
+  .battle-message-box { flex-direction: column; align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-sprite, .px-summoned, .battle-skill--hint, .battle-floater, .battle-intent--heavy, .battle-target-marker .px-icon, .rpg-reward h2, .rpg-burst::before, .hero-card .px-sprite {
+    animation: none !important; transition-duration: .001ms !important;
+  }
+  .px-sprite { background-position-x: calc(var(--last) * var(--fw) * var(--px) * -1px); }
+  .px-fx, .px-streak { display: none; }
+}
