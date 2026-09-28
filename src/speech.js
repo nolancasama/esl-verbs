@@ -11,9 +11,9 @@ export function findMatch(results, accepted) {
 }
 
 export class TapToTalk {
-  constructor({ SpeechRecognition, onCorrect = () => {}, onHeard = () => {}, onStatus = () => {}, onUnavailable = () => {}, onError = () => {}, timeoutMs = 6000 } = {}) {
+  constructor({ SpeechRecognition, onCorrect = () => {}, onHeard = () => {}, onStatus = () => {}, onUnavailable = () => {}, onError = () => {}, onListenChange = () => {}, timeoutMs = 6000 } = {}) {
     this.Recognition = SpeechRecognition || globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
-    this.onCorrect = onCorrect; this.onHeard = onHeard; this.onStatus = onStatus;
+    this.onCorrect = onCorrect; this.onHeard = onHeard; this.onStatus = onStatus; this.onListenChange = onListenChange;
     this.onUnavailable = onUnavailable; this.onError = onError; this.timeoutMs = timeoutMs;
     this.recognition = null; this.listening = false; this.matched = false; this.timer = null; this.accepted = [];
   }
@@ -37,7 +37,7 @@ export class TapToTalk {
       else if (reason !== 'no-speech' && reason !== 'aborted') this.onError(reason);
     };
     recognition.onend = () => this.finish();
-    this.listening = true; this.onStatus('Listening...');
+    this.listening = true; this.onListenChange(true); this.onStatus('Listening...');
     this.timer = setTimeout(() => this.stop(), this.timeoutMs);
     try { recognition.start(); } catch { this.onError('start'); this.finish(); }
   }
@@ -50,13 +50,14 @@ export class TapToTalk {
 
   finish() {
     if (!this.listening) return;
-    this.listening = false; clearTimeout(this.timer); this.timer = null;
+    this.listening = false; clearTimeout(this.timer); this.timer = null; this.onListenChange(false);
     this.recognition = null;
     if (!this.matched) this.onStatus('Try again');
   }
 
   cancel() {
-    clearTimeout(this.timer); this.timer = null; this.listening = false;
+    clearTimeout(this.timer); this.timer = null;
+    if (this.listening) { this.listening = false; this.onListenChange(false); }
     if (this.recognition) { this.recognition.onend = null; try { this.recognition.abort(); } catch {} }
     this.recognition = null;
   }

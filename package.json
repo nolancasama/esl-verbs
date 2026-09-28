@@ -7,6 +7,8 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "test:browser": "node test/browser/playthrough.mjs",
-    "serve": "python -m http.server 8010"
+    "serve": "python -m http.server 8010",
+    "art:png": "node tools/render-sprites.mjs",
+    "balance": "node test/balance-report.mjs"
   }
 }

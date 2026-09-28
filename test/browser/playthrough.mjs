@@ -100,7 +100,7 @@ async function answerTenTypedQuestions(page) {
   for (let index = 0; index < 10; index += 1) {
     const input = page.getByRole('textbox', { name: /Japanese answer/i });
     await input.waitFor({ state: 'visible' });
-    const prompt = (await page.locator('.prompt:visible').first().innerText()).trim().toLowerCase();
+    const prompt = (await page.locator('.prompt:visible, .rpg-quiz__prompt:visible').first().innerText()).trim().toLowerCase();
     const item = vocabularyByEnglish.get(prompt);
     if (!item) throw new Error(`Typed quiz prompt was not found in src/vocab.js: ${JSON.stringify(prompt)}`);
     await input.fill(item.ja);
@@ -111,14 +111,21 @@ async function answerTenTypedQuestions(page) {
   }
 }
 
+// Presses the basic attack whenever it is enabled; recovery turns (0 AP) run by themselves.
 async function winBattleWithKeyboard(page) {
   const victory = page.getByText(/VICTORY!/i).first();
-  for (let attempt = 0; attempt < 160; attempt += 1) {
+  const defeated = page.getByRole('heading', { name: /^DEFEATED/ }).first();
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if (await victory.isVisible().catch(() => false)) return;
-    await page.keyboard.press('1');
-    await page.waitForTimeout(35);
+    if (await defeated.isVisible().catch(() => false)) throw new Error('The hero was defeated');
+    if (await page.locator('.battle-skill:not(:disabled)').first().isVisible().catch(() => false)) await page.keyboard.press('1');
+    await page.waitForTimeout(60);
   }
-  throw new Error('Battle did not reach VICTORY after 160 keyboard actions');
+  throw new Error('Battle did not reach VICTORY');
+}
+
+async function apMeterValue(page) {
+  return Number((await page.locator('.ap-meter__now').first().innerText()).trim());
 }
 
 async function selectOption(control, value, labelPattern) {
@@ -146,12 +153,18 @@ async function adventureFlow(page, baseUrl) {
   await page.getByRole('button', { name: /Fighter/i }).click();
   await answerTenTypedQuestions(page);
 
-  await page.getByText(/STAGE\s*1\s*COMPLETE/i).waitFor();
-  await page.getByText(/Battle Power:\s*12|POWER\s*12/i).waitFor();
+  await page.getByText(/STAGE\s*1\s*CLEAR/i).waitFor();
+  await page.getByText(/=\s*10\s*AP/i).waitFor();
+  if (await apMeterValue(page) !== 10) throw new Error('The AP meter should show the 10 AP earned in the quiz');
   await page.getByRole('button', { name: /BATTLE!/i }).click();
+  await page.locator('.battle-view').waitFor();
+  if (await apMeterValue(page) !== 10) throw new Error('The same AP meter should carry into battle');
+  await page.locator('.battle-skill__cost').first().getByText(/1 AP/).waitFor();
   await winBattleWithKeyboard(page);
 
-  await page.getByText(/NEW SKILL!/i).waitFor();
+  await page.getByText(/XP/).first().waitFor();
+  await page.getByText(/LEVEL UP!/i).first().waitFor();
+  await page.getByText(/NEW SKILL!/i).first().waitFor();
   const nextStage = page.getByRole('button', { name: /NEXT STAGE/i });
   await nextStage.waitFor();
   await nextStage.click();
@@ -165,21 +178,36 @@ async function debugBattleFlow(page, baseUrl) {
   const selects = page.locator('select');
   const hero = page.getByLabel(/^Hero/i).or(selects.nth(0));
   const encounter = page.getByLabel(/^Encounter/i).or(selects.nth(1));
-  const skillTier = page.getByLabel(/Skill tier/i).or(selects.nth(2));
+  const skillTier = selects.nth(3);
   await selectOption(hero.first(), 'mage', /Mage/i);
   await selectOption(encounter.first(), 'goblin-slime', /goblin.*slime/i);
   await selectOption(skillTier.first(), '2', /2/);
 
   const numberInputs = page.locator('input[type="number"]');
-  await page.getByLabel(/^Power/i).or(numberInputs.nth(0)).first().fill('0');
+  await page.getByLabel(/^AP/i).or(numberInputs.nth(0)).first().fill('0');
   const hp = page.getByLabel(/Hero HP/i).or(numberInputs.nth(1)).first();
   if (await hp.count()) await hp.fill('');
   await page.getByRole('button', { name: /START BATTLE/i }).click();
+  // 0 AP: the first turn is a recovery turn, then every action spends AP.
+  await page.getByText(/RECOVERING/i).first().waitFor();
   await winBattleWithKeyboard(page);
 
   await page.getByRole('button', { name: /^Retry$/i }).waitFor();
   await page.getByRole('button', { name: /Random encounter/i }).waitFor();
   await page.getByRole('button', { name: /Back to debug/i }).waitFor();
+}
+
+async function musicToggle(page, baseUrl) {
+  await page.goto(baseUrl);
+  const toggle = page.locator('[data-music-toggle]').first();
+  await toggle.waitFor();
+  const before = await toggle.innerText();
+  await toggle.click();
+  const after = await toggle.innerText();
+  if (before === after) throw new Error('Music toggle did not change');
+  await page.reload();
+  if ((await page.locator('[data-music-toggle]').first().innerText()) !== after) throw new Error('Music preference was not remembered');
+  await page.locator('[data-music-toggle]').first().click();
 }
 
 async function studyFlow(page, baseUrl) {
@@ -208,10 +236,11 @@ try {
 
   await adventureFlow(page, baseUrl);
   await debugBattleFlow(page, baseUrl);
+  await musicToggle(page, baseUrl);
   await studyFlow(page, baseUrl);
 
   if (browserErrors.length) throw new Error(`Browser errors:\n${browserErrors.join('\n')}`);
-  console.log('Browser playthrough passed: Adventure, debug battle, and Study mode 1.');
+  console.log('Browser playthrough passed: Adventure (AP carry-over, battle, XP), 0-AP recovery battle, music toggle, and Study mode 1.');
 } catch (error) {
   console.error(error?.stack || error);
   process.exitCode = 1;

@@ -1,37 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BALANCE, ENCOUNTERS, ENEMIES, SKILLS } from '../src/battle-data.js';
+import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, ITEMS, SKILLS } from '../src/battle-data.js';
 import {
-  availableSkills, chooseEncounter, chooseEnemyIntent, createBattle, cycleTarget, getEnemyIntent,
-  isDefeat, isVictory, resolveEnemyPhase, selectTarget, skillTierForStage, useSkill,
+  availableItems, availableSkills, battleXp, chooseEncounter, chooseEnemyIntent, createBattle, cycleTarget, getEnemyIntent,
+  heroMaxHp, isDefeat, isVictory, mustRecover, potionHeal, recover, resolveEnemyPhase, selectTarget, skillTierForLevel, useItem, useSkill,
 } from '../src/battle-engine.js';
-import { battlePowerFor, campaignSummary, createCampaign, recordStage, retryPower } from '../src/campaign.js';
 
 const fixed = (value) => () => value;
-const battle = (options = {}) => createBattle({ heroId: 'fighter', encounterId: 'slime', power: 2, skillTier: 0, rng: fixed(0.99), ...options });
+const battle = (options = {}) => createBattle({ heroId: 'fighter', encounterId: 'slime', ap: 5, level: 1, rng: fixed(0.99), ...options });
 const patchEnemy = (state, uid, changes) => ({
   ...state,
   enemies: state.enemies.map((enemy) => enemy.uid === uid ? { ...enemy, ...changes } : enemy),
 });
 const damageTo = (events, target) => events.filter((event) => event.type === 'damage' && event.target === target).reduce((sum, event) => sum + event.amount, 0);
+const apGains = (events, reason) => events.filter((event) => event.type === 'ap' && (!reason || event.reason === reason)).reduce((sum, event) => sum + event.amount, 0);
+const heavyOn = (state, uid = state.enemies[0].uid) => patchEnemy(state, uid, { intent: 'heavy', charging: true });
 
-test('battle creation, campaign power, target selection, and skill gates still work', () => {
+test('battle creation, level-derived hero values, targeting and skill gates', () => {
   const state = battle();
   assert.equal(state.turn, 'player');
-  assert.equal(state.hero.hp, 32);
-  assert.deepEqual(
-    { combo: state.hero.combo, counter: state.hero.counter, openingUid: state.hero.openingUid, defense: state.hero.defense },
-    { combo: false, counter: false, openingUid: null, defense: null },
-  );
-  assert.equal(battlePowerFor(0), 2);
-  assert.equal(battlePowerFor(5), 7);
-  assert.equal(battlePowerFor(10), 12);
-  assert.deepEqual([1, 2, 3, 4].map(skillTierForStage), [0, 1, 2, 2]);
+  assert.equal(state.ap, 5);
+  assert.equal(state.hero.hp, HEROES.fighter.maxHp);
+  assert.deepEqual([1, 2, 3, 4, 5].map((level) => skillTierForLevel(level)), [0, 1, 2, 2, 2]);
+  assert.equal(battle({ level: 3 }).hero.maxHp, heroMaxHp('fighter', 3));
+  assert.equal(battle({ level: 3, heroHp: 7 }).hero.hp, 7);
+  assert.equal(battle({ heroHp: 999 }).hero.hp, HEROES.fighter.maxHp);
   assert.equal(chooseEncounter(2, fixed(0)).id, 'goblin-slime');
   assert.equal(chooseEncounter(4, fixed(0.99)).id, 'vampire-lord');
 
-  const locked = useSkill(state, 'powerSlash');
-  assert.equal(locked.events[0].reason, 'locked');
+  assert.equal(useSkill(state, 'powerSlash').events[0].reason, 'locked');
+  assert.equal(useSkill(battle({ level: 2 }), 'powerSlash').events[0].type, 'attack');
+  assert.equal(useSkill(battle({ level: 1, skillTier: 2 }), 'cleave').events[0].type, 'attack', 'debug skill tier override');
   const pair = battle({ encounterId: 'goblin-slime' });
   assert.equal(selectTarget(pair, pair.enemies[1].uid).selectedUid, pair.enemies[1].uid);
   assert.equal(cycleTarget(pair, 1).selectedUid, pair.enemies[1].uid);
@@ -40,7 +39,7 @@ test('battle creation, campaign power, target selection, and skill gates still w
 test('stored intents exist, injected RNG is deterministic, and resolution uses the displayed intent', () => {
   const guard = battle({ encounterId: 'goblin-slime', rng: fixed(0) });
   const attack = battle({ encounterId: 'goblin-slime', rng: fixed(0.99) });
-  assert.ok(guard.enemies.filter((enemy) => enemy.hp > 0).every((enemy) => getEnemyIntent(guard, enemy.uid)));
+  assert.ok(guard.enemies.every((enemy) => getEnemyIntent(guard, enemy.uid)));
   assert.equal(guard.enemies[0].intent, 'guard');
   assert.equal(attack.enemies[0].intent, 'attack');
   assert.equal(chooseEnemyIntent(attack, attack.enemies[0], fixed(0)), 'guard');
@@ -48,354 +47,263 @@ test('stored intents exist, injected RNG is deterministic, and resolution uses t
   const acted = resolveEnemyPhase(useSkill(guard, 'slash').state, fixed(0.99));
   assert.equal(acted.state.enemies[0].guarding, true);
   assert.equal(acted.state.hero.hp, guard.hero.hp - ENEMIES.slime.attack);
-  assert.ok(acted.events.some((event) => event.type === 'guard' && event.target === guard.enemies[0].uid));
   assert.ok(!acted.events.some((event) => event.type === 'attack' && event.source === guard.enemies[0].uid));
   assert.equal('rng' in acted.state, false);
 });
 
-test('Fighter combo, combo clearing, and Cleave work', () => {
-  let state = battle({ encounterId: 'golem', power: 5, skillTier: 2 });
+test('AP: every skill and item costs AP, and nothing is free', () => {
+  for (const skill of Object.values(SKILLS)) assert.ok(skill.cost >= 1, `${skill.id} costs AP`);
+  for (const item of Object.values(ITEMS)) assert.ok(item.cost >= 1, `${item.id} costs AP`);
+  for (const [heroId, hero] of Object.entries(HEROES)) {
+    for (const skillId of hero.skills) {
+      const state = createBattle({ heroId, encounterId: 'golem', ap: 10, level: 5, rng: fixed(0.99) });
+      const result = useSkill(state, skillId);
+      assert.equal(result.state.ap, 10 - SKILLS[skillId].cost + apGains(result.events), `${heroId} ${skillId}`);
+    }
+  }
+  const hurt = battle({ ap: 3, heroHp: 10, potions: 1 });
+  const drink = useItem(hurt, 'potion');
+  assert.equal(drink.state.ap, 3 - ITEMS.potion.cost);
+});
+
+test('AP: unaffordable actions reject cleanly and AP never goes negative', () => {
+  const broke = battle({ ap: 0, level: 2 });
+  for (const skillId of HEROES.fighter.skills.slice(0, 3)) {
+    const result = useSkill(broke, skillId);
+    assert.equal(result.events[0].reason, 'unaffordable', skillId);
+    assert.equal(result.state, broke);
+  }
+  const one = useSkill(battle({ ap: 1, level: 2 }), 'powerSlash');
+  assert.equal(one.events[0].reason, 'unaffordable');
+  assert.equal(one.state.ap, 1);
+  assert.equal(createBattle({ heroId: 'mage', encounterId: 'slime', ap: -4 }).ap, 0);
+  assert.equal(createBattle({ heroId: 'mage', encounterId: 'slime', ap: 25 }).ap, BALANCE.maxAp);
+  assert.ok(availableSkills(battle({ ap: 0 })).every((skill) => !skill.affordable));
+});
+
+test('AP recovery: only an exhausted turn recovers, the enemies still act, and waiting cannot farm AP', () => {
+  const ready = battle({ ap: 1 });
+  assert.equal(mustRecover(ready), false);
+  assert.equal(recover(ready).events[0].reason, 'not-exhausted');
+
+  const empty = battle({ ap: 0, encounterId: 'goblin-slime' });
+  assert.equal(mustRecover(empty), true);
+  const rested = recover(empty);
+  assert.equal(rested.state.ap, BALANCE.recoveryAp);
+  assert.equal(rested.state.turn, 'enemy');
+  assert.deepEqual(rested.events.map((event) => event.type), ['recover', 'ap']);
+  const phase = resolveEnemyPhase(rested.state, fixed(0.99));
+  assert.ok(phase.events.some((event) => event.type === 'damage' && event.target === 'hero'), 'enemies act during recovery');
+  assert.equal(phase.state.turn, 'player');
+  assert.equal(phase.state.ap, BALANCE.recoveryAp);
+  assert.equal(recover(phase.state).events[0].reason, 'not-exhausted', 'recovered AP must be spent before recovering again');
+
+  // A zero-AP battle always ends: recovery never soft-locks, even against the toughest foe.
+  for (const heroId of Object.keys(HEROES)) {
+    let state = createBattle({ heroId, encounterId: 'giant-golem', ap: 0, level: 4, rng: fixed(0.99) });
+    let maxSeen = 0;
+    for (let turn = 0; turn < 200 && state.turn === 'player'; turn += 1) {
+      const step = mustRecover(state) ? recover(state) : useSkill(state, HEROES[heroId].skills[0]);
+      assert.notEqual(step.events[0].type, 'rejected');
+      maxSeen = Math.max(maxSeen, step.state.ap);
+      state = step.state.turn === 'enemy' ? resolveEnemyPhase(step.state, fixed(0.99)).state : step.state;
+    }
+    assert.ok(['won', 'lost'].includes(state.turn), `${heroId} battle ended`);
+    assert.ok(maxSeen <= BALANCE.recoveryAp + BALANCE.defenseAp, `${heroId} never banked AP by recovering (${maxSeen})`);
+  }
+});
+
+test('tactical AP: Guard/Barrier vs a big attack refund 1, Mage Bolt exploits, Dodge avoids instead; all capped', () => {
+  for (const [heroId, defense] of [['fighter', 'guard'], ['mage', 'barrier']]) {
+    const state = heavyOn(createBattle({ heroId, encounterId: 'golem', ap: 1, level: 3, rng: fixed(0.99) }));
+    const phase = resolveEnemyPhase(useSkill(state, defense).state, fixed(0.99));
+    assert.equal(phase.state.ap, 1, `${heroId} ${defense} is AP-neutral against a big attack`);
+    assert.equal(apGains(phase.events, 'defense'), BALANCE.defenseAp);
+  }
+  const quiet = createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 1, rng: fixed(0.99) });
+  assert.equal(apGains(resolveEnemyPhase(useSkill(quiet, 'guard').state, fixed(0.99)).events), 0, 'no refund without a big attack');
+
+  const ninja = heavyOn(createBattle({ heroId: 'ninja', encounterId: 'golem', ap: 1, level: 3, rng: fixed(0.99) }));
+  const dodged = resolveEnemyPhase(useSkill(ninja, 'dodge').state, fixed(0.99));
+  assert.equal(dodged.state.hero.hp, ninja.hero.hp);
+  assert.equal(dodged.state.hero.counter, true);
+  assert.equal(dodged.state.ap, 0);
+
+  for (const status of ['charging', 'tired']) {
+    let state = createBattle({ heroId: 'mage', encounterId: 'golem', ap: 1, rng: fixed(0.99) });
+    state = patchEnemy(state, state.enemies[0].uid, { [status]: true });
+    const result = useSkill(state, 'magicBolt');
+    assert.equal(result.state.ap, 1, status);
+    assert.equal(apGains(result.events, 'exploit'), BALANCE.exploitAp);
+  }
+  assert.equal(useSkill(createBattle({ heroId: 'mage', encounterId: 'golem', ap: 1 }), 'magicBolt').state.ap, 0);
+
+  const full = heavyOn(createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 10, rng: fixed(0.99) }));
+  const capped = resolveEnemyPhase({ ...useSkill(full, 'guard').state, ap: BALANCE.maxAp }, fixed(0.99));
+  assert.equal(capped.state.ap, BALANCE.maxAp);
+  assert.equal(apGains(capped.events), 0);
+});
+
+test('Mage AP recovery stays bounded by enemy-created opportunities', () => {
+  let state = createBattle({ heroId: 'mage', encounterId: 'giant-golem', ap: 1, level: 4, rng: fixed(0.99) });
+  let gained = 0;
+  let opportunities = 0;
+  for (let turn = 0; turn < 40 && state.turn === 'player'; turn += 1) {
+    const enemy = state.enemies.find((candidate) => candidate.hp > 0);
+    state = { ...patchEnemy(state, enemy.uid, { hp: enemy.maxHp }), hero: { ...state.hero, hp: state.hero.maxHp } };
+    if (enemy.intent === 'heavy' || enemy.charging || enemy.tired) opportunities += 1;
+    let step;
+    if (mustRecover(state)) step = recover(state);
+    else step = useSkill(state, enemy.intent === 'heavy' ? 'barrier' : 'magicBolt', enemy.uid);
+    gained += apGains(step.events.filter((event) => event.reason !== 'recover'));
+    const phase = resolveEnemyPhase(step.state, fixed(0.99));
+    gained += apGains(phase.events);
+    state = phase.state;
+  }
+  assert.ok(gained > 0);
+  assert.ok(gained <= opportunities, `${gained} AP from ${opportunities} enemy-created opportunities`);
+});
+
+test('Fighter combo, Cleave, Break and Guard counter', () => {
+  let state = createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 5, level: 3, rng: fixed(0.99) });
   const slash = useSkill(state, 'slash');
   assert.equal(slash.state.hero.combo, true);
-  assert.ok(slash.events.some((event) => event.type === 'comboReady'));
   state = resolveEnemyPhase(slash.state, fixed(0.99)).state;
   const power = useSkill(state, 'powerSlash');
   assert.equal(damageTo(power.events, state.enemies[0].uid), SKILLS.powerSlash.damage + BALANCE.comboBonus);
   assert.equal(power.state.hero.combo, false);
-  assert.ok(power.events.some((event) => event.type === 'combo'));
 
-  state = { ...resolveEnemyPhase(power.state, fixed(0.99)).state, hero: { ...power.state.hero, combo: true } };
-  const guarded = useSkill(state, 'guard');
-  assert.equal(guarded.state.hero.combo, false);
+  const group = createBattle({ heroId: 'fighter', encounterId: 'goblin-slime', ap: 3, level: 3 });
+  assert.deepEqual(useSkill(group, 'cleave').state.enemies.map((enemy) => enemy.hp),
+    group.enemies.map((enemy) => Math.max(0, enemy.hp - SKILLS.cleave.damage)));
 
-  const group = battle({ encounterId: 'goblin-slime', power: 3, skillTier: 2 });
-  const cleave = useSkill(group, 'cleave');
-  assert.deepEqual(cleave.state.enemies.map((enemy) => enemy.hp), [5, 2]);
-});
-
-test('Fighter Break cancels a heavy and Guard readies a counter for the next damaging skill', () => {
-  let state = battle({ encounterId: 'golem', power: 2, skillTier: 2 });
-  const uid = state.enemies[0].uid;
-  state = patchEnemy(state, uid, { intent: 'heavy', charging: true });
-  const broken = useSkill(state, 'powerSlash', uid);
+  const charging = heavyOn(createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 2, level: 3, rng: fixed(0.99) }));
+  const broken = useSkill(charging, 'powerSlash');
   assert.equal(broken.state.enemies[0].intent, 'rest');
-  assert.equal(broken.state.enemies[0].charging, false);
   assert.ok(broken.events.some((event) => event.type === 'break'));
-  const rested = resolveEnemyPhase(broken.state, fixed(0.99));
-  assert.equal(rested.state.hero.hp, state.hero.hp);
-  assert.equal(rested.state.enemies[0].tired, true);
+  assert.equal(resolveEnemyPhase(broken.state, fixed(0.99)).state.hero.hp, charging.hero.hp);
 
-  state = battle({ encounterId: 'golem', power: 0, skillTier: 2 });
-  state = patchEnemy(state, uid, { intent: 'heavy', charging: true });
-  const defended = resolveEnemyPhase(useSkill(state, 'guard').state, fixed(0.99));
-  assert.equal(defended.state.hero.counter, true);
-  assert.ok(defended.events.some((event) => event.type === 'counterReady'));
-  const counter = useSkill(defended.state, 'slash', uid);
-  assert.equal(damageTo(counter.events, uid), SKILLS.slash.damage + BALANCE.counterBonus);
-  assert.equal(counter.state.hero.counter, false);
-  assert.ok(counter.events.some((event) => event.type === 'counter'));
+  const guarded = resolveEnemyPhase(useSkill(heavyOn(createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 2, rng: fixed(0.99) })), 'guard').state, fixed(0.99));
+  assert.equal(guarded.state.hero.counter, true);
+  const counter = useSkill(guarded.state, 'slash');
+  assert.equal(damageTo(counter.events, 1), SKILLS.slash.damage + BALANCE.counterBonus);
 });
 
-test('Mage Bolt recovers Power only from charging or tired targets', () => {
-  for (const status of ['charging', 'tired']) {
-    let state = battle({ heroId: 'mage', encounterId: 'golem', power: 0, skillTier: 2 });
-    state = patchEnemy(state, state.enemies[0].uid, { [status]: true });
-    const result = useSkill(state, 'magicBolt');
-    assert.equal(result.state.power, 1, status);
-    assert.ok(result.events.some((event) => event.type === 'power' && event.reason === 'exploit'));
-  }
-  const normal = useSkill(battle({ heroId: 'mage', encounterId: 'golem', power: 0, skillTier: 2 }), 'magicBolt');
-  assert.equal(normal.state.power, 0);
-  assert.ok(!normal.events.some((event) => event.type === 'power'));
-});
-
-test('Mage Barrier, low-HP Heal barrier, and Fireball work', () => {
-  let state = battle({ heroId: 'mage', encounterId: 'golem', power: 0, skillTier: 2 });
-  state = patchEnemy(state, state.enemies[0].uid, { intent: 'heavy', charging: true });
+test('Mage Barrier, low-HP Heal barrier, level-4 Great Heal and Fireball', () => {
+  const state = heavyOn(createBattle({ heroId: 'mage', encounterId: 'golem', ap: 1, rng: fixed(0.99) }));
   const barrier = resolveEnemyPhase(useSkill(state, 'barrier').state, fixed(0.99));
-  assert.equal(barrier.state.power, 1);
-  assert.equal(barrier.events.filter((event) => event.type === 'power' && event.reason === 'barrier').length, 1);
+  assert.equal(state.hero.hp - barrier.state.hero.hp, Math.ceil(ENEMIES.golem.heavy * BALANCE.barrierMultiplier));
 
-  const low = useSkill(battle({ heroId: 'mage', heroHp: 10, power: 2, skillTier: 2 }), 'heal');
-  assert.equal(low.state.hero.hp, 22);
+  const low = useSkill(createBattle({ heroId: 'mage', encounterId: 'slime', ap: 2, level: 2, heroHp: 5 }), 'heal');
+  assert.equal(low.state.hero.hp, 5 + SKILLS.heal.amount);
   assert.equal(low.state.hero.defense, 'barrier');
-  assert.ok(low.events.some((event) => event.type === 'barrierUp'));
-  const high = useSkill(battle({ heroId: 'mage', heroHp: 15, power: 2, skillTier: 2 }), 'heal');
-  assert.equal(high.state.hero.defense, null);
+  const great = useSkill(createBattle({ heroId: 'mage', encounterId: 'slime', ap: 2, level: 4, heroHp: 5 }), 'heal');
+  assert.equal(great.state.hero.hp, 5 + SKILLS.heal.amount + HEROES.mage.passive.effect.healBonus);
 
-  const group = battle({ heroId: 'mage', encounterId: 'goblin-slime', power: 3, skillTier: 2 });
-  assert.deepEqual(useSkill(group, 'fireball').state.enemies.map((enemy) => enemy.hp), [4, 1]);
+  const group = createBattle({ heroId: 'mage', encounterId: 'goblin-slime', ap: 3, level: 3 });
+  assert.deepEqual(useSkill(group, 'fireball').state.enemies.map((enemy) => enemy.hp),
+    group.enemies.map((enemy) => Math.max(0, enemy.hp - SKILLS.fireball.damage)));
 });
 
-test('Ninja Opening is created and consumed for boosted Double Strike', () => {
-  for (const status of ['guarding', 'charging']) {
-    let state = battle({ heroId: 'ninja', encounterId: 'golem', power: 2, skillTier: 2 });
-    state = patchEnemy(state, state.enemies[0].uid, { [status]: true });
-    const strike = useSkill(state, 'strike');
-    assert.equal(strike.state.hero.openingUid, state.enemies[0].uid, status);
-    assert.ok(strike.events.some((event) => event.type === 'opening'));
-  }
+test('Ninja Opening, Double Strike, Keen Eye and chaining Shadow Strike', () => {
+  let state = createBattle({ heroId: 'ninja', encounterId: 'golem', ap: 3, level: 2, rng: fixed(0.99) });
+  state = patchEnemy(state, 1, { guarding: true });
+  const strike = useSkill(state, 'strike');
+  assert.equal(strike.state.hero.openingUid, 1);
 
-  let state = battle({ heroId: 'ninja', encounterId: 'golem', power: 2, skillTier: 2 });
-  const uid = state.enemies[0].uid;
-  state = { ...state, hero: { ...state.hero, openingUid: uid } };
-  const doubled = useSkill(state, 'doubleStrike', uid);
-  assert.equal(damageTo(doubled.events, uid), 2 * (SKILLS.doubleStrike.damage + BALANCE.openingBonus));
-  assert.equal(doubled.state.hero.openingUid, null);
-  assert.ok(doubled.events.some((event) => event.type === 'opening-hit'));
-});
+  const opened = { ...createBattle({ heroId: 'ninja', encounterId: 'golem', ap: 2, level: 2 }), hero: { ...state.hero, openingUid: 1 } };
+  assert.equal(damageTo(useSkill(opened, 'doubleStrike').events, 1), 2 * (SKILLS.doubleStrike.damage + BALANCE.openingBonus));
+  const keen = { ...createBattle({ heroId: 'ninja', encounterId: 'golem', ap: 2, level: 4 }), hero: { ...state.hero, openingUid: 1 } };
+  assert.equal(damageTo(useSkill(keen, 'doubleStrike').events, 1), 2 * (SKILLS.doubleStrike.damage + BALANCE.openingBonus + HEROES.ninja.passive.effect.openingBonus));
 
-test('Ninja Dodge fully avoids heavy damage, readies counter, and Shadow Strike chains only on a kill', () => {
-  let state = battle({ heroId: 'ninja', encounterId: 'golem', power: 0, skillTier: 2 });
-  const uid = state.enemies[0].uid;
-  state = patchEnemy(state, uid, { intent: 'heavy', charging: true });
-  const dodged = resolveEnemyPhase(useSkill(state, 'dodge').state, fixed(0.99));
-  assert.equal(dodged.state.hero.hp, state.hero.hp);
-  assert.equal(dodged.state.hero.counter, true);
-  assert.ok(dodged.events.some((event) => event.type === 'damage' && event.target === 'hero' && event.amount === 0));
+  const trio = createBattle({ heroId: 'ninja', encounterId: 'necromancer-skeletons', ap: 3, level: 3 });
+  const chained = useSkill(trio, 'shadowStrike', trio.enemies[1].uid);
+  const chains = chained.events.filter((event) => event.type === 'chain');
+  assert.ok(chains.length >= 2, 'a kill that kills again keeps streaking');
+  assert.ok(chains.length <= BALANCE.maxChain);
+  assert.equal(chained.state.enemies[2].hp, 0);
+  assert.ok(chains.every((event) => event.from !== undefined));
 
-  state = battle({ heroId: 'ninja', encounterId: 'goblin-slime', power: 3, skillTier: 2 });
-  const goblin = state.enemies[0].uid;
-  const slime = state.enemies[1].uid;
-  const chained = useSkill(state, 'shadowStrike', slime);
-  assert.equal(chained.state.enemies.find((enemy) => enemy.uid === goblin).hp, ENEMIES.goblin.maxHp - SKILLS.shadowStrike.splashDamage);
-  assert.ok(chained.events.some((event) => event.type === 'chain' && event.target === goblin));
-
-  const boss = battle({ heroId: 'ninja', encounterId: 'golem', power: 3, skillTier: 2 });
+  const boss = createBattle({ heroId: 'ninja', encounterId: 'golem', ap: 3, level: 3 });
   const single = useSkill(boss, 'shadowStrike');
   assert.equal(single.state.enemies[0].hp, ENEMIES.golem.maxHp - SKILLS.shadowStrike.damage);
   assert.ok(!single.events.some((event) => event.type === 'chain'));
 });
 
+test('Fighter level-4 Iron Guard reduces guarded damage', () => {
+  const plain = heavyOn(createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 1, level: 3, rng: fixed(0.99) }));
+  const iron = heavyOn(createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 1, level: 4, rng: fixed(0.99) }));
+  const taken = (state) => state.hero.hp - resolveEnemyPhase(useSkill(state, 'guard').state, fixed(0.99)).state.hero.hp;
+  assert.equal(taken(plain), Math.ceil(ENEMIES.golem.heavy * BALANCE.guardMultiplier));
+  assert.equal(taken(iron), Math.ceil(ENEMIES.golem.heavy * HEROES.fighter.passive.effect.guardMultiplier));
+});
+
 test('boss phase 2 triggers once and deterministically changes cadence', () => {
-  let state = battle({ encounterId: 'dragon', power: 6, skillTier: 2 });
-  const uid = state.enemies[0].uid;
-  state = patchEnemy(state, uid, { hp: 25 });
-  const enraged = useSkill(state, 'powerSlash', uid);
+  let state = createBattle({ heroId: 'fighter', encounterId: 'dragon', ap: 6, level: 4, rng: fixed(0.99) });
+  state = patchEnemy(state, 1, { hp: Math.floor(ENEMIES.dragon.maxHp * 0.6) + 5 });
+  const enraged = useSkill(state, 'powerSlash', 1);
   assert.equal(enraged.state.enemies[0].phase, 2);
   assert.equal(enraged.events.filter((event) => event.type === 'enrage').length, 1);
   const next = resolveEnemyPhase(enraged.state, fixed(0.99)).state;
-  const later = useSkill(next, 'slash', uid);
-  assert.equal(later.events.filter((event) => event.type === 'enrage').length, 0);
+  assert.equal(useSkill(next, 'slash', 1).events.filter((event) => event.type === 'enrage').length, 0);
 
   const baseEnemy = { ...state.enemies[0], hp: state.enemies[0].maxHp, intent: 'attack', cadence: 1 };
   assert.equal(chooseEnemyIntent(state, { ...baseEnemy, phase: 1 }, fixed(0.99)), 'attack');
   assert.equal(chooseEnemyIntent(state, { ...baseEnemy, phase: 2 }, fixed(0.99)), 'charge');
 });
 
-test('Power is safe and Mage recovery stays bounded by enemy-created opportunities', () => {
-  const zero = battle({ power: 0 });
-  assert.equal(useSkill(zero, 'slash').state.power, 0);
-  const rejected = useSkill(battle({ power: 1, skillTier: 1 }), 'powerSlash');
-  assert.equal(rejected.state.power, 1);
-  assert.equal(rejected.events[0].reason, 'unaffordable');
-
-  let state = battle({ heroId: 'mage', encounterId: 'giant-golem', power: 0, skillTier: 2 });
-  let gained = 0;
-  let opportunities = 0;
-  for (let turn = 0; turn < 30 && state.turn === 'player'; turn += 1) {
-    const enemy = state.enemies.find((candidate) => candidate.hp > 0);
-    state = patchEnemy(state, enemy.uid, { hp: enemy.maxHp });
-    const driven = enemy.intent === 'heavy' || enemy.charging || enemy.tired;
-    if (driven) opportunities += 1;
-    let skillId = 'barrier';
-    if (state.hero.hp < state.hero.maxHp / 2 && state.power >= SKILLS.heal.cost) skillId = 'heal';
-    else if (enemy.tired) skillId = 'magicBolt';
-    const player = useSkill(state, skillId, enemy.uid);
-    gained += player.events.filter((event) => event.type === 'power').reduce((sum, event) => sum + event.amount, 0);
-    const phase = resolveEnemyPhase(player.state, fixed(0.99));
-    gained += phase.events.filter((event) => event.type === 'power').reduce((sum, event) => sum + event.amount, 0);
-    state = phase.state;
-  }
-  assert.equal(state.turn, 'player');
-  assert.ok(gained > 0);
-  assert.ok(gained <= opportunities, `${gained} Power from ${opportunities} enemy-created opportunities`);
-});
-
-test('dead enemies never act and a heal intent fizzles instead of attacking', () => {
-  let state = battle({ encounterId: 'goblin-slime', power: 0 });
+test('dead enemies never act, summons give no XP, and a heal intent fizzles instead of attacking', () => {
+  let state = battle({ encounterId: 'goblin-slime', ap: 1 });
   const [goblin, slime] = state.enemies;
   state = patchEnemy(state, goblin.uid, { hp: 0, intent: null });
   const phase = resolveEnemyPhase(useSkill(state, 'guard').state, fixed(0.99));
-  assert.equal(phase.state.hero.hp, state.hero.hp - 1);
   assert.ok(!phase.events.some((event) => event.source === goblin.uid));
   assert.ok(phase.events.some((event) => event.type === 'attack' && event.source === slime.uid));
 
-  state = battle({ encounterId: 'shield-goblin-healer', power: 0 });
+  state = battle({ encounterId: 'shield-goblin-healer', ap: 1 });
   const healer = state.enemies.find((enemy) => enemy.id === 'healer');
-  state = {
-    ...state,
-    enemies: state.enemies.map((enemy) => ({ ...enemy, intent: enemy.id === 'healer' ? 'heal' : 'guard' })),
-  };
+  state = { ...state, enemies: state.enemies.map((enemy) => ({ ...enemy, intent: enemy.id === 'healer' ? 'heal' : 'guard' })) };
   const fizzle = resolveEnemyPhase(useSkill(state, 'guard').state, fixed(0.99));
   assert.equal(fizzle.state.hero.hp, state.hero.hp);
   assert.ok(fizzle.events.some((event) => event.type === 'heal' && event.source === healer.uid && event.amount === 0));
-  assert.ok(!fizzle.events.some((event) => event.type === 'attack' && event.source === healer.uid));
+
+  let necro = createBattle({ heroId: 'fighter', encounterId: 'necromancer-skeletons', ap: 1, level: 3, rng: fixed(0.99) });
+  necro = { ...necro, enemies: necro.enemies.map((enemy) => ({ ...enemy, hp: enemy.id === 'skeleton' ? 0 : enemy.hp, intent: enemy.id === 'skeleton' ? null : 'summon' })) };
+  const summoned = resolveEnemyPhase(useSkill(necro, 'guard').state, fixed(0.99));
+  const added = summoned.state.enemies.find((enemy) => enemy.summoned);
+  assert.ok(added, 'necromancer summoned');
+  const allDead = { ...summoned.state, enemies: summoned.state.enemies.map((enemy) => ({ ...enemy, hp: 0 })) };
+  assert.equal(battleXp(allDead), ENEMIES.necromancer.xp + 2 * ENEMIES.skeleton.xp);
 });
 
-test('zero Power cannot soft-lock any hero', () => {
-  for (const heroId of ['fighter', 'mage', 'ninja']) for (const skillTier of [0, 1, 2]) {
-    const skills = availableSkills(battle({ heroId, skillTier, power: 0 }));
-    assert.ok(skills.some((skill) => skill.affordable && skill.cost === 0 && skill.kind === 'damage'), `${heroId} tier ${skillTier}`);
-    assert.ok(skills.every((skill) => skill.affordable === (skill.cost === 0)));
-  }
+test('Potion: costs AP, uses one, heals ~35%, caps at max HP, and is disabled at zero or full HP', () => {
+  const state = createBattle({ heroId: 'ninja', encounterId: 'slime', ap: 2, level: 3, heroHp: 4, potions: 2 });
+  const [item] = availableItems(state);
+  assert.deepEqual({ id: item.id, count: item.count, usable: item.usable, cost: item.cost }, { id: 'potion', count: 2, usable: true, cost: ITEMS.potion.cost });
+  assert.equal(potionHeal(state), Math.ceil(state.hero.maxHp * ITEMS.potion.healPercent));
+  const drink = useItem(state, 'potion');
+  assert.equal(drink.state.hero.hp, 4 + potionHeal(state));
+  assert.equal(drink.state.potions, 1);
+  assert.equal(drink.state.ap, 2 - ITEMS.potion.cost);
+  assert.equal(drink.state.turn, 'enemy');
+  assert.deepEqual(drink.events.map((event) => event.type), ['item', 'heal']);
+
+  const nearly = useItem({ ...state, hero: { ...state.hero, hp: state.hero.maxHp - 2 } }, 'potion');
+  assert.equal(nearly.state.hero.hp, state.hero.maxHp);
+  assert.equal(useItem({ ...state, potions: 0 }, 'potion').events[0].reason, 'no-items');
+  assert.equal(availableItems({ ...state, potions: 0 })[0].usable, false);
+  assert.equal(useItem({ ...state, hero: { ...state.hero, hp: state.hero.maxHp } }, 'potion').events[0].reason, 'full-hp');
+  assert.equal(useItem({ ...state, ap: 0 }, 'potion').events[0].reason, 'unaffordable');
 });
 
-test('victory, defeat, fallback targeting, and campaign aggregation remain intact', () => {
-  const won = useSkill(battle({ power: 2, skillTier: 1 }), 'powerSlash');
+test('victory and defeat are detected; XP counts only defeated enemies', () => {
+  const won = useSkill(battle({ ap: 2, level: 2 }), 'powerSlash');
   assert.ok(isVictory(won.state));
+  assert.equal(battleXp(won.state), ENEMIES.slime.xp);
   const fallback = useSkill(battle({ encounterId: 'goblin-slime' }), 'slash', 999);
-  assert.equal(fallback.state.enemies[0].hp, 7);
+  assert.equal(fallback.state.enemies[0].hp, ENEMIES.goblin.maxHp - SKILLS.slash.damage);
   const lostStart = patchEnemy(battle({ heroHp: 1 }), 1, { intent: 'attack' });
   assert.ok(isDefeat(resolveEnemyPhase(useSkill(lostStart, 'slash').state, fixed(0.99)).state));
-
-  const round = { mode: 1, items: [{ id: 'run' }, { id: 'jump' }], correctCount: 1, bestStreak: 1, missedIds: new Set(['jump']) };
-  const campaign = recordStage(createCampaign('mage'), round, 'slime');
-  assert.equal(retryPower(campaign.stageResults[0]), 5);
-  const second = recordStage(campaign, { ...round, mode: 2, correctCount: 2, bestStreak: 2, missedIds: new Set(['run']) }, 'bat');
-  assert.deepEqual(campaignSummary(second), { totalCorrect: 3, totalQuestions: 4, bestStreak: 2, missedIds: ['jump', 'run'] });
-});
-
-function seeded(seed) {
-  let value = seed >>> 0;
-  return () => {
-    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
-    return value / 0x100000000;
-  };
-}
-
-function supportRank(enemy) {
-  return ENEMIES[enemy.id].ai.support ? 0 : 1;
-}
-
-function targetFor(state) {
-  return state.enemies.filter((enemy) => enemy.hp > 0)
-    .sort((a, b) => supportRank(a) - supportRank(b) || a.hp - b.hp || a.uid - b.uid)[0];
-}
-
-function skillValue(skill, state, target) {
-  const data = SKILLS[skill.id];
-  const alive = state.enemies.filter((enemy) => enemy.hp > 0);
-  if (data.kind === 'damage') return data.target === 'all' ? data.damage * alive.length : Math.min(data.damage, target.hp);
-  if (data.kind === 'doubleDamage') return Math.min(2 * data.damage, target.hp);
-  if (data.kind === 'splitDamage') return Math.min(data.damage, target.hp) + (target.hp <= data.damage && alive.length > 1 ? data.splashDamage : 0);
-  return 0;
-}
-
-function bestAttack(state, target) {
-  return availableSkills(state)
-    .filter((skill) => skill.affordable && ['damage', 'doubleDamage', 'splitDamage'].includes(skill.kind))
-    .sort((a, b) => skillValue(b, state, target) - skillValue(a, state, target) || a.cost - b.cost)[0];
-}
-
-function naiveChoice(state) {
-  const skills = availableSkills(state);
-  const target = targetFor(state);
-  if (state.heroId === 'mage' && state.hero.hp < state.hero.maxHp / 2) {
-    const heal = skills.find((skill) => skill.id === 'heal' && skill.affordable);
-    if (heal) return { skill: heal, target };
-  }
-  if (state.enemies.some((enemy) => enemy.hp > 0 && enemy.intent === 'heavy')) {
-    return { skill: skills.find((candidate) => candidate.kind === 'defense'), target };
-  }
-  return { skill: bestAttack(state, target), target };
-}
-
-function smartChoice(state) {
-  const skills = availableSkills(state);
-  let target = targetFor(state);
-  const heavy = state.enemies.find((enemy) => enemy.hp > 0 && enemy.intent === 'heavy');
-  if (heavy) {
-    target = heavy;
-    if (state.heroId === 'fighter') {
-      const breaker = skills.find((skill) => skill.id === 'powerSlash' && skill.affordable);
-      if (breaker) return { skill: breaker, target };
-      return { skill: skills.find((skill) => skill.id === 'guard'), target };
-    }
-    if (state.heroId === 'mage') {
-      const heal = skills.find((skill) => skill.id === 'heal' && skill.affordable && state.hero.hp < state.hero.maxHp / 2);
-      if (heal) return { skill: heal, target };
-      const incoming = state.enemies.filter((enemy) => enemy.hp > 0 && ['attack', 'heavy', 'drain'].includes(enemy.intent))
-        .reduce((sum, enemy) => sum + (enemy.intent === 'heavy' ? ENEMIES[enemy.id].heavy : ENEMIES[enemy.id].attack), 0);
-      if (heavy.charging && state.hero.hp > incoming + 2) return { skill: skills.find((skill) => skill.id === 'magicBolt'), target };
-      return { skill: skills.find((skill) => skill.id === 'barrier'), target };
-    }
-    return { skill: skills.find((skill) => skill.id === 'dodge'), target };
-  }
-
-  if (state.heroId === 'fighter') {
-    const powerSlash = skills.find((skill) => skill.id === 'powerSlash' && skill.affordable);
-    if (state.hero.combo && powerSlash) return { skill: powerSlash, target };
-    const cleave = skills.find((skill) => skill.id === 'cleave' && skill.affordable);
-    if (cleave && state.enemies.filter((enemy) => enemy.hp > 0).length >= 3) return { skill: cleave, target };
-    return { skill: skills.find((skill) => skill.id === 'slash'), target };
-  }
-  if (state.heroId === 'mage') {
-    const heal = skills.find((skill) => skill.id === 'heal' && skill.affordable && state.hero.hp < state.hero.maxHp / 2);
-    if (heal) return { skill: heal, target };
-    const exploit = state.enemies.filter((enemy) => enemy.hp > 0 && (enemy.charging || enemy.tired)).sort((a, b) => a.hp - b.hp)[0];
-    if (exploit) return { skill: skills.find((skill) => skill.id === 'magicBolt'), target: exploit };
-    return { skill: bestAttack(state, target), target };
-  }
-
-  const opening = state.enemies.find((enemy) => enemy.hp > 0 && enemy.uid === state.hero.openingUid);
-  const double = skills.find((skill) => skill.id === 'doubleStrike' && skill.affordable);
-  if (opening && double) return { skill: double, target: opening };
-  const shadow = skills.find((skill) => skill.id === 'shadowStrike' && skill.affordable);
-  const chainTarget = state.enemies.filter((enemy) => enemy.hp > 0 && enemy.hp <= SKILLS.shadowStrike.damage)
-    .sort((a, b) => supportRank(a) - supportRank(b) || a.hp - b.hp)[0];
-  if (shadow && chainTarget && state.enemies.filter((enemy) => enemy.hp > 0).length > 1) return { skill: shadow, target: chainTarget };
-  const vulnerable = state.enemies.filter((enemy) => enemy.hp > 0 && (enemy.guarding || enemy.charging || enemy.tired || ['heal', 'summon'].includes(enemy.intent)))
-    .sort((a, b) => supportRank(a) - supportRank(b) || a.hp - b.hp)[0];
-  if (vulnerable) return { skill: skills.find((skill) => skill.id === 'strike'), target: vulnerable };
-  return { skill: bestAttack(state, target), target };
-}
-
-function simulate(heroId, encounter, power, seed, policy) {
-  const rng = seeded(seed);
-  let state = createBattle({ heroId, encounterId: encounter.id, power, skillTier: skillTierForStage(encounter.tier), rng });
-  let turns = 0;
-  while (state.turn === 'player' && turns < 100) {
-    const { skill, target } = policy(state);
-    assert.ok(skill, `${heroId} ${encounter.id} has an action`);
-    state = useSkill(state, skill.id, target.uid).state;
-    turns += 1;
-    if (state.turn === 'enemy') state = resolveEnemyPhase(state, rng).state;
-  }
-  return { state, turns, hp: state.hero.hp };
-}
-
-test('balance: naive Power 2 wins over several seeds and Power 7 stays in tier ranges', () => {
-  const ranges = { 1: [2, 4], 2: [3, 6], 3: [4, 7], 4: [5, 9] };
-  const seeds = [1, 7, 19, 41, 97];
-  for (const heroId of ['fighter', 'mage', 'ninja']) for (const encounter of Object.values(ENCOUNTERS)) {
-    for (const seed of seeds) {
-      const low = simulate(heroId, encounter, 2, seed, naiveChoice);
-      assert.equal(low.state.turn, 'won', `${heroId} ${encounter.id} at Power 2 seed ${seed}`);
-    }
-    const middle = simulate(heroId, encounter, 7, 23, naiveChoice);
-    assert.equal(middle.state.turn, 'won', `${heroId} ${encounter.id} at Power 7`);
-    assert.ok(middle.turns <= ranges[encounter.tier][1] + 1, `${heroId} ${encounter.id} at Power 7: ${middle.turns}`);
-  }
-});
-
-test('balance: smart play beats naive play on tier 3-4 encounters in aggregate', () => {
-  const hard = Object.values(ENCOUNTERS).filter((encounter) => encounter.tier >= 3);
-  const seeds = [3, 11, 29, 53, 89];
-  for (const heroId of ['fighter', 'mage', 'ninja']) {
-    const totals = { naiveTurns: 0, smartTurns: 0, naiveHp: 0, smartHp: 0 };
-    for (const encounter of hard) for (const seed of seeds) {
-      const naive = simulate(heroId, encounter, 7, seed, naiveChoice);
-      const smart = simulate(heroId, encounter, 7, seed, smartChoice);
-      assert.equal(smart.state.turn, 'won', `${heroId} smart ${encounter.id} seed ${seed}`);
-      totals.naiveTurns += naive.turns;
-      totals.smartTurns += smart.turns;
-      totals.naiveHp += naive.hp;
-      totals.smartHp += smart.hp;
-    }
-    assert.ok(
-      totals.smartTurns < totals.naiveTurns || totals.smartHp > totals.naiveHp,
-      `${heroId}: smart ${totals.smartTurns} turns/${totals.smartHp} HP vs naive ${totals.naiveTurns}/${totals.naiveHp}`,
-    );
-  }
+  assert.equal(battleXp(battle()), 0);
+  assert.ok(Object.values(ENCOUNTERS).every((encounter) => encounter.enemyIds.every((id) => ENEMIES[id].xp > 0)));
 });

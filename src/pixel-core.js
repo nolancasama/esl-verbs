@@ -161,10 +161,12 @@ export function sheet(key, fw, fh, rows, palette) {
   if (sheetCache.has(key)) return sheetCache.get(key);
   const cols = Math.max(...rows.map((row) => row.length));
   const result = { url: '', w: cols * fw, h: rows.length * fh, fw, fh };
-  rows.forEach((row) => row.forEach((g) => g.d.forEach((c) => {
-    if (c && !palette[c]) throw new Error(`Missing palette key "${c}" in sheet ${key}`);
-  })));
-  if (typeof document === 'undefined') return result;
+  if (typeof document === 'undefined') {
+    // No canvas in Node: keep the grids so tools/render-sprites.mjs can write PNGs for review.
+    Object.defineProperties(result, { grids: { value: rows }, palette: { value: palette } });
+    sheetCache.set(key, result);
+    return result;
+  }
   const canvas = document.createElement('canvas');
   canvas.width = result.w;
   canvas.height = result.h;
@@ -216,6 +218,6 @@ export function sheetClass(prefix, key, s) {
     document.head.append(style);
     styleSheet = style.sheet;
   }
-  styleSheet.insertRule(`.${className}{--fw:${s.fw};--fh:${s.fh};--sw:${s.w};--sh:${s.h};background-image:url("${s.url}")}`, styleSheet.cssRules.length);
+  styleSheet.insertRule(`.${className}{--fw:${s.fw};--fh:${s.fh};--sw:${s.w};--sh:${s.h};--top:${s.top ?? 0};background-image:url("${s.url}")}`, styleSheet.cssRules.length);
   return className;
 }

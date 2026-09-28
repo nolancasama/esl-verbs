@@ -1,6 +1,7 @@
-import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
+import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, ITEMS, LEVELS, SKILLS } from './battle-data.js';
 
 const living = (enemy) => enemy.hp > 0;
+const clampAp = (ap) => Math.max(0, Math.min(BALANCE.maxAp, ap));
 const cloneState = (state, changes = {}) => ({
   ...state,
   ...changes,
@@ -9,13 +10,38 @@ const cloneState = (state, changes = {}) => ({
 });
 const damageAmount = (amount, target) => Math.ceil(amount * (target.guarding ? BALANCE.enemyGuardMultiplier : 1) * (target.tired ? BALANCE.tiredMultiplier : 1));
 const firstLiving = (enemies) => enemies.find(living);
+const rejected = (state, reason) => ({ state, events: [{ type: 'rejected', reason }] });
 
-function enemyState(id, uid) {
+/* ------------------------------------------------------------ progression */
+
+/** Level row (1-based); out-of-range levels clamp to the table. */
+export function levelData(level = 1) {
+  return LEVELS[Math.max(1, Math.min(LEVELS.length, Math.floor(level) || 1)) - 1];
+}
+export function levelForXp(xp) {
+  return LEVELS.reduce((best, row) => (xp >= row.xp ? row.level : best), 1);
+}
+export function heroMaxHp(heroId, level = 1) {
+  return HEROES[heroId].maxHp + levelData(level).maxHpBonus;
+}
+export function skillTierForLevel(level = 1) {
+  return levelData(level).skillTier;
+}
+/** The hero's class passive once its level is reached, else null. */
+export function heroPassive(heroId, level = 1) {
+  const passive = HEROES[heroId]?.passive;
+  return passive && level >= passive.level ? passive : null;
+}
+const passiveEffect = (state) => heroPassive(state.heroId, state.level)?.effect ?? {};
+
+/* ---------------------------------------------------------------- enemies */
+
+function enemyState(id, uid, summoned = false) {
   const enemy = ENEMIES[id];
   if (!enemy) throw new Error(`Unknown enemy: ${id}`);
   return {
     uid, id, hp: enemy.maxHp, maxHp: enemy.maxHp, phase: 1, intent: null, cadence: 0,
-    guarding: false, tired: false, charging: false,
+    guarding: false, tired: false, charging: false, summoned,
   };
 }
 
@@ -78,6 +104,15 @@ function finish(state, events) {
   return { state, events };
 }
 
+/** Add AP (capped) and record it; returns the new state. */
+function gainAp(state, amount, reason, events) {
+  const gained = clampAp(state.ap + amount) - state.ap;
+  if (gained <= 0) return state;
+  const ap = state.ap + gained;
+  events.push({ type: 'ap', amount: gained, reason, ap });
+  return { ...state, ap };
+}
+
 function damageEnemy(state, uid, amount, events) {
   let hero = state.hero;
   const enemies = state.enemies.map((enemy) => {
@@ -100,18 +135,27 @@ function damageEnemy(state, uid, amount, events) {
   return { ...state, hero, enemies };
 }
 
-export function createBattle({ heroId, encounterId, power, skillTier, heroHp, rng = Math.random }) {
+/* ----------------------------------------------------------------- battle */
+
+/**
+ * ap: starting Action Points (clamped to 0..BALANCE.maxAp).
+ * level drives max HP, the skill tier and the class passive; skillTier overrides the tier (debug).
+ * heroHp defaults to full; potions defaults to 0.
+ */
+export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier, heroHp, potions = 0, rng = Math.random }) {
   const heroData = HEROES[heroId];
   const encounter = ENCOUNTERS[encounterId];
   if (!heroData) throw new Error(`Unknown hero: ${heroId}`);
   if (!encounter) throw new Error(`Unknown encounter: ${encounterId}`);
+  const safeLevel = levelData(level).level;
   const enemies = encounter.enemyIds.map((id, index) => enemyState(id, index + 1));
-  const maxHp = heroData.maxHp;
+  const maxHp = heroMaxHp(heroId, safeLevel);
   let state = {
-    heroId, encounterId, skillTier, power: Math.max(0, power), turn: 'player', round: 1,
+    heroId, encounterId, level: safeLevel, skillTier: skillTier ?? skillTierForLevel(safeLevel),
+    ap: clampAp(Math.floor(ap) || 0), potions: Math.max(0, Math.floor(potions) || 0), turn: 'player', round: 1,
     hero: {
       hp: Math.max(0, Math.min(heroHp ?? maxHp, maxHp)), maxHp, defense: null,
-      combo: false, counter: false, openingUid: null,
+      combo: false, counter: false, openingUid: null, exhausted: false,
     },
     enemies, selectedUid: enemies[0]?.uid ?? null, nextUid: enemies.length + 1,
   };
@@ -123,11 +167,42 @@ export function availableSkills(state) {
   return HEROES[state.heroId].skills
     .map((id) => SKILLS[id])
     .filter((skill) => skill.tier <= state.skillTier)
-    .map(({ id, name, jaName, cost, kind, target }) => ({ id, name, jaName, cost, kind, target, affordable: state.power >= cost }));
+    .map(({ id, name, jaName, cost, kind, target }) => ({ id, name, jaName, cost, kind, target, affordable: state.ap >= cost }));
+}
+
+export function potionHeal(state) {
+  return Math.ceil(state.hero.maxHp * ITEMS.potion.healPercent);
+}
+
+function itemBlocker(state, item) {
+  if (state.potions <= 0) return 'no-items';
+  if (state.ap < item.cost) return 'unaffordable';
+  if (state.hero.hp >= state.hero.maxHp) return 'full-hp';
+  return null;
+}
+
+/** The hero's items with counts and whether each can be used right now. */
+export function availableItems(state) {
+  return Object.values(ITEMS).map(({ id, name, jaName, cost }) => {
+    const reason = itemBlocker(state, ITEMS[id]);
+    return { id, name, jaName, cost, count: state.potions, heal: potionHeal(state), usable: !reason, reason };
+  });
+}
+
+/** True when the player's turn has no affordable action: the turn becomes a recovery. */
+export function mustRecover(state) {
+  return state.turn === 'player'
+    && !availableSkills(state).some((skill) => skill.affordable)
+    && !availableItems(state).some((item) => item.usable);
 }
 
 export function isVictory(state) { return state.enemies.every((enemy) => !living(enemy)); }
 export function isDefeat(state) { return state.hero.hp <= 0; }
+
+/** XP for a battle: every non-summoned enemy that has been defeated. */
+export function battleXp(state) {
+  return state.enemies.filter((enemy) => !living(enemy) && !enemy.summoned).reduce((sum, enemy) => sum + (ENEMIES[enemy.id].xp ?? 0), 0);
+}
 
 export function selectTarget(state, uid) {
   return state.enemies.some((enemy) => enemy.uid === uid && living(enemy)) ? { ...state, selectedUid: uid } : state;
@@ -142,13 +217,14 @@ export function cycleTarget(state, direction) {
 }
 
 export function useSkill(state, skillId, targetUid = state.selectedUid) {
-  if (state.turn !== 'player') return { state, events: [{ type: 'rejected', reason: 'not-player-turn' }] };
+  if (state.turn !== 'player') return rejected(state, 'not-player-turn');
   const skill = SKILLS[skillId];
-  if (!skill || !HEROES[state.heroId].skills.includes(skillId)) return { state, events: [{ type: 'rejected', reason: 'unknown-skill' }] };
-  if (skill.tier > state.skillTier) return { state, events: [{ type: 'rejected', reason: 'locked' }] };
-  if (state.power < skill.cost) return { state, events: [{ type: 'rejected', reason: 'unaffordable' }] };
+  if (!skill || !HEROES[state.heroId].skills.includes(skillId)) return rejected(state, 'unknown-skill');
+  if (skill.tier > state.skillTier) return rejected(state, 'locked');
+  if (state.ap < skill.cost) return rejected(state, 'unaffordable');
 
-  let next = cloneState(state, { power: state.power - skill.cost });
+  const passive = passiveEffect(state);
+  let next = cloneState(state, { ap: state.ap - skill.cost });
   const events = [{ type: 'attack', skillId, target: skill.target === 'self' ? 'hero' : targetUid }];
   const target = next.enemies.some((enemy) => enemy.uid === targetUid && living(enemy)) ? targetUid : firstLiving(next.enemies)?.uid;
   const targetBefore = next.enemies.find((enemy) => enemy.uid === target);
@@ -156,6 +232,7 @@ export function useSkill(state, skillId, targetUid = state.selectedUid) {
   const counter = damaging && next.hero.counter;
   const combo = skillId === 'powerSlash' && next.hero.combo;
   const opening = damaging && next.hero.openingUid === target;
+  const openingBonus = BALANCE.openingBonus + (passive.openingBonus ?? 0);
 
   if (state.heroId === 'fighter' && skillId !== 'slash') next.hero = { ...next.hero, combo: false };
   if (counter) {
@@ -169,7 +246,7 @@ export function useSkill(state, skillId, targetUid = state.selectedUid) {
     events.push({ type: 'defend', defense: skill.defense });
   } else if (skill.kind === 'heal') {
     const barrier = state.heroId === 'mage' && next.hero.hp < next.hero.maxHp / 2;
-    const amount = Math.min(skill.amount, next.hero.maxHp - next.hero.hp);
+    const amount = Math.min(skill.amount + (passive.healBonus ?? 0), next.hero.maxHp - next.hero.hp);
     next.hero = { ...next.hero, hp: next.hero.hp + amount, defense: barrier ? 'barrier' : next.hero.defense };
     events.push({ type: 'heal', target: 'hero', amount });
     if (barrier) events.push({ type: 'barrierUp', defense: 'barrier' });
@@ -189,18 +266,19 @@ export function useSkill(state, skillId, targetUid = state.selectedUid) {
       }
     } else if (skill.kind === 'doubleDamage') {
       if (opening) events.push({ type: 'opening-hit', target });
-      next = damageEnemy(next, target, skill.damage + (opening ? BALANCE.openingBonus : 0) + (counter ? BALANCE.counterBonus : 0), events);
-      next = damageEnemy(next, target, skill.damage + (opening ? BALANCE.openingBonus : 0), events);
+      next = damageEnemy(next, target, skill.damage + (opening ? openingBonus : 0) + (counter ? BALANCE.counterBonus : 0), events);
+      next = damageEnemy(next, target, skill.damage + (opening ? openingBonus : 0), events);
     } else if (skill.kind === 'splitDamage') {
-      const hpBefore = targetBefore?.hp ?? 0;
+      // Each defeat streaks on to the weakest remaining enemy, up to maxChain times.
       next = damageEnemy(next, target, skill.damage + (counter ? BALANCE.counterBonus : 0), events);
-      const primary = next.enemies.find((enemy) => enemy.uid === target);
-      if (hpBefore > 0 && primary?.hp === 0) {
-        const other = next.enemies.filter((enemy) => living(enemy) && enemy.uid !== target).sort((a, b) => a.hp - b.hp || a.uid - b.uid)[0];
-        if (other) {
-          events.push({ type: 'chain', target: other.uid });
-          next = damageEnemy(next, other.uid, skill.splashDamage, events);
-        }
+      let last = target;
+      for (let chain = 0; chain < BALANCE.maxChain; chain += 1) {
+        if (next.enemies.find((enemy) => enemy.uid === last)?.hp !== 0) break;
+        const other = next.enemies.filter(living).sort((a, b) => a.hp - b.hp || a.uid - b.uid)[0];
+        if (!other) break;
+        events.push({ type: 'chain', target: other.uid, from: last });
+        next = damageEnemy(next, other.uid, skill.splashDamage, events);
+        last = other.uid;
       }
     }
 
@@ -209,8 +287,7 @@ export function useSkill(state, skillId, targetUid = state.selectedUid) {
       events.push({ type: 'break', target });
     }
     if (skillId === 'magicBolt' && (targetBefore?.charging || targetBefore?.tired)) {
-      next = { ...next, power: next.power + 1 };
-      events.push({ type: 'power', amount: 1, reason: 'exploit' });
+      next = gainAp(next, BALANCE.exploitAp, 'exploit', events);
     }
     if (skillId === 'strike' && targetBefore && (targetBefore.charging || targetBefore.guarding || targetBefore.tired || ['heal', 'summon'].includes(targetBefore.intent))) {
       if (next.enemies.some((enemy) => enemy.uid === target && living(enemy))) {
@@ -225,21 +302,49 @@ export function useSkill(state, skillId, targetUid = state.selectedUid) {
   return outcome.state.turn === 'won' ? outcome : { state: { ...outcome.state, turn: 'enemy' }, events: outcome.events };
 }
 
+/** Use an item (Potion). Costs AP and ends the turn like a skill. */
+export function useItem(state, itemId = 'potion') {
+  if (state.turn !== 'player') return rejected(state, 'not-player-turn');
+  const item = ITEMS[itemId];
+  if (!item) return rejected(state, 'unknown-item');
+  const blocker = itemBlocker(state, item);
+  if (blocker) return rejected(state, blocker);
+  const amount = Math.min(potionHeal(state), state.hero.maxHp - state.hero.hp);
+  const hero = { ...state.hero, hp: state.hero.hp + amount, combo: state.heroId === 'fighter' ? false : state.hero.combo };
+  const next = cloneState(state, { ap: state.ap - item.cost, potions: state.potions - 1, hero, turn: 'enemy' });
+  return { state: next, events: [{ type: 'item', itemId, target: 'hero' }, { type: 'heal', target: 'hero', amount }] };
+}
+
+/**
+ * An exhausted turn: with no affordable action the hero recovers AP instead of
+ * acting, and the enemies still take their phase against a tired hero (the
+ * same x1.5 damage a resting enemy takes). Waiting can never create AP because
+ * this is rejected whenever any action is affordable.
+ */
+export function recover(state) {
+  if (!mustRecover(state)) return rejected(state, 'not-exhausted');
+  const events = [{ type: 'recover', amount: BALANCE.recoveryAp }];
+  const next = gainAp(cloneState(state), BALANCE.recoveryAp, 'recover', events);
+  return { state: { ...next, hero: { ...next.hero, exhausted: true }, turn: 'enemy' }, events };
+}
+
 export function resolveEnemyPhase(state, rng = Math.random) {
-  if (state.turn !== 'enemy') return { state, events: [{ type: 'rejected', reason: 'not-enemy-turn' }] };
+  if (state.turn !== 'enemy') return rejected(state, 'not-enemy-turn');
+  const passive = passiveEffect(state);
   let next = cloneState(state);
   let dodgedNormal = false;
-  let heavyResolved = false;
+  let refunded = false;
   const events = [];
 
   const defendedDamage = (amount, action) => {
+    if (next.hero.exhausted) return Math.ceil(amount * BALANCE.exhaustedMultiplier);
     if (next.hero.defense === 'dodge') {
       if (action === 'heavy') return 0;
       const result = dodgedNormal ? Math.ceil(amount * BALANCE.dodgeRestMultiplier) : 0;
       dodgedNormal = true;
       return result;
     }
-    if (next.hero.defense === 'guard') return Math.ceil(amount * BALANCE.guardMultiplier);
+    if (next.hero.defense === 'guard') return Math.ceil(amount * (passive.guardMultiplier ?? BALANCE.guardMultiplier));
     if (next.hero.defense === 'barrier') return Math.ceil(amount * BALANCE.barrierMultiplier);
     return amount;
   };
@@ -254,16 +359,14 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     let enemy = { ...current, guarding: false, tired: false, charging: false };
 
     if (['attack', 'heavy', 'drain'].includes(action)) {
-      if (action === 'heavy') {
-        heavyResolved = true;
-        enemy.cadence = 0;
-      } else enemy.cadence += 1;
+      if (action === 'heavy') enemy.cadence = 0;
+      else enemy.cadence += 1;
       const amount = defendedDamage(action === 'heavy' ? data.heavy : data.attack, action);
       events.push({ type: 'attack', source: enemy.uid, action });
       next.hero = { ...next.hero, hp: Math.max(0, next.hero.hp - amount) };
       events.push({ type: 'damage', target: 'hero', source: enemy.uid, amount });
       if (action === 'drain') {
-        const healed = Math.min(amount, enemy.maxHp - enemy.hp);
+        const healed = Math.min(amount, data.drainHeal ?? amount, enemy.maxHp - enemy.hp);
         enemy.hp += healed;
         events.push({ type: 'heal', target: enemy.uid, amount: healed });
       }
@@ -287,7 +390,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     } else if (action === 'summon') {
       const ai = effectiveAi(enemy);
       if (canSummon(next, enemy, ai)) {
-        const added = enemyState(data.summonId, next.nextUid);
+        const added = enemyState(data.summonId, next.nextUid, true);
         next.enemies = [...next.enemies, added];
         next.nextUid += 1;
         enemy.cadence += 1;
@@ -296,17 +399,20 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     }
 
     next.enemies = next.enemies.map((candidate) => candidate.uid === enemy.uid ? enemy : candidate);
-    if (action === 'heavy' && ['guard', 'dodge'].includes(next.hero.defense) && !next.hero.counter) {
-      next.hero = { ...next.hero, counter: true };
-      events.push({ type: 'counterReady' });
+    if (action === 'heavy' && next.hero.defense && next.hero.hp > 0) {
+      if (['guard', 'dodge'].includes(next.hero.defense) && !next.hero.counter) {
+        next.hero = { ...next.hero, counter: true };
+        events.push({ type: 'counterReady' });
+      }
+      // Guard and Barrier soak the hit and refund AP; Dodge avoids it completely instead.
+      if (!refunded && next.hero.defense !== 'dodge') {
+        refunded = true;
+        next = gainAp(next, BALANCE.defenseAp, 'defense', events);
+      }
     }
   }
 
-  if (heavyResolved && state.heroId === 'mage' && next.hero.defense === 'barrier') {
-    next.power += 1;
-    events.push({ type: 'power', amount: 1, reason: 'barrier' });
-  }
-  next.hero = { ...next.hero, defense: null };
+  next.hero = { ...next.hero, defense: null, exhausted: false };
   next.enemies = next.enemies.map((enemy) => living(enemy) ? { ...enemy, intent: chooseEnemyIntent(next, enemy, rng) } : { ...enemy, intent: null });
 
   const outcome = finish(next, events);
@@ -316,8 +422,4 @@ export function resolveEnemyPhase(state, rng = Math.random) {
 export function chooseEncounter(tier, rng = Math.random) {
   const choices = Object.values(ENCOUNTERS).filter((encounter) => encounter.tier === tier);
   return choices[Math.floor(rng() * choices.length)];
-}
-
-export function skillTierForStage(stage) {
-  return BALANCE.skillTierByStage[stage - 1] ?? 2;
 }

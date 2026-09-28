@@ -187,6 +187,61 @@ Git is the source of truth for detailed code-change history.
   changed** by this pass. The only UI-state change: a tired enemy now shows
   its own `tired` row instead of `idle`.
 
+## 2026-09-28 — Adventure RPG upgrade (AP, campaign resources, art, effects, music)
+
+Principle: **easy to understand casually; rewarding to play well.**
+
+- **Quiz score is the starting AP** (0–10), replacing `Power = 2 + correct`
+  and free basic actions. Every skill and the Potion costs AP (basic/defend 1,
+  specials 2, big AoE/Shadow Strike 3, Potion 1). Rejected: keeping free basics —
+  it made the quiz barely matter.
+- **AP exhaustion = a RECOVERING turn**: at 0 AP the hero gains +1 AP and the
+  enemies act. Recovery costs a turn on purpose (tempo loss). Rejected: free AP
+  when reaching 0 (recreates free attacks), 2-AP recovery (flattened the AP
+  curve: 3 AP still won ~55%), an ×1.5–2 "exhausted" damage multiplier (turned
+  big attacks during recovery into one-shots and made more AP sometimes worse).
+  Voluntary resting is not allowed, so waiting can never farm AP.
+- **Tactical AP is AP-neutral, not a surplus**: Guard/Barrier up when a big
+  attack lands +1 AP (all heroes); Mage Magic Bolt on a charging/tired enemy +1.
+  Dodge avoids big attacks completely instead of refunding AP (it was too strong
+  with both). Counter/Combo/Opening/Break/Chain keep their damage roles.
+- **Balance targets tiers 3–4** (tiers 1–2 stay teaching fights): tuned by
+  simulation so hint-following play wins about 27/57/75/90/100% at 5/6/7/8/10
+  AP. Enemy big-attack cycles are odd lengths so a low-AP rest/act rhythm does
+  not always meet the big attack on the same beat. Shadow Strike chains through
+  kills (max 3), Fireball/Cleave hit harder, Mage/Ninja HP 27/28, Vampire drain
+  heals at most 2. Balance tests assert trends, never exact percentages.
+- **HP carries between battles** with a 28% victory heal and a 40% floor;
+  **one item, the Potion** (35% max HP, start 2, +1 per victory, cap 2);
+  **XP and levels** L1–L5 with thresholds at the minimum XP any encounter path
+  gives, so skill unlocks stay on the old schedule (L2 after battle 1, L3 after
+  battle 2) and the class passive arrives at L4. Rejected: the requested
+  L3-passive/L4-final-skill order, which would have delayed the tier-2 skill
+  the tier-3 group fights are balanced around.
+- **Retry assist grows**: retries restart from the battle's entry HP/potions
+  with +1, +3, +6, +10 AP. Rejected: +1 per retry (a 0/10 student needed ~14
+  retries per campaign).
+- **One persistent AP meter** (a single DOM node remounted per screen) is the
+  visual link from quiz to battle; the Adventure quiz gets an RPG frame while
+  Study stays plain. Vocabulary stays in a readable Japanese font.
+- **Art moved to a shaded part rig** (`pixel-rig.js`): hue-shifted material
+  ramps with automatic top-left lighting, interior lines and outlines; heroes
+  72×72, bosses up to 132×128; enemies are drawn facing right with top-right
+  light and mirrored. Sprite-state CSS is generated from the frame table.
+  Rejected: hand-authored frames (too many at this size), enlarging the 48 px
+  art.
+- **Defeated enemies disappear completely**: the defeat row ends on an empty
+  frame and dead enemies are not rendered after playback.
+- **Effects are tiered** (basic quick, specials bigger, Fireball / Shadow
+  Strike / boss signatures cinematic ~1 s), run from `fx-player.js`, which also
+  tells the view how long each event needs. Heroes dash to melee targets.
+  Reduced motion keeps static hit flashes only.
+- **Integer pixel scale fitted per battle**: the view picks `--px` 2–4 so the
+  tallest enemy, its plate and intents fit the field (Chromebook heights vary).
+- **Music is synthesized** (Web Audio, original compositions, no files or
+  remote audio), ducked under TTS, silenced during speech recognition, off in
+  Study mode, and toggled with ♫ MUSIC ON/OFF saved in localStorage.
+
 A useful rule:
 
 > If a future developer or AI could reasonably ask, "Why is it designed this way?", record the answer here.

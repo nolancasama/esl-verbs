@@ -1,8 +1,7 @@
-// Pixel icons, one-row effect sheets, stage backdrops, and the small DOM
-// player that shows effects for battle events. Effects are cosmetic only:
-// battle logic never waits for them, and nodes are dropped on every re-render.
+// Pixel icons, one-row effect sheets and stage backdrops. The DOM sequencer that
+// plays effects for battle events lives in fx-player.js.
 import { PAL } from './pixel-palette.js';
-import { grid, px, rect, oval, line, poly, stamp, outline, dissolve, recolor, sheet, image, sheetClass, ditherMask } from './pixel-core.js';
+import { grid, px, rect, oval, line, poly, stamp, outline, dissolve, sheet, image, ditherMask } from './pixel-core.js';
 
 const rad = (deg) => (deg * Math.PI) / 180;
 
@@ -33,6 +32,7 @@ const ICONS = {
   lock: ['..SSSS...', '.S....S..', '.S....S..', 'yyyyyyyy.', 'yYyyyyyo.', 'yyykkyyo.', 'yyykkyyo.', 'yyyyyyyo.', 'oooooooo.'],
   power: ['....yyyy.', '...yyyo..', '..yyyo...', '.yyyyyyy.', '..oyyyyo.', '....yyo..', '...yyo...', '..yo.....', '.y.......'],
   heart: ['.rr...rr.', 'rqqr.rrrr', 'rqrrrrrrr', 'rrrrrrrrr', '.rrrrrrR.', '..rrrrR..', '...rrR...', '....R....', '.........'],
+  potion: ['...BBB...', '...jjj...', '....c....', '...ccc...', '..cUUUc..', '.cUWUUUc.', '.cUUUUuc.', '.cuUUuuc.', '..ccccc..'],
   cursor: ['yyy......', 'yYyy.....', 'yYYyy....', 'yYYYyy...', 'yYYYYyy..', 'yYYYyy...', 'yYYyy....', 'yYyy.....', 'yyy......'],
 };
 
@@ -45,7 +45,7 @@ export function iconImage(name) {
   return image(`icon-${name}`, g, PAL);
 }
 
-/* ----------------------------------------------------------------- effects */
+/* --------------------------------------------------------------- helpers */
 
 function crescent(g, cx, cy, r, a0, a1, maxT, outer, core) {
   const steps = Math.ceil(Math.abs(a1 - a0) / 3);
@@ -78,176 +78,391 @@ function plus(g, x, y, c, size = 1) {
   px(g, x, y, 'W');
 }
 
-const frames = (n, w, h, draw) => Array.from({ length: n }, (_, f) => { const g = grid(w, h); draw(g, f); return g; });
+/* ----------------------------------------------------------------- effects */
+
+// Effect colours: ramps for fire, magic, shadow, blood, holy and earth.
+const FX_PAL = Object.freeze({
+  ...PAL,
+  f0: '#fffbe0', f1: '#fff07a', f2: '#ffc234', f3: '#ff8a1c', f4: '#e84a14', f5: '#a8200e', f6: '#5a1208',
+  c0: '#ffffff', c1: '#d8fcff', c2: '#8ff0fa', c3: '#3cc4e6', c4: '#2280c0', c5: '#18427a',
+  d0: '#f4d8ff', d1: '#c98cff', d2: '#9a4ee8', d3: '#6a24b8', d4: '#3e1478', d5: '#1c0838',
+  b0: '#ffd0d8', b1: '#ff7a8c', b2: '#e82a4a', b3: '#a8102c', b4: '#5c061a',
+  h0: '#f4ffe8', h1: '#c8ff9a', h2: '#7ee85a', h3: '#3eb43c', h4: '#1e7a2e',
+  e0: '#e8dcc4', e1: '#b89c78', e2: '#8a6a48', e3: '#5a4430', e4: '#2e2218',
+  g0: '#ffffff', g1: '#fff4c0', g2: '#ffe066', g3: '#f4b030',
+  '~': '#3a4f9c80', '=': '#9ff3ee70', '+': '#c98cff70', '_': '#1a1c2c50', '*': '#ffffffc0', '^': '#ff8a1c90', '%': '#1c083890',
+});
+
+const fxFrames = (n, w, h, draw) => Array.from({ length: n }, (_, f) => { const g = grid(w, h); draw(g, f, f / Math.max(1, n - 1)); return g; });
+const rnd = (seed) => { let v = seed >>> 0; return () => ((v = (Math.imul(v, 1664525) + 1013904223) >>> 0) / 0x100000000); };
+
+/** Soft disc: rings of colours from the outside in (keys[0] outermost). */
+function disc(g, cx, cy, r, keys, dither = true) {
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y += 1) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x += 1) {
+    const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
+    if (d > 1) continue;
+    const band = Math.min(keys.length - 1, Math.floor((1 - d) * keys.length));
+    const edge = (1 - d) * keys.length - band;
+    const key = dither && band > 0 && edge < 0.35 && ditherMask(x, y, 0.5) ? keys[band - 1] : keys[band];
+    px(g, x, y, key);
+  }
+}
+/** Ring outline at radius r with thickness. */
+function ringLine(g, cx, cy, r, key, thick = 1, squash = 1) {
+  for (let a = 0; a < 360; a += Math.max(1, 90 / Math.max(r, 1))) {
+    const x = cx + Math.cos(rad(a)) * r, y = cy + Math.sin(rad(a)) * r * squash;
+    rect(g, Math.round(x - (thick >> 1)), Math.round(y - (thick >> 1)), thick, thick, key);
+  }
+}
+/** Particles scattered deterministically around (cx, cy). */
+function motes(g, cx, cy, count, spread, keys, seed, grow = 0) {
+  const r = rnd(seed);
+  for (let i = 0; i < count; i += 1) {
+    const a = r() * Math.PI * 2, d = r() * spread;
+    const x = Math.round(cx + Math.cos(a) * d), y = Math.round(cy + Math.sin(a) * d);
+    const key = keys[Math.floor(r() * keys.length)];
+    px(g, x, y, key);
+    if (grow && r() < grow) { px(g, x + 1, y, key); px(g, x, y + 1, key); }
+  }
+}
+/** Four-point star sparkle. */
+function star(g, x, y, s, key = 'f1', core = 'c0') {
+  line(g, x - s, y, x + s, y, key); line(g, x, y - s, x, y + s, key);
+  if (s > 2) { px(g, x - 1, y - 1, key); px(g, x + 1, y + 1, key); px(g, x + 1, y - 1, key); px(g, x - 1, y + 1, key); }
+  px(g, x, y, core);
+}
+function fade(g, level) { g.d = dissolve(g, level).d; }
 
 const EFFECTS = {
-  slash: () => frames(4, 32, 32, (g, f) => {
-    if (f === 0) crescent(g, 12, 20, 14, -100, -40, 2, 'w', 'W');
-    else crescent(g, 12, 20, 14, -110, 20, f === 1 ? 4 : 3, f === 3 ? 'i' : 'w', 'Y');
-    if (f === 2) { burst(g, 22, 16, 3, 6, 6, 'Y'); }
-    if (f === 3) g.d = dissolve(g, 0.5).d;
+  // Tier 1 ---------------------------------------------------------------
+  slash: () => fxFrames(5, 44, 44, (g, f) => {
+    const sweep = [-60, 0, 30, 40, 40][f];
+    crescent(g, 16, 26, 20, -120, sweep, [2, 5, 4, 3, 2][f], f >= 3 ? 'i' : 'w', 'W');
+    if (f >= 1) crescent(g, 16, 26, 16, -105, sweep - 10, 2, 'Y', null);
+    if (f === 2) { star(g, 32, 20, 4, 'Y', 'W'); }
+    if (f >= 3) fade(g, f === 3 ? 0.35 : 0.7);
   }),
-  quickA: () => frames(3, 32, 32, (g, f) => {
-    line(g, 4 + f * 2, 4, 26, 26 - f * 2, f === 2 ? 'i' : 'w', f === 1 ? 3 : 2);
-    if (f === 1) line(g, 6, 6, 24, 24, 'W');
+  strikeX: () => fxFrames(4, 36, 36, (g, f) => {
+    line(g, 6, 6, 29, 29, f >= 2 ? 'i' : 'W', f === 1 ? 3 : 2);
+    if (f >= 1) line(g, 29, 6, 6, 29, f === 3 ? 'i' : 'W', f === 1 ? 3 : 2);
+    if (f === 1) star(g, 18, 18, 5, 'Y');
+    if (f === 3) fade(g, 0.55);
   }),
-  quickB: () => frames(3, 32, 32, (g, f) => {
-    line(g, 27 - f * 2, 5, 5, 27 - f * 2, f === 2 ? 'i' : 'w', f === 1 ? 3 : 2);
-    if (f === 1) line(g, 25, 7, 7, 25, 'W');
+  impact: () => fxFrames(4, 32, 32, (g, f) => {
+    if (f < 2) disc(g, 16, 16, 5 + f * 3, ['f2', 'f1', 'f0', 'c0']);
+    burst(g, 16, 16, 4 + f * 3, 9 + f * 3, 8, f >= 2 ? 'f3' : 'f1', f < 2 ? 2 : 1, f * 22);
+    if (f === 3) fade(g, 0.5);
   }),
-  bigSlash: () => frames(4, 48, 48, (g, f) => {
-    if (f === 0) { crescent(g, 16, 30, 22, -110, -50, 3, 'Y', 'W'); return; }
-    crescent(g, 16, 30, 22, -115, 35, f === 1 ? 7 : 5, 'Y', 'W');
-    crescent(g, 16, 30, 17, -100, 20, 3, 'w', 'W');
-    if (f >= 2) { burst(g, 34, 24, 4 + f * 2, 9 + f * 3, 8, f === 3 ? 'o' : 'y', 1, 22); }
-    if (f === 3) g.d = dissolve(g, 0.45).d;
+  quickA: () => fxFrames(4, 40, 40, (g, f) => {
+    line(g, 4 + f * 2, 6, 34, 34 - f * 2, f >= 2 ? 'c2' : 'c0', f === 1 ? 3 : 2);
+    if (f < 2) line(g, 8, 4, 36, 30, 'c1');
+    [0, 6, 12].forEach((dy) => line(g, 0, 20 + dy - f * 2, 10 - f * 2, 20 + dy - f * 2, 'c1'));
+    if (f === 3) fade(g, 0.6);
   }),
-  cleave: () => frames(4, 72, 32, (g, f) => {
-    const reach = [80, 200, 200, 200][f];
-    crescent(g, 36, -40, 64, 150 - reach / 4, 150 - reach / 4 - reach, f === 1 ? 6 : 4, f === 3 ? 'i' : 'Y', 'W');
-    if (f >= 1) crescent(g, 36, -44, 64, 120, 60, 2, 'w', null);
-    if (f === 3) g.d = dissolve(g, 0.5).d;
+  quickB: () => fxFrames(4, 40, 40, (g, f) => {
+    line(g, 35 - f * 2, 6, 5, 34 - f * 2, f >= 2 ? 'c2' : 'c0', f === 1 ? 3 : 2);
+    if (f < 2) line(g, 31, 4, 3, 30, 'c1');
+    if (f === 1) star(g, 20, 20, 6, 'c2');
+    if (f === 3) fade(g, 0.6);
   }),
-  counterX: () => frames(4, 32, 32, (g, f) => {
-    line(g, 5, 5, 26, 26, f === 3 ? 'i' : 'Y', f ? 3 : 2);
-    if (f >= 1) line(g, 26, 5, 5, 26, f === 3 ? 'i' : 'W', f === 1 ? 3 : 2);
-    if (f === 2) burst(g, 16, 16, 7, 12, 8, 'y');
-    if (f === 3) g.d = dissolve(g, 0.5).d;
+  boltProj: () => fxFrames(3, 22, 18, (g, f) => {
+    disc(g, 14, 9, 5, ['c4', 'c3', 'c2', 'c0']);
+    [[7, 9], [4, 8 + (f % 2)], [2, 10 - (f % 2)], [9, 6], [9, 12]].forEach(([x, y]) => px(g, x, y, 'c2'));
+    star(g, 14, 9, 2 + (f % 2), 'c1', 'c0');
   }),
-  impact: () => frames(3, 24, 24, (g, f) => {
-    burst(g, 12, 12, f * 2, 5 + f * 3, 8, f === 2 ? 'o' : 'Y', 1, f * 22);
-    if (f < 2) oval(g, 12 - (f + 1) * 2, 12 - (f + 1) * 2, (f + 1) * 4, (f + 1) * 4, 'W');
+  boltHit: () => fxFrames(4, 36, 36, (g, f) => {
+    ringLine(g, 18, 18, 4 + f * 4, f >= 2 ? 'c3' : 'c1', f === 0 ? 3 : 2);
+    if (f < 2) disc(g, 18, 18, 6 - f, ['c3', 'c2', 'c0']);
+    burst(g, 18, 18, 6 + f * 3, 9 + f * 4, 6, 'c2', 1, 30);
+    if (f === 3) fade(g, 0.55);
   }),
-  bigImpact: () => frames(4, 40, 40, (g, f) => {
-    burst(g, 20, 20, 2 + f * 3, 9 + f * 4, 10, f >= 2 ? 'o' : 'Y', 2, f * 18);
-    if (f < 3) oval(g, 20 - (f + 2) * 2, 20 - (f + 2) * 2, (f + 2) * 4, (f + 2) * 4, f ? 'Y' : 'W');
-    if (f >= 1) ring(g, 20, 20, 8 + f * 4, 'y');
-    if (f === 3) g.d = dissolve(g, 0.5).d;
+  // Tier 2 ---------------------------------------------------------------
+  bigSlash: () => fxFrames(6, 72, 72, (g, f) => {
+    if (f === 0) { crescent(g, 24, 44, 32, -120, -80, 3, 'Y', 'W'); return; }
+    const end = [0, 10, 40, 50, 50, 50][f];
+    crescent(g, 24, 44, 32, -125, end, [0, 10, 8, 6, 4, 3][f], f >= 4 ? 'g3' : 'g2', 'g0');
+    crescent(g, 24, 44, 26, -110, end - 10, [0, 5, 4, 3, 2, 2][f], 'g1', 'W');
+    if (f >= 2) burst(g, 50, 36, 5 + f * 3, 12 + f * 4, 10, f >= 4 ? 'f3' : 'f2', 2, 18);
+    if (f === 2) star(g, 52, 34, 8, 'g1');
+    if (f >= 4) fade(g, f === 4 ? 0.4 : 0.75);
   }),
-  breakFx: () => frames(4, 48, 48, (g, f) => {
-    const shards = [[0, -1], [0.8, -0.6], [1, 0.2], [0.6, 0.9], [-0.3, 1], [-1, 0.3], [-0.8, -0.7]];
-    shards.forEach(([dx, dy], i) => {
-      const d = 4 + f * 6, x = 24 + dx * d, y = 24 + dy * d;
-      poly(g, [[x, y - 2], [x + 2, y], [x, y + 3], [x - 2, y]], i % 2 ? 'c' : 'W');
-    });
-    if (f <= 1) { oval(g, 16, 16, 16, 16, 'W'); burst(g, 24, 24, 9, 20, 12, 'Y', 2); }
-    if (f >= 1) ring(g, 24, 24, 10 + f * 4, f === 3 ? 'o' : 'y', 2);
-    if (f === 3) g.d = dissolve(g, 0.4).d;
+  bigImpact: () => fxFrames(5, 60, 60, (g, f) => {
+    if (f < 3) disc(g, 30, 30, [8, 13, 16][f], ['f3', 'f2', 'f1', 'f0', 'c0']);
+    ringLine(g, 30, 30, 10 + f * 5, f >= 3 ? 'f3' : 'f1', 2);
+    burst(g, 30, 30, 8 + f * 4, 16 + f * 5, 12, f >= 3 ? 'f4' : 'f2', 2, f * 15);
+    if (f >= 3) fade(g, f === 3 ? 0.4 : 0.75);
   }),
-  boltProj: () => frames(2, 14, 14, (g, f) => {
-    oval(g, 5, 4, 7, 7, 't'); oval(g, 6, 5, 5, 5, 'c'); px(g, 7, 6, 'W'); px(g, 8, 6, 'W');
-    [[3, 7], [1, 6 + f], [0, 8 - f]].forEach(([x, y]) => px(g, x, y, 'c'));
+  cleaveSweep: () => fxFrames(5, 176, 48, (g, f) => {
+    const reach = [40, 110, 168, 172, 172][f];
+    for (let x = 2; x < reach; x += 1) {
+      const t = x / 172, y = Math.round(30 - Math.sin(t * Math.PI) * 12);
+      const lead = reach - x;
+      const thick = f >= 3 ? 3 : Math.max(3, Math.round(12 * Math.sin(t * Math.PI) * Math.min(1, lead / 30 + 0.3)));
+      for (let k = 0; k < thick; k += 1) px(g, x, y - (thick >> 1) + k, k === 0 ? 'g0' : k < thick / 2 ? 'g1' : k === thick - 1 ? 'g3' : 'g2');
+      if (lead < 6) rect(g, x, y - (thick >> 1) - 1, 1, thick + 2, 'c0');
+      if (x % 7 === 0 && f < 3) { px(g, x - 4, y + thick, 'f2'); px(g, x - 8, y + thick + 2, 'f1'); }
+    }
+    if (f >= 1) motes(g, reach - 8, 24, 16, 12, ['g1', 'g0', 'f2'], 7 + f, 0.4);
+    if (f >= 3) fade(g, f === 3 ? 0.4 : 0.78);
   }),
-  boltHit: () => frames(3, 24, 24, (g, f) => {
-    ring(g, 12, 12, 3 + f * 3, f === 2 ? 't' : 'c', f === 0 ? 3 : 2);
-    if (f < 2) oval(g, 9, 9, 6, 6, 'W');
-    burst(g, 12, 12, 5 + f * 2, 7 + f * 3, 6, 'c', 1, 30);
+  breakFx: () => fxFrames(6, 72, 72, (g, f) => {
+    const shards = 11;
+    for (let i = 0; i < shards; i += 1) {
+      const a = rad(i * (360 / shards) + 12), d = 5 + f * 6;
+      const x = 36 + Math.cos(a) * d, y = 36 + Math.sin(a) * d;
+      poly(g, [[x, y - 3], [x + 2, y], [x, y + 4], [x - 2, y]], i % 3 === 0 ? 'c0' : i % 3 === 1 ? 'c2' : 'c3');
+    }
+    if (f <= 1) { disc(g, 36, 36, 10 + f * 3, ['c3', 'c2', 'c1', 'c0']); burst(g, 36, 36, 12, 30, 14, 'c0', 2); }
+    if (f >= 1) ringLine(g, 36, 36, 12 + f * 5, f >= 4 ? 'c4' : 'c2', 2);
+    if (f >= 4) fade(g, f === 4 ? 0.45 : 0.8);
   }),
-  fireProj: () => frames(2, 28, 24, (g, f) => {
-    poly(g, [[0, 12 + (f ? 2 : -2)], [14, 5], [14, 19]], 'o');
-    poly(g, [[4, 12 + (f ? -1 : 1)], [14, 8], [14, 16]], 'y');
-    oval(g, 10, 3, 17, 18, 'r'); oval(g, 12, 5, 13, 14, 'o'); oval(g, 14, 7, 9, 10, 'y'); oval(g, 16, 9, 5, 5, 'Y');
-    px(g, 18, 10, 'W');
+  counterX: () => fxFrames(5, 44, 44, (g, f) => {
+    line(g, 6, 6, 37, 37, f >= 3 ? 'g3' : 'g1', f ? 3 : 2);
+    if (f >= 1) line(g, 37, 6, 6, 37, f >= 3 ? 'g3' : 'g0', f === 1 ? 4 : 2);
+    if (f === 2) { burst(g, 22, 22, 8, 17, 10, 'g2', 2); star(g, 22, 22, 6, 'g1'); }
+    if (f >= 3) fade(g, f === 3 ? 0.4 : 0.75);
   }),
-  fireHit: () => frames(4, 44, 44, (g, f) => {
-    const r = [8, 14, 18, 20][f];
-    oval(g, 22 - r, 22 - r, r * 2, r * 2, f === 3 ? 'R' : 'r');
-    oval(g, 22 - r + 3, 22 - r + 3, r * 2 - 6, r * 2 - 6, f >= 2 ? 'r' : 'o');
-    if (f < 3) oval(g, 22 - r + 6, 22 - r + 6, Math.max(2, r * 2 - 12), Math.max(2, r * 2 - 12), f === 0 ? 'W' : 'y');
-    if (f >= 2) g.d = dissolve(g, f === 2 ? 0.25 : 0.6).d;
-    burst(g, 22, 22, r, r + 4, 10, 'y', 1, f * 17);
+  guardFx: () => fxFrames(4, 40, 44, (g, f) => {
+    const w = 14 + f, top = 6;
+    poly(g, [[20 - w, top], [20 + w, top], [20 + w, 26], [20, 40], [20 - w, 26]], f === 1 ? 'c1' : 'c2');
+    poly(g, [[20 - w + 3, top + 3], [20 + w - 3, top + 3], [20 + w - 3, 25], [20, 36], [20 - w + 3, 25]], f === 1 ? 'c0' : '=');
+    line(g, 20, top + 4, 20, 34, 'c0');
+    if (f === 1) star(g, 30, 10, 4, 'c0');
+    if (f >= 2) fade(g, f === 2 ? 0.35 : 0.7);
   }),
-  flames: () => frames(4, 40, 44, (g, f) => {
-    [4, 12, 20, 28, 34].forEach((x, i) => {
-      const h = 14 + ((i + f) % 3) * 8;
-      poly(g, [[x - 5, 43], [x + 1, 43 - h], [x + 6, 43]], 'r');
-      poly(g, [[x - 3, 43], [x + 1, 43 - h * 0.7], [x + 4, 43]], 'o');
-      poly(g, [[x - 1, 43], [x + 1, 43 - h * 0.4], [x + 2, 43]], 'y');
-    });
-    if (f === 3) g.d = dissolve(g, 0.5).d;
-  }),
-  heal: () => frames(4, 32, 44, (g, f) => {
-    [[8, 36], [22, 30], [14, 22], [26, 14], [6, 12]].forEach(([x, y], i) => {
-      const yy = y - f * 5;
-      if (yy < 3 || (i + f) % 4 === 3) return;
-      if (i % 2) plus(g, x, yy, i % 3 ? 'l' : 'Y'); else { px(g, x, yy, 'W'); px(g, x - 1, yy, 'l'); px(g, x + 1, yy, 'l'); px(g, x, yy - 1, 'l'); px(g, x, yy + 1, 'l'); }
-    });
-  }),
-  drainHeal: () => EFFECTS.heal().map((g) => recolor(g, { l: 'r', Y: 'M' })),
-  healOrb: () => frames(2, 12, 12, (g, f) => { oval(g, 2, 2, 8, 8, 'e'); oval(g, 3, 3, 6, 6, 'l'); px(g, 5, 4, 'W'); if (f) px(g, 0, 6, 'l'); }),
-  drainOrb: () => frames(2, 12, 12, (g, f) => { oval(g, 2, 2, 8, 8, 'R'); oval(g, 3, 3, 6, 6, 'r'); px(g, 5, 4, 'M'); if (f) px(g, 11, 6, 'r'); }),
-  guardFx: () => frames(3, 24, 24, (g, f) => {
-    const rows = ICONS.guard;
-    const big = rows.flatMap((row) => [row.replace(/./g, (c) => c + c), row.replace(/./g, (c) => c + c)]);
-    stamp(g, big, 3, 3, f === 1 ? { map: { u: 'W', U: 'W', D: 'i', y: 'Y' } } : {});
-    if (f === 2) g.d = dissolve(g, 0.5).d;
-  }),
-  barrier: () => frames(2, 52, 60, (g, f) => {
-    for (let y = 0; y < 60; y += 1) for (let x = 0; x < 52; x += 1) {
-      const dx = (x + 0.5 - 26) / 25, dy = (y + 0.5 - 32) / 29;
+  barrierForm: () => fxFrames(5, 64, 76, (g, f) => {
+    const rise = [0.25, 0.5, 0.8, 1, 1][f];
+    for (let y = 0; y < 76; y += 1) for (let x = 0; x < 64; x += 1) {
+      const dx = (x + 0.5 - 32) / 30, dy = (y + 0.5 - 40) / 36;
       const d = dx * dx + dy * dy;
-      if (d > 1 || y > 58) continue;
-      if (d > 0.82) px(g, x, y, 'c');
-      else if (ditherMask(x + f, y, 0.3)) px(g, x, y, '=');
+      if (d > 1 || y > 74 || y < 76 - 76 * rise) continue;
+      if (d > 0.84) px(g, x, y, f === 3 ? 'c0' : 'c2');
+      else if ((x + y * 3) % 12 === 0 || (x * 3 - y) % 13 === 0) px(g, x, y, 'c1');
+      else if (ditherMask(x, y, 0.28)) px(g, x, y, '=');
     }
-    [[12, 18], [38, 16], [26, 8], [10, 40], [42, 38]].forEach(([x, y], i) => { if ((i + f) % 2) { px(g, x, y, 'W'); px(g, x + 1, y, 'c'); px(g, x - 1, y, 'c'); } });
+    if (f >= 3) motes(g, 32, 40, 14, 30, ['c0', 'c1'], 31 + f);
+    if (f === 4) fade(g, 0.4);
   }),
-  summon: () => frames(4, 48, 48, (g, f) => {
-    oval(g, 6, 38, 36, 9, 'v'); oval(g, 9, 40, 30, 5, ''); if (f >= 1) oval(g, 12, 40, 24, 5, 'P');
-    [[14, 36], [24, 32], [34, 36], [19, 28], [29, 26]].forEach(([x, y], i) => {
-      const yy = y - f * 5 - (i % 2) * 3;
-      if (yy > 0) { rect(g, x, yy, 2, 4, i % 2 ? 'V' : 'M'); px(g, x, yy - 1, 'W'); }
-    });
-    if (f === 3) g.d = dissolve(g, 0.45).d;
-  }),
-  enrage: () => frames(4, 64, 64, (g, f) => {
-    ring(g, 32, 32, 8 + f * 7, f >= 2 ? 'o' : 'r', 3);
-    burst(g, 32, 32, 12 + f * 5, 20 + f * 6, 12, 'y', 2, f * 15);
-    if (f === 3) g.d = dissolve(g, 0.5).d;
-  }),
-  poof: () => frames(4, 36, 36, (g, f) => {
-    [[18, 18, 8], [10, 20, 6], [26, 20, 6], [18, 11, 6], [18, 26, 5]].forEach(([x, y, r], i) => {
-      const s = r + f * 2, ox = (x - 18) * f * 0.35, oy = (y - 18) * f * 0.35;
-      oval(g, x + ox - s / 2, y + oy - s / 2, s, s, i % 2 ? 'X' : 'w');
-    });
-    if (f >= 2) g.d = dissolve(g, f === 2 ? 0.3 : 0.7).d;
-  }),
-  bossBurst: () => frames(4, 80, 80, (g, f) => {
-    for (let i = 0; i < 5; i += 1) {
-      const a = rad(i * 72 + f * 20), d = f * 9;
-      const x = 40 + Math.cos(a) * d, y = 40 + Math.sin(a) * d, r = 10 - f;
-      oval(g, x - r, y - r, r * 2, r * 2, f % 2 ? 'Y' : 'W');
+  barrier: () => fxFrames(2, 60, 70, (g, f) => {
+    for (let y = 0; y < 70; y += 1) for (let x = 0; x < 60; x += 1) {
+      const dx = (x + 0.5 - 30) / 28, dy = (y + 0.5 - 37) / 33;
+      const d = dx * dx + dy * dy;
+      if (d > 1 || y > 68) continue;
+      if (d > 0.86) px(g, x, y, 'c2');
+      else if (((x + y * 3 + f * 4) % 14 === 0) || ((x * 3 - y + f * 3) % 15 === 0)) px(g, x, y, 'c1');
+      else if (ditherMask(x + f, y, 0.22)) px(g, x, y, '=');
     }
-    ring(g, 40, 40, 10 + f * 8, 'y', 3);
-    burst(g, 40, 40, 16 + f * 5, 26 + f * 6, 16, 'o', 2, f * 11);
-    if (f === 3) g.d = dissolve(g, 0.5).d;
+    [[14, 18], [44, 16], [30, 8], [12, 44], [48, 42]].forEach(([x, y], i) => { if ((i + f) % 2) star(g, x, y, 2, 'c1', 'c0'); });
   }),
-  sparkle: () => frames(3, 16, 16, (g, f) => {
-    const s = [2, 5, 3][f];
-    line(g, 8, 8 - s, 8, 8 + s, 'Y'); line(g, 8 - s, 8, 8 + s, 8, 'Y'); px(g, 8, 8, 'W');
-    if (f === 1) { px(g, 6, 6, 'y'); px(g, 10, 10, 'y'); px(g, 10, 6, 'y'); px(g, 6, 10, 'y'); }
+  healPillar: () => fxFrames(6, 52, 88, (g, f) => {
+    const w = [6, 12, 16, 16, 12, 6][f];
+    for (let y = 0; y < 88; y += 1) for (let x = 26 - w; x <= 26 + w; x += 1) {
+      const t = Math.abs(x + 0.5 - 26) / w;
+      if (t > 1) continue;
+      const key = t < 0.3 ? 'h0' : t < 0.65 ? 'h1' : 'h2';
+      if (t > 0.65 && !ditherMask(x, y, 0.5)) continue;
+      if (y < 10 && !ditherMask(x, y, y / 10)) continue;
+      px(g, x, y, key);
+    }
+    for (let i = 0; i < 6; i += 1) {
+      const y = 80 - ((i * 14 + f * 12) % 80), x = 10 + ((i * 17) % 32);
+      plus(g, x, y, i % 2 ? 'h1' : 'h0', 1);
+    }
+    if (f >= 4) fade(g, f === 4 ? 0.35 : 0.7);
   }),
-  status: () => frames(3, 32, 32, (g, f) => {
-    burst(g, 16, 16, 4 + f * 3, 10 + f * 4, 8, f === 2 ? 'o' : 'y', 2, 22);
-    if (f < 2) { oval(g, 11 - f, 11 - f, 10 + f * 2, 10 + f * 2, 'Y'); oval(g, 13, 13, 6, 6, 'W'); }
+  potionFx: () => fxFrames(5, 44, 52, (g, f) => {
+    for (let i = 0; i < 7; i += 1) {
+      const y = 46 - ((i * 9 + f * 8) % 44), x = 8 + ((i * 11) % 28), r = 1 + (i % 3);
+      ringLine(g, x, y, r, i % 2 ? 'h1' : 'c1', 1);
+    }
+    if (f >= 1 && f <= 3) star(g, 22, 22 - f * 3, 4 + f, 'h1', 'h0');
+    if (f === 4) fade(g, 0.6);
   }),
-  eyeFx: () => frames(3, 24, 16, (g, f) => {
-    const open = [1, 4, 3][f];
-    oval(g, 2, 8 - open, 20, open * 2, 'w'); if (open > 1) { oval(g, 9, 8 - Math.min(open, 3), 6, Math.min(open, 3) * 2, 'u'); px(g, 11, 7, 'W'); }
+  recoverFx: () => fxFrames(5, 56, 64, (g, f) => {
+    const y = 56 - f * 8;
+    ringLine(g, 28, y, 18 - f * 2, f >= 3 ? 'c3' : 'c1', 2, 0.35);
+    ringLine(g, 28, y + 8, 14 - f, 'c2', 1, 0.35);
+    motes(g, 28, y - 6, 10, 18, ['c0', 'c1', 'c2'], 11 + f);
+    if (f === 4) fade(g, 0.6);
+  }),
+  // Tier 3: fire ---------------------------------------------------------
+  runeCircle: () => fxFrames(6, 76, 28, (g, f) => {
+    const spin = f * 20;
+    ringLine(g, 38, 14, 34, f % 2 ? 'f2' : 'f1', 1, 0.34);
+    ringLine(g, 38, 14, 26, 'f3', 1, 0.34);
+    for (let i = 0; i < 8; i += 1) {
+      const a = rad(i * 45 + spin), x = 38 + Math.cos(a) * 30, y = 14 + Math.sin(a) * 30 * 0.34;
+      rect(g, Math.round(x) - 1, Math.round(y) - 1, 3, 2, i % 2 ? 'f1' : 'f0');
+    }
+    for (let i = 0; i < 3; i += 1) { const a = rad(i * 120 - spin); line(g, 38 + Math.cos(a) * 26, 14 + Math.sin(a) * 8.8, 38 + Math.cos(a + rad(120)) * 26, 14 + Math.sin(a + rad(120)) * 8.8, 'f2'); }
+    if (f === 5) fade(g, 0.5);
+  }),
+  fireProj: () => fxFrames(4, 48, 36, (g, f) => {
+    const wob = f % 2 ? 2 : -2;
+    poly(g, [[0, 18 + wob], [22, 7], [22, 29]], 'f4');
+    poly(g, [[6, 18 - wob], [22, 11], [22, 25]], 'f3');
+    poly(g, [[12, 18], [22, 14], [22, 22]], 'f2');
+    disc(g, 30, 18, 12, ['f5', 'f4', 'f3', 'f2', 'f1', 'f0']);
+    motes(g, 10, 18, 8, 10, ['f2', 'f3', 'f1'], 5 + f);
+  }),
+  fireBlast: () => fxFrames(7, 104, 104, (g, f) => {
+    const r = [10, 24, 34, 40, 44, 46, 46][f];
+    if (f < 5) disc(g, 52, 52, r, f < 2 ? ['f3', 'f2', 'f1', 'f0', 'c0'] : ['f5', 'f4', 'f3', 'f2', 'f1']);
+    if (f >= 2) ringLine(g, 52, 52, r + 4, f >= 5 ? 'e2' : 'f4', 3);
+    if (f >= 3) for (let i = 0; i < 10; i += 1) { const a = rad(i * 36 + f * 9); disc(g, 52 + Math.cos(a) * (r - 6), 52 + Math.sin(a) * (r - 6), 7 - Math.min(5, f - 3), f >= 5 ? ['e3', 'e2', 'e1'] : ['f5', 'f4', 'f3']); }
+    motes(g, 52, 52, 30, r + 10, ['f1', 'f2', 'f0', 'f3'], 99 + f, 0.3);
+    if (f >= 5) fade(g, f === 5 ? 0.35 : 0.7);
+  }),
+  fireHit: () => fxFrames(4, 44, 44, (g, f) => {
+    const r = [8, 14, 18, 18][f];
+    disc(g, 22, 24, r, f < 2 ? ['f4', 'f3', 'f2', 'f1', 'f0'] : ['f5', 'f4', 'f3', 'f2']);
+    [6, 14, 22, 30, 38].forEach((x, i) => { const h = 8 + ((i + f) % 3) * 5; poly(g, [[x - 4, 34], [x, 34 - h], [x + 4, 34]], i % 2 ? 'f2' : 'f3'); });
+    if (f >= 2) fade(g, f === 2 ? 0.3 : 0.65);
+  }),
+  embers: () => fxFrames(5, 72, 56, (g, f) => {
+    const r = rnd(17);
+    for (let i = 0; i < 26; i += 1) {
+      const x = Math.round(4 + r() * 64), y0 = 50 - r() * 20, y = Math.round(y0 - f * (4 + r() * 5));
+      if (y < 0) continue;
+      px(g, x, y, ['f0', 'f1', 'f2', 'f3'][i % 4]);
+      if (i % 3 === 0) px(g, x, y + 1, 'f4');
+    }
+    if (f >= 3) fade(g, f === 3 ? 0.35 : 0.65);
+  }),
+  breath: () => fxFrames(4, 52, 44, (g, f) => {
+    disc(g, 26, 22, [12, 16, 18, 16][f], f < 2 ? ['f4', 'f3', 'f2', 'f1', 'f0'] : ['f5', 'f4', 'f3', 'f2']);
+    motes(g, 26, 22, 14, 22, ['f1', 'f2', 'f0'], 3 + f, 0.4);
+    if (f === 3) fade(g, 0.45);
+  }),
+  chargeGather: () => fxFrames(4, 64, 64, (g, f) => {
+    const r = 28 - f * 6;
+    for (let i = 0; i < 12; i += 1) {
+      const a = rad(i * 30 + f * 12), x = 32 + Math.cos(a) * r, y = 32 + Math.sin(a) * r;
+      line(g, x, y, 32 + Math.cos(a) * (r + 5), 32 + Math.sin(a) * (r + 5), i % 2 ? 'f2' : 'f1');
+    }
+    disc(g, 32, 32, 3 + f * 2, ['f3', 'f2', 'f1', 'f0']);
+  }),
+  // Tier 3: shadow / dark / blood / earth --------------------------------
+  darkSlash: () => fxFrames(5, 52, 52, (g, f) => {
+    const end = [-20, 30, 40, 40, 40][f];
+    crescent(g, 18, 30, 24, -125, end, [3, 7, 5, 4, 3][f], f >= 3 ? 'd3' : 'd2', 'd0');
+    crescent(g, 18, 30, 19, -110, end - 12, 2, 'd4', null);
+    if (f === 2) { burst(g, 38, 24, 4, 11, 8, 'd1', 1); star(g, 38, 24, 5, 'd1', 'd0'); }
+    if (f >= 3) fade(g, f === 3 ? 0.4 : 0.75);
+  }),
+  shadowPuff: () => fxFrames(5, 48, 60, (g, f) => {
+    [[24, 40, 10], [14, 44, 7], [34, 44, 7], [24, 28, 8], [20, 52, 6], [30, 52, 6]].forEach(([x, y, r], i) => {
+      const s = r + f * 2, ox = (x - 24) * f * 0.25, oy = (y - 40) * f * 0.25 - f * 2;
+      disc(g, x + ox, y + oy, s, i % 2 ? ['d5', 'd4', 'd3'] : ['d4', 'd3', 'd2'], true);
+    });
+    if (f >= 2) fade(g, [0, 0, 0.3, 0.55, 0.8][f]);
+  }),
+  darkGather: () => fxFrames(5, 64, 64, (g, f) => {
+    const r = 30 - f * 5;
+    for (let i = 0; i < 14; i += 1) {
+      const a = rad(i * (360 / 14) - f * 16), x = 32 + Math.cos(a) * r, y = 32 + Math.sin(a) * r;
+      line(g, x, y, 32 + Math.cos(a - 0.4) * (r + 6), 32 + Math.sin(a - 0.4) * (r + 6), i % 2 ? 'd1' : 'd3');
+    }
+    disc(g, 32, 32, 3 + f * 2.5, ['d5', 'd4', 'd3', 'd1', 'd0']);
+  }),
+  darkOrb: () => fxFrames(3, 44, 44, (g, f) => {
+    disc(g, 22, 22, 13, ['d5', 'd4', 'd3', 'd2', 'd1']);
+    ringLine(g, 22, 22, 15 + f, 'd1', 1);
+    motes(g, 22, 22, 12, 20, ['d1', 'd0', 'd2'], 21 + f);
+  }),
+  darkBurst: () => fxFrames(7, 104, 104, (g, f) => {
+    const r = [8, 20, 32, 40, 44, 46, 46][f];
+    if (f < 5) disc(g, 52, 52, r, f < 2 ? ['d3', 'd2', 'd1', 'd0', 'c0'] : ['d5', 'd4', 'd3', 'd2', 'd1']);
+    ringLine(g, 52, 52, r + 3, f >= 4 ? 'd4' : 'd1', 3);
+    burst(g, 52, 52, r * 0.6, r + 10, 16, f >= 4 ? 'd3' : 'd1', 2, f * 11);
+    if (f >= 5) fade(g, f === 5 ? 0.4 : 0.75);
+  }),
+  bloodMoon: () => fxFrames(6, 56, 56, (g, f) => {
+    const r = [6, 12, 16, 18, 18, 18][f];
+    disc(g, 28, 28, r + 4, ['b4', 'b4']);
+    disc(g, 28, 28, r, ['b4', 'b3', 'b2', 'b1']);
+    if (f >= 2) { px(g, 24, 22, 'b0'); px(g, 25, 22, 'b0'); px(g, 24, 23, 'b0'); }
+    if (f >= 3) motes(g, 28, 28, 12, 26, ['b1', 'b2', 'b0'], 41 + f);
+    if (f === 5) fade(g, 0.3);
+  }),
+  bloodSlash: () => fxFrames(5, 52, 52, (g, f) => {
+    const end = [-20, 30, 40, 40, 40][f];
+    crescent(g, 18, 30, 24, -125, end, [3, 7, 5, 4, 3][f], f >= 3 ? 'b3' : 'b2', 'b0');
+    if (f === 2) star(g, 38, 24, 5, 'b1', 'b0');
+    if (f >= 3) fade(g, f === 3 ? 0.4 : 0.75);
+  }),
+  drainOrb: () => fxFrames(3, 16, 16, (g, f) => { disc(g, 8, 8, 5, ['b4', 'b3', 'b2', 'b1']); px(g, 6, 6, 'b0'); if (f) px(g, 14, 8, 'b2'); }),
+  healOrb: () => fxFrames(3, 16, 16, (g, f) => { disc(g, 8, 8, 5, ['h4', 'h3', 'h2', 'h1']); px(g, 6, 6, 'h0'); if (f) px(g, 1, 8, 'h2'); }),
+  drainHeal: () => fxFrames(4, 36, 48, (g, f) => {
+    for (let i = 0; i < 5; i += 1) { const y = 42 - ((i * 9 + f * 7) % 40), x = 6 + ((i * 11) % 24); plus(g, x, y, i % 2 ? 'b1' : 'b2', 1); }
+    if (f === 3) fade(g, 0.5);
+  }),
+  quakeCrack: () => fxFrames(6, 200, 40, (g, f) => {
+    const reach = [40, 100, 160, 200, 200, 200][f];
+    const r = rnd(77);
+    for (const dir of [1, -1]) {
+      let y = 20;
+      for (let x = 100; Math.abs(x - 100) < reach / 2; x += dir) {
+        y += Math.round(r() * 2 - 1); y = Math.max(10, Math.min(30, y));
+        rect(g, x, y - 1, 1, 3, 'e4'); px(g, x, y - 2, 'e3'); if (f < 3) px(g, x, y + 2, 'f3');
+        if (x % 12 === 0) { const ty = y + (r() < 0.5 ? -8 : 8); line(g, x, y, x + dir * 5, ty, 'e4', 2); }
+      }
+    }
+    if (f >= 1) motes(g, 100, 16, 30 + f * 8, reach / 2, ['e1', 'e2', 'e0', 'e3'], 5 + f, 0.6);
+    if (f <= 2) disc(g, 100, 22, 8 + f * 4, ['f4', 'f3', 'f2']);
+    if (f >= 4) fade(g, f === 4 ? 0.35 : 0.7);
+  }),
+  debris: () => fxFrames(5, 80, 80, (g, f) => {
+    const r = rnd(13);
+    for (let i = 0; i < 16; i += 1) {
+      const vx = r() * 2.4 - 1.2, vy = -(1.6 + r() * 2.2), s = 2 + Math.floor(r() * 3);
+      const x = 40 + vx * f * 9, y = 68 + vy * f * 9 + f * f * 1.8;
+      rect(g, Math.round(x), Math.round(y), s + 1, s, i % 3 ? 'e2' : 'e1');
+      px(g, Math.round(x), Math.round(y), 'e0'); px(g, Math.round(x + s), Math.round(y + s - 1), 'e3');
+    }
+    if (f <= 1) disc(g, 40, 72, 16 + f * 8, ['e3', 'e2', 'e1']);
+    if (f >= 3) fade(g, f === 3 ? 0.35 : 0.7);
+  }),
+  // Misc ------------------------------------------------------------------
+  enrage: () => fxFrames(5, 80, 80, (g, f) => {
+    ringLine(g, 40, 40, 10 + f * 7, f >= 3 ? 'b3' : 'b2', 3);
+    burst(g, 40, 40, 14 + f * 5, 22 + f * 6, 14, f >= 3 ? 'f3' : 'f1', 2, f * 13);
+    if (f >= 3) fade(g, f === 3 ? 0.4 : 0.75);
+  }),
+  poof: () => fxFrames(5, 48, 48, (g, f) => {
+    [[24, 24, 9], [14, 27, 7], [34, 27, 7], [24, 15, 7], [24, 34, 6]].forEach(([x, y, r], i) => {
+      const s = r + f * 2, ox = (x - 24) * f * 0.35, oy = (y - 24) * f * 0.35;
+      disc(g, x + ox, y + oy, s, i % 2 ? ['e2', 'e1', 'e0'] : ['e1', 'e0', 'c0']);
+    });
+    if (f >= 2) fade(g, [0, 0, 0.3, 0.55, 0.8][f]);
+  }),
+  bossBurst: () => fxFrames(7, 120, 120, (g, f) => {
+    for (let i = 0; i < 7; i += 1) {
+      const a = rad(i * (360 / 7) + f * 17), d = f * 7;
+      disc(g, 60 + Math.cos(a) * d, 60 + Math.sin(a) * d, Math.max(3, 14 - f * 1.5), f % 2 ? ['f2', 'f1', 'f0'] : ['f1', 'f0', 'c0']);
+    }
+    ringLine(g, 60, 60, 12 + f * 8, 'g2', 3);
+    burst(g, 60, 60, 20 + f * 5, 32 + f * 6, 18, 'f3', 2, f * 11);
+    if (f >= 5) fade(g, f === 5 ? 0.4 : 0.75);
+  }),
+  sparkle: () => fxFrames(4, 24, 24, (g, f) => { star(g, 12, 12, [3, 7, 5, 2][f], 'g1', 'c0'); if (f === 1) motes(g, 12, 12, 6, 9, ['g2', 'g1'], 3); }),
+  status: () => fxFrames(4, 36, 36, (g, f) => {
+    burst(g, 18, 18, 4 + f * 3, 10 + f * 4, 8, f >= 2 ? 'g3' : 'g2', 2, 22);
+    if (f < 2) { disc(g, 18, 18, 5 + f, ['g2', 'g1', 'g0']); }
+    if (f === 3) fade(g, 0.55);
+  }),
+  eyeFx: () => fxFrames(3, 28, 18, (g, f) => {
+    const open = [1, 5, 4][f];
+    oval(g, 2, 9 - open, 24, open * 2, 'w');
+    if (open > 1) { oval(g, 10, 9 - Math.min(open, 4), 8, Math.min(open, 4) * 2, 'u'); px(g, 12, 7, 'W'); }
     outline(g, 'k');
   }),
-  darkSlash: () => frames(4, 32, 32, (g, f) => {
-    crescent(g, 12, 20, 14, -110, f === 0 ? -40 : 20, f === 1 ? 5 : 3, f === 3 ? 'P' : 'V', 'M');
-    if (f === 2) burst(g, 22, 16, 3, 7, 6, 'M');
-    if (f === 3) g.d = dissolve(g, 0.5).d;
+  summon: () => fxFrames(5, 60, 60, (g, f) => {
+    ringLine(g, 30, 50, 24, 'd2', 2, 0.3); ringLine(g, 30, 50, 17, 'd3', 1, 0.3);
+    for (let i = 0; i < 6; i += 1) { const x = 10 + i * 8, y = 48 - f * 7 - (i % 2) * 5; if (y > 2) { rect(g, x, y, 2, 4, i % 2 ? 'd1' : 'd0'); } }
+    if (f === 4) fade(g, 0.5);
   }),
-  chargeFx: () => frames(3, 40, 40, (g, f) => {
-    [[6, 34], [14, 30], [26, 32], [34, 36], [20, 38]].forEach(([x, y], i) => {
-      const yy = y - f * 8 - (i % 2) * 4;
-      if (yy > 1) { px(g, x, yy, i % 2 ? 'y' : 'o'); px(g, x, yy + 1, 'o'); }
-    });
-  }),
-  flash: () => frames(1, 4, 4, (g) => rect(g, 0, 0, 4, 4, 'W')),
+  flash: () => fxFrames(1, 4, 4, (g) => rect(g, 0, 0, 4, 4, 'W')),
 };
 
 const effectCache = new Map();
@@ -255,8 +470,8 @@ export function effectSheet(name) {
   if (!EFFECTS[name]) return null;
   if (!effectCache.has(name)) {
     const list = EFFECTS[name]();
-    const s = sheet(`fx-${name}`, list[0].w, list[0].h, [list], PAL);
-    effectCache.set(name, { ...s, frames: list.length });
+    const s = sheet(`fx-${name}`, list[0].w, list[0].h, [list], FX_PAL);
+    effectCache.set(name, { ...s, frames: list.length, grids: s.grids, palette: s.palette });
   }
   return effectCache.get(name);
 }
@@ -374,185 +589,3 @@ export function backdropImage(stage) {
   return image(`backdrop-${stage}`, g, BG[stage]);
 }
 
-/* ------------------------------------------------------------ DOM player */
-
-const SKILL_HIT = {
-  slash: 'slash', powerSlash: 'bigSlash', cleave: 'slash', magicBolt: 'boltHit', fireball: 'fireHit',
-  strike: 'slash', doubleStrike: 'quickA', shadowStrike: 'darkSlash',
-};
-const DURATION = { default: 360, sparkle: 300, barrier: 600, flames: 400, bossBurst: 520, heal: 420 };
-
-/**
- * Effects for one battle view. play(event, state) is called for every event
- * the view replays; clear() removes leftover nodes. Never throws on a missing
- * target, because the view may re-render mid-effect.
- */
-export function createEffectsPlayer(root, { reducedMotion = false } = {}) {
-  let lastSkill = null, lastEnemyAction = null, lastEnemyId = null, lastTarget = null, hitCount = 0;
-  const timers = new Set();
-  const field = () => root.querySelector('.battle-field');
-  const nodeFor = (target) => root.querySelector(target === 'hero' ? '[data-combatant="hero"] .battle-sprite' : `[data-enemy-uid="${target}"] .battle-sprite`);
-
-  function centre(target, lift = 0.5) {
-    const host = field(), node = nodeFor(target);
-    if (!host || !node) return null;
-    const a = host.getBoundingClientRect(), b = node.getBoundingClientRect();
-    return { x: b.left - a.left + b.width / 2, y: b.top - a.top + b.height * lift, h: b.height };
-  }
-
-  function later(ms, fn) {
-    const id = setTimeout(() => { timers.delete(id); fn(); }, ms);
-    timers.add(id);
-  }
-
-  function spawn(name, at, { dur = DURATION[name] || DURATION.default, flip = false, loop = false, className = '' } = {}) {
-    const host = field();
-    const s = effectSheet(name);
-    if (!host || !at || !s) return null;
-    const node = document.createElement('span');
-    node.className = `px-fx ${sheetClass('pxe', name, s)}${loop ? ' px-fx--loop' : ''}${flip ? ' px-fx--flip' : ''} ${className}`;
-    node.style.cssText = `left:${Math.round(at.x)}px;top:${Math.round(at.y)}px;--n:${s.frames};--dur:${dur}ms`;
-    node.setAttribute('aria-hidden', 'true');
-    if (!loop) later(dur + 40, () => node.remove());
-    host.append(node);
-    return node;
-  }
-
-  function projectile(name, from, to, dur, then) {
-    if (!from || !to) { then?.(); return; }
-    if (reducedMotion) { then?.(); return; }
-    const node = spawn(name, from, { loop: true, className: 'px-proj', flip: to.x < from.x });
-    if (node) node.style.cssText += `;--dx:${Math.round(to.x - from.x)}px;--dy:${Math.round(to.y - from.y)}px;--travel:${dur}ms`;
-    later(dur, () => { node?.remove(); then?.(); });
-  }
-
-  function streak(from, to, dark = true) {
-    const host = field();
-    if (!host || !from || !to || reducedMotion) return;
-    const node = document.createElement('span');
-    const dx = to.x - from.x, dy = to.y - from.y;
-    node.className = `px-streak${dark ? ' px-streak--dark' : ''}`;
-    node.style.cssText = `left:${Math.round(from.x)}px;top:${Math.round(from.y)}px;width:${Math.round(Math.hypot(dx, dy))}px;transform:rotate(${Math.atan2(dy, dx)}rad)`;
-    node.setAttribute('aria-hidden', 'true');
-    host.append(node);
-    later(320, () => node.remove());
-  }
-
-  function screen(kind) {
-    if (reducedMotion) return;
-    const host = field();
-    if (!host) return;
-    host.classList.remove('px-shake', 'px-shake--big', 'px-flash', 'px-flash--red');
-    void host.offsetWidth;
-    host.classList.add(kind);
-    later(420, () => host.classList.remove(kind));
-  }
-
-  function enemyTargets(state) {
-    return state.enemies.filter((enemy) => enemy.hp > 0 || enemy.uid === lastTarget).map((enemy) => enemy.uid);
-  }
-
-  function play(event, state) {
-    if (reducedMotion) return;
-    switch (event.type) {
-      case 'attack': {
-        if (!event.source) {
-          lastSkill = event.skillId; hitCount = 0;
-          const hero = centre('hero', 0.45);
-          if (event.skillId === 'magicBolt') projectile('boltProj', hero, centre(event.target, 0.45), 260);
-          if (event.skillId === 'fireball') {
-            const ids = enemyTargets(state);
-            projectile('fireProj', hero, centre(ids[Math.floor(ids.length / 2)] ?? event.target, 0.45), 300);
-          }
-          if (event.skillId === 'shadowStrike') streak(hero, centre(event.target, 0.5));
-          if (event.skillId === 'cleave') {
-            const ids = enemyTargets(state);
-            const first = centre(ids[0], 0.55), last = centre(ids.at(-1), 0.55);
-            if (first && last) later(200, () => streak({ x: first.x - 40, y: first.y }, { x: last.x + 40, y: last.y }, false));
-          }
-        } else {
-          lastEnemyAction = event.action;
-          lastEnemyId = state.enemies.find((enemy) => enemy.uid === event.source)?.id ?? null;
-          if (event.action === 'drain') projectile('drainOrb', centre('hero', 0.45), centre(event.source, 0.45), 300);
-          if (event.action === 'heavy' && lastEnemyId === 'dragon') spawn('flames', centre('hero', 0.55), { dur: 400 });
-        }
-        break;
-      }
-      case 'damage': {
-        const at = centre(event.target, event.target === 'hero' ? 0.45 : 0.5);
-        if (event.amount === 0) { spawn('poof', at, { dur: 300 }); break; }
-        if (event.target === 'hero') {
-          spawn(lastEnemyAction === 'heavy' ? 'bigImpact' : 'impact', at);
-          screen(lastEnemyAction === 'heavy' ? 'px-shake--big' : 'px-shake');
-          break;
-        }
-        lastTarget = event.target;
-        let name = SKILL_HIT[lastSkill] || 'slash';
-        if (lastSkill === 'doubleStrike') name = hitCount % 2 ? 'quickB' : 'quickA';
-        hitCount += 1;
-        spawn(name, at);
-        if (lastSkill === 'cleave') spawn('slash', at, { flip: true, dur: 300 });
-        if (lastSkill === 'powerSlash') screen('px-shake');
-        break;
-      }
-      case 'heal': {
-        const at = centre(event.target, 0.5);
-        if (event.target === 'hero') { spawn('heal', at); break; }
-        if (event.source && event.source !== event.target) {
-          projectile('healOrb', centre(event.source, 0.3), at, 240, () => spawn('heal', centre(event.target, 0.5)));
-        } else spawn(lastEnemyAction === 'drain' ? 'drainHeal' : 'heal', at);
-        break;
-      }
-      case 'defend':
-        if (event.defense === 'guard') spawn('guardFx', centre('hero', 0.45));
-        if (event.defense === 'barrier') spawn('barrier', centre('hero', 0.55), { dur: 600 });
-        break;
-      case 'barrierUp': spawn('barrier', centre('hero', 0.55), { dur: 600 }); break;
-      case 'guard': spawn('guardFx', centre(event.target, 0.45)); break;
-      case 'charge': spawn('chargeFx', centre(event.target, 0.5), { dur: 400 }); break;
-      case 'summon': {
-        if (event.target != null) {
-          spawn('summon', centre(event.target, 0.7), { dur: 420 });
-          nodeFor(event.target)?.classList.add('px-summoned');
-        }
-        break;
-      }
-      case 'comboReady':
-      case 'counterReady': spawn('status', centre('hero', 0.08)); break;
-      case 'combo':
-      case 'counter': spawn('counterX', centre(event.target, 0.5)); break;
-      case 'opening':
-      case 'opening-hit': spawn('eyeFx', centre(event.target, 0.2), { dur: 300 }); break;
-      case 'break': spawn('breakFx', centre(event.target, 0.5)); screen('px-shake--big'); break;
-      case 'power': spawn('sparkle', centre('hero', 0.25), { dur: 300 }); break;
-      case 'chain': {
-        const from = centre(lastTarget, 0.5), to = centre(event.target, 0.5);
-        streak(from, to);
-        lastTarget = event.target;
-        break;
-      }
-      case 'enrage': spawn('enrage', centre(event.target, 0.5)); screen('px-flash--red'); break;
-      case 'defeat': {
-        const boss = state.enemies.find((enemy) => enemy.uid === event.target);
-        const isBoss = ['dragon', 'demonKing', 'giantGolem', 'vampireLord'].includes(boss?.id);
-        spawn(isBoss ? 'bossBurst' : 'poof', centre(event.target, 0.55), { dur: isBoss ? 520 : 360 });
-        if (isBoss) screen('px-flash');
-        break;
-      }
-      case 'victory': spawn('sparkle', centre('hero', 0.2), { dur: 300 }); break;
-      default: break;
-    }
-  }
-
-  function clear() {
-    root.querySelectorAll('.px-fx, .px-streak').forEach((node) => node.remove());
-  }
-
-  function destroy() {
-    timers.forEach((id) => clearTimeout(id));
-    timers.clear();
-    clear();
-  }
-
-  return { play, clear, destroy };
-}

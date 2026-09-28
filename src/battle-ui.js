@@ -1,25 +1,24 @@
 import { ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
-import { cycleTarget, getEnemyIntent, resolveEnemyPhase, selectTarget, useSkill } from './battle-engine.js';
+import {
+  availableItems, cycleTarget, getEnemyIntent, mustRecover, recover, resolveEnemyPhase, selectTarget, useItem, useSkill,
+} from './battle-engine.js';
 import {
   backdropClass, createEffectsPlayer, enemyRestState, eventSpriteStates, getBarrierArt, getBattleArt, getIcon, heroRestState,
 } from './battle-art.js';
+import { AP_SLOT } from './ap-meter.js';
 
-const EVENT_MS = 400;
-const REDUCED_EVENT_MS = 1;
+// Minimum on-screen time per event type; the effects player can ask for longer.
+const EVENT_MS = { default: 380, damage: 360, defeat: 620, ap: 320, recover: 760, item: 420, heal: 420, victory: 650, lost: 650, enrage: 700, summon: 480 };
+const REDUCED_EVENT_MS = 170;
+const END_PAUSE_MS = 900;
+const RECOVER_PAUSE_MS = 650;
+const DANGER_HP = 0.35;
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const hpPercent = (hp, maxHp) => Math.max(0, Math.min(100, (hp / maxHp) * 100));
 
-function costMarkup(skill, locked) {
+function costMarkup(skill, locked, affordable) {
   if (locked) return `<span class="battle-skill__cost battle-skill__cost--locked">${getIcon('lock')} LOCKED</span>`;
-  if (!skill.cost) return '<span class="battle-skill__cost battle-skill__cost--free">FREE</span>';
-  return `<span class="battle-skill__cost" aria-label="${skill.cost} Power">${getIcon('power').repeat(skill.cost)} ${skill.cost}</span>`;
-}
-
-function hintDetails(hint, state) {
-  const value = typeof hint === 'function' ? hint(state) : hint;
-  if (!value) return null;
-  if (typeof value === 'string') return { skill: 'basic', text: value };
-  return value;
+  return `<span class="battle-skill__cost${affordable ? '' : ' battle-skill__cost--short'}" aria-label="${skill.cost} AP">${'<i></i>'.repeat(skill.cost)}${skill.cost} AP</span>`;
 }
 
 function hpBar(hp, maxHp, label) {
@@ -47,8 +46,8 @@ function statusBadges(enemy, openingUid) {
 const INTENT_ICON = { attack: 'attack', guard: 'guard', heal: 'heal', summon: 'summon', charge: 'charge', heavy: 'heavy', rest: 'rest', drain: 'drain' };
 const INTENT_TONE = { heavy: ' battle-intent--heavy', charge: ' battle-intent--charge', heal: ' battle-intent--support', summon: ' battle-intent--support' };
 
-function intentMarkup(state, enemy) {
-  if (state.turn !== 'player' || enemy.hp <= 0) return '';
+function intentMarkup(state, enemy, hidden = false) {
+  if (hidden || state.turn !== 'player' || enemy.hp <= 0) return '';
   const intent = getEnemyIntent(state, enemy.uid);
   const data = ENEMIES[enemy.id];
   const labels = {
@@ -64,8 +63,9 @@ function intentMarkup(state, enemy) {
   return `<span class="battle-intent${INTENT_TONE[intent] || ''}">${getIcon(INTENT_ICON[intent] || 'attack')}${esc(labels[intent] || intent)}</span>`;
 }
 
-function heroStatuses(hero) {
+function heroStatuses(hero, recovering) {
   const badges = [];
+  if (recovering) badges.push(status('tired', 'rest', 'RECOVERING'));
   if (hero.defense) badges.push(hero.defense === 'dodge' ? status('guard', 'dodge', 'Dodge ready') : hero.defense === 'barrier' ? status('guard', 'barrier', 'Barrier') : status('guard', 'guard', 'Guarding'));
   if (hero.combo) badges.push(status('combo', 'combo', 'COMBO READY'));
   if (hero.counter) badges.push(status('counter', 'counter', 'COUNTER READY'));
@@ -73,16 +73,24 @@ function heroStatuses(hero) {
   return `<div class="battle-statuses battle-statuses--hero">${badges.join('')}</div>`;
 }
 
-function eventMessage(event) {
+const REJECTED = {
+  unaffordable: 'Not enough AP!',
+  'no-items': 'No potions left!',
+  'full-hp': 'HP is already full!',
+  locked: 'That skill is locked.',
+};
+
+export function eventMessage(event) {
   switch (event.type) {
-    case 'attack': return event.source ? (event.action === 'heavy' ? 'A heavy attack!' : 'Enemy attacks!') : 'Attack!';
+    case 'attack': return event.source ? (event.action === 'heavy' ? 'A BIG ATTACK!' : event.action === 'drain' ? 'Drain!' : 'Enemy attacks!') : `${SKILLS[event.skillId]?.name ?? 'Attack'}!`;
     case 'damage': return event.amount === 0 ? 'Dodged!' : `${event.amount} damage!`;
     case 'heal': return event.amount ? `Recovered ${event.amount} HP!` : 'HP is already full.';
-    case 'defend': return event.defense === 'dodge' ? 'Ready to dodge!' : 'Defence ready!';
+    case 'item': return 'Potion!';
+    case 'defend': return event.defense === 'dodge' ? 'Ready to dodge!' : event.defense === 'barrier' ? 'Barrier up!' : 'Guard up!';
     case 'guard': return 'Enemy is guarding!';
-    case 'charge': return `⚠️ ${event.heavyName || 'Heavy attack'} NEXT TURN!`;
+    case 'charge': return `⚠️ ${event.heavyName || 'Big attack'} NEXT TURN!`;
     case 'rest': return 'The enemy is tired!';
-    case 'summon': return 'Another enemy appeared!';
+    case 'summon': return event.target == null ? 'Nothing happened.' : 'Another enemy appeared!';
     case 'comboReady': return 'COMBO READY!';
     case 'combo': return 'COMBO!';
     case 'counterReady': return 'COUNTER READY!';
@@ -90,24 +98,38 @@ function eventMessage(event) {
     case 'opening':
     case 'opening-hit': return 'OPENING!';
     case 'break': return 'BREAK!';
-    case 'power': return `+${event.amount} POWER`;
-    case 'barrierUp': return 'Barrier ready!';
+    case 'ap': return event.reason === 'recover' ? `RECOVERING… +${event.amount} AP` : `+${event.amount} AP!`;
+    case 'recover': return 'RECOVERING… / ひとやすみ…';
+    case 'barrierUp': return 'Barrier up!';
     case 'chain': return 'CHAIN!';
     case 'enrage': return event.message;
     case 'defeat': return 'Enemy defeated!';
     case 'victory': return 'VICTORY!';
     case 'lost': return 'DEFEATED...';
-    case 'rejected': return event.reason === 'unaffordable' ? 'Not enough Power!' : 'That action is unavailable.';
+    case 'rejected': return REJECTED[event.reason] || 'That action is unavailable.';
     default: return 'Battle!';
   }
 }
 
+/** The one hint shown this turn (the danger hint outranks onboarding). Pure, for tests. */
+export function battleHint(state, onboarding = null) {
+  if (state.turn !== 'player') return null;
+  const living = state.enemies.filter((enemy) => enemy.hp > 0);
+  if (living.some((enemy) => enemy.intent === 'heavy')) return { skill: 'defense', text: '🔥 BIG ATTACK NEXT! まもろう！' };
+  const potion = availableItems(state)[0];
+  if (potion?.usable && state.hero.hp <= state.hero.maxHp * DANGER_HP) return { item: true, text: 'HP がピンチ！ ポーションをつかおう' };
+  if (living.some((enemy) => enemy.intent === 'charge') && state.ap >= 1) return { keep: true, text: '⚡ BIG ATTACK SOON — AP を 1 のこそう！' };
+  return onboarding;
+}
+
 /**
- * Render and run a battle. The view owns the useSkill -> enemy phase loop.
- * onAction receives (settledState, { events }) after a complete player/enemy turn.
- * onSelect receives the newly selected state. onExit requests the Menu action.
+ * Render and run a battle. The view owns the player -> enemy -> (recovery) loop.
+ * onAction receives (settledState, { events }) after a complete turn.
+ * apMeter is the shared Adventure AP meter (optional); onExit requests the Menu action.
  */
-export function createBattleView(container, { state, onAction = () => {}, onSelect = () => {}, onExit = () => {}, hint = null } = {}) {
+export function createBattleView(container, {
+  state, apMeter = null, onAction = () => {}, onSelect = () => {}, onExit = () => {}, hint = null, sound = null, topRight = '',
+} = {}) {
   if (!container) throw new Error('createBattleView needs a container');
   if (!state) throw new Error('createBattleView needs battle state');
 
@@ -115,11 +137,27 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
   let destroyed = false;
   let playing = false;
   let fastForward = false;
+  let recovering = false;
+  let itemMenu = false;
   let activeTimer = null;
   let finishDelay = null;
+  let shownAp = state.ap;
+  // While events play, the view shows this snapshot (HP, statuses, stance) and updates it per event,
+  // so bars drop as hits land instead of jumping to the end-of-turn values.
+  let display = null;
+  let fitPx = null; // integer pixel scale chosen so the tallest sprite and its plate fit the field
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const effects = createEffectsPlayer(container, { reducedMotion });
+  const effects = createEffectsPlayer(container, { reducedMotion, sound });
   const stage = ENCOUNTERS[state.encounterId]?.tier ?? 1;
+  const boss = state.enemies.some((enemy) => ENEMIES[enemy.id].boss);
+
+  const onboarding = () => (typeof hint === 'function' ? hint(currentState) : hint) || null;
+  const currentHint = () => (playing ? null : battleHint(currentState, onboarding()));
+
+  function setAp(value, options) {
+    shownAp = value;
+    apMeter?.set(value, options);
+  }
 
   function sprite(target) {
     const selector = target === 'hero' ? '[data-combatant="hero"]' : `[data-enemy-uid="${target}"]`;
@@ -133,39 +171,62 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     node.dataset.state = value;
   }
 
-  function skillsMarkup() {
+  function skillsMarkup(activeHint) {
     const hero = HEROES[currentState.heroId];
-    const activeHint = hintDetails(hint, currentState);
-    const danger = currentState.turn === 'player' && currentState.enemies.some((enemy) => enemy.hp > 0 && enemy.intent === 'heavy');
-    return hero.skills.map((id, index) => {
+    const busy = currentState.turn !== 'player' || playing;
+    if (itemMenu) {
+      const potion = availableItems(currentState)[0];
+      const reason = potion.reason === 'no-items' ? 'None left' : potion.reason === 'full-hp' ? 'HP is full' : potion.reason === 'unaffordable' ? `Need ${potion.cost} AP` : '';
+      return `<button type="button" class="battle-skill battle-skill--item px-button" data-item-id="potion" ${potion.usable && !busy ? '' : 'disabled'} title="${esc(reason)}">
+          <kbd>1</kbd>${getIcon('potion')}<span class="battle-skill__name">Potion ×${potion.count} <small>${esc(potion.jaName)} · HP +${potion.heal}</small></span>
+          ${costMarkup(potion, false, currentState.ap >= potion.cost)}
+          ${reason ? `<span class="battle-skill__why">${esc(reason)}</span>` : ''}
+        </button>
+        <button type="button" class="battle-skill battle-skill--back px-button secondary" data-item-back><kbd>5</kbd><span class="battle-skill__name">Back <small>もどる</small></span></button>`;
+    }
+    const buttons = hero.skills.map((id, index) => {
       const skill = SKILLS[id];
       const locked = skill.tier > currentState.skillTier;
-      const affordable = currentState.power >= skill.cost;
-      const disabled = locked || !affordable || currentState.turn !== 'player' || playing;
-      const reason = locked ? `Unlocks at skill tier ${skill.tier}` : !affordable ? `Need ${skill.cost} Power` : '';
-      const highlighted = (danger && index === 1) || (activeHint && (activeHint.skillId === id || (activeHint.skill === 'basic' && index === 0) || (activeHint.skill === 'defense' && index === 1)));
-      return `<button type="button" class="battle-skill px-button${highlighted ? ' battle-skill--hint' : ''}" data-skill-id="${id}"
+      const affordable = currentState.ap >= skill.cost;
+      const disabled = locked || !affordable || busy;
+      const reason = locked ? 'Unlocks later' : !affordable ? `Need ${skill.cost} AP` : '';
+      const highlighted = !busy && ((activeHint?.skill === 'defense' && skill.kind === 'defense' && affordable)
+        || (activeHint?.skill === 'basic' && index === 0) || activeHint?.skillId === id);
+      return `<button type="button" class="battle-skill px-button battle-skill--${skill.kind}${highlighted ? ' battle-skill--hint' : ''}" data-skill-id="${id}"
         ${disabled ? 'disabled' : ''} aria-describedby="${reason ? `skill-reason-${index}` : ''}" title="${esc(reason)}">
         <kbd>${index + 1}</kbd>${getIcon(id)}<span class="battle-skill__name">${esc(skill.name)} <small>${esc(skill.jaName)}</small></span>
-        ${costMarkup(skill, locked)}
-        ${reason ? `<span class="sr-only" id="skill-reason-${index}">${esc(reason)}</span>` : ''}
+        ${costMarkup(skill, locked, affordable)}
+        ${reason ? `<span class="battle-skill__why" id="skill-reason-${index}">${esc(reason)}</span>` : ''}
       </button>`;
-    }).join('');
+    });
+    const potion = availableItems(currentState)[0];
+    const itemHint = !busy && activeHint?.item;
+    buttons.push(`<button type="button" class="battle-skill battle-skill--items px-button${itemHint ? ' battle-skill--hint' : ''}" data-item-menu ${busy ? 'disabled' : ''}>
+      <kbd>5</kbd>${getIcon('potion')}<span class="battle-skill__name">Item <small>×${potion.count}</small></span>
+    </button>`);
+    return buttons.join('');
   }
 
-  function enemyMarkup(enemy) {
-    const data = ENEMIES[enemy.id];
-    const alive = enemy.hp > 0;
-    const selected = alive && enemy.uid === currentState.selectedUid;
-    return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}${enemy.phase === 2 ? ' battle-enemy--enraged' : ''}"
-      data-select-uid="${enemy.uid}" data-enemy-uid="${enemy.uid}" aria-pressed="${selected}" ${alive ? '' : 'disabled'}>
+  function snapshot(source) {
+    return { hero: { ...source.hero }, enemies: new Map(source.enemies.map((enemy) => [enemy.uid, { ...enemy }])) };
+  }
+
+  function enemyMarkup(current) {
+    const data = ENEMIES[current.id];
+    const pending = Boolean(display) && !display.enemies.has(current.uid);
+    const enemy = display?.enemies.get(current.uid) ?? current;
+    const gone = enemy.hp <= 0;
+    const selected = !gone && !display && enemy.uid === currentState.selectedUid;
+    const art = gone ? '' : getBattleArt(enemy.id, enemyRestState(enemy), { variant: enemy.phase === 2 ? 'enraged' : '' });
+    return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}${enemy.phase === 2 ? ' battle-enemy--enraged' : ''}${gone ? ' battle-enemy--gone' : ''}${pending ? ' battle-enemy--pending' : ''}"
+      data-select-uid="${enemy.uid}" data-enemy-uid="${enemy.uid}" data-enemy-id="${enemy.id}" aria-pressed="${selected}" ${gone ? 'disabled aria-hidden="true" tabindex="-1"' : ''}>
       <span class="battle-target-marker" aria-hidden="true">${getIcon('cursor')}</span>
       <span class="battle-enemy__plate px-panel">
         <span class="battle-enemy__name">${esc(data.name)}<small>${esc(data.jaName)}</small></span>
         ${hpBar(enemy.hp, enemy.maxHp, data.name)}
       </span>
-      <span class="battle-cues">${intentMarkup(currentState, enemy)}${statusBadges(enemy, currentState.hero.openingUid)}</span>
-      <span class="battle-art-wrap">${getBattleArt(enemy.id, enemyRestState(enemy), { variant: enemy.phase === 2 ? 'enraged' : '' })}</span>
+      <span class="battle-cues">${intentMarkup(currentState, current, playing)}${statusBadges(enemy, (display?.hero ?? currentState.hero).openingUid)}</span>
+      <span class="battle-art-wrap">${art}</span>
     </button>`;
   }
 
@@ -173,35 +234,62 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     if (destroyed) return;
     effects.clear();
     const hero = HEROES[currentState.heroId];
-    const activeHint = hintDetails(hint, currentState);
-    const danger = currentState.turn === 'player' && currentState.enemies.some((enemy) => enemy.hp > 0 && enemy.intent === 'heavy');
-    const defaultMessage = currentState.turn === 'won' ? 'VICTORY!' : currentState.turn === 'lost' ? 'DEFEATED...' : currentState.turn === 'enemy' ? 'Enemy turn...' : 'Choose a skill.';
-    container.innerHTML = `<section class="battle-view stage-${stage}" aria-label="Battle">
+    const activeHint = currentHint();
+    const defaultMessage = currentState.turn === 'won' ? 'VICTORY!' : currentState.turn === 'lost' ? 'DEFEATED...'
+      : recovering ? 'RECOVERING… / ひとやすみ…' : currentState.turn === 'enemy' ? 'Enemy turn...' : itemMenu ? 'Use an item? / アイテムをつかう？' : 'Choose an action.';
+    const heroShown = display?.hero ?? currentState.hero;
+    const heroState = recovering ? 'tired' : display ? heroShown.defense || 'idle' : heroRestState(currentState);
+    container.innerHTML = `<section class="battle-view stage-${stage}${boss ? ' battle-view--boss' : ''}${recovering ? ' battle-view--recovering' : ''}" aria-label="Battle">
       <div class="battle-topbar">
         <button type="button" class="secondary battle-exit px-button" data-battle-exit>← Menu</button>
-        <div class="battle-power px-panel" aria-label="Power ${currentState.power}">${getIcon('power')}POWER <strong>${currentState.power}</strong></div>
-        <div class="battle-round px-panel">TURN ${currentState.round}</div>
+        ${AP_SLOT}
+        <div class="battle-topbar__right"><div class="battle-round px-panel">TURN ${currentState.round}</div>${topRight}</div>
       </div>
       <div class="battle-field ${backdropClass(stage)}">
+        <div class="battle-light" aria-hidden="true"></div>
         <article class="battle-hero" data-combatant="hero" aria-label="${esc(hero.name)}">
-          <div class="battle-art-wrap">${getBattleArt(hero.id, heroRestState(currentState))}${currentState.hero.defense === 'barrier' ? getBarrierArt() : ''}</div>
+          <div class="battle-art-wrap">${getBattleArt(hero.id, heroState)}${heroShown.defense === 'barrier' ? getBarrierArt() : ''}</div>
         </article>
         <div class="battle-enemies">${currentState.enemies.map(enemyMarkup).join('')}</div>
       </div>
       <div class="battle-lower">
         <div class="battle-message-box px-panel">
           <div class="battle-message" role="status" aria-live="polite">${esc(message || defaultMessage)}</div>
-          ${danger || activeHint?.text ? `<div class="battle-hint">${esc(danger ? 'まもろう！' : activeHint.text)}</div>` : ''}
+          ${activeHint?.text ? `<div class="battle-hint${activeHint.skill === 'defense' ? ' battle-hint--danger' : ''}">${esc(activeHint.text)}</div>` : ''}
         </div>
         <div class="battle-hero-panel px-panel">
-          <h2>${esc(hero.name)} <small>${esc(hero.jaName)}</small></h2>
-          ${hpBar(currentState.hero.hp, currentState.hero.maxHp, hero.name)}
-          ${heroStatuses(currentState.hero)}
+          <h2>${esc(hero.name)} <small>${esc(hero.jaName)}</small><span class="battle-level">LV ${currentState.level}</span></h2>
+          ${hpBar(heroShown.hp, heroShown.maxHp, hero.name)}
+          ${heroStatuses(heroShown, recovering)}
         </div>
-        <div class="battle-skills" aria-label="Skills">${skillsMarkup()}</div>
+        <div class="battle-skills${itemMenu ? ' battle-skills--items' : ''}" aria-label="${itemMenu ? 'Items' : 'Skills'}">${skillsMarkup(activeHint)}</div>
       </div>
     </section>`;
+    if (fitPx) container.querySelector('.battle-view')?.style.setProperty('--px', fitPx);
+    else fit();
+    if (apMeter) {
+      apMeter.mount(container.querySelector('[data-ap-slot]'));
+      apMeter.setRecovering(recovering);
+      if (apMeter.value !== shownAp) apMeter.set(shownAp, { quiet: true });
+    }
   }
+
+  /** Pick the largest whole-pixel scale (2-4) at which every sprite, its name plate and intents fit. */
+  function fit() {
+    const view = container.querySelector('.battle-view');
+    const field = view?.querySelector('.battle-field');
+    if (!field || typeof getComputedStyle !== 'function' || !field.clientHeight) return;
+    if (matchMedia?.('(max-width: 700px)').matches) return; // phones stack the field and use the CSS scale
+    const read = (node, name) => Number(getComputedStyle(node).getPropertyValue(name)) || 0;
+    const enemyH = Math.max(1, ...[...field.querySelectorAll('.battle-enemy .px-sprite')].map((node) => read(node, '--fh') - read(node, '--top')));
+    const heroNode = field.querySelector('.battle-hero .px-sprite');
+    const heroH = heroNode ? read(heroNode, '--fh') : 72;
+    const room = field.clientHeight - 12;
+    const px = Math.max(2, Math.min(4, Math.floor(Math.min((room - 118) / enemyH, room / heroH))));
+    fitPx = px;
+    view.style.setProperty('--px', px);
+  }
+  const onResize = () => { fitPx = null; if (!playing) render(); };
 
   function delay(ms) {
     return new Promise((resolve) => {
@@ -224,13 +312,33 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     parent.append(node);
   }
 
+  /** Move a displayed HP value during playback and redraw just that bar. */
+  function shiftHp(target, delta) {
+    if (!display) return;
+    const unit = target === 'hero' ? display.hero : display.enemies.get(target);
+    if (!unit) return;
+    unit.hp = Math.max(0, Math.min(unit.maxHp, unit.hp + delta));
+    const bar = container.querySelector(target === 'hero' ? '.battle-hero-panel .battle-hp' : `[data-enemy-uid="${target}"] .battle-hp`);
+    if (bar) bar.outerHTML = hpBar(unit.hp, unit.maxHp, target === 'hero' ? HEROES[currentState.heroId].name : ENEMIES[unit.id].name);
+  }
+
   function applyEvent(event) {
+    if (display) {
+      if (event.type === 'damage') shiftHp(event.target, -event.amount);
+      if (event.type === 'heal') shiftHp(event.target, event.amount);
+      if (event.type === 'defend' || event.type === 'barrierUp') display.hero.defense = event.defense;
+      if (event.type === 'summon' && event.target != null) {
+        const added = currentState.enemies.find((enemy) => enemy.uid === event.target);
+        if (added) display.enemies.set(added.uid, { ...added });
+        container.querySelector(`[data-enemy-uid="${event.target}"]`)?.classList.remove('battle-enemy--pending');
+      }
+    }
     const message = container.querySelector('.battle-message');
     if (message) message.textContent = eventMessage(event);
     for (const [target, spriteState] of eventSpriteStates(event)) setSpriteState(target, spriteState);
-    effects.play(event, currentState);
+    const wanted = effects.play(event, currentState);
     switch (event.type) {
-      case 'damage': addFloater(event.target, event.amount === 0 ? 'DODGE!' : `-${event.amount}`, 'battle-floater--damage'); break;
+      case 'damage': addFloater(event.target, event.amount === 0 ? 'DODGE!' : `-${event.amount}`, event.target === 'hero' ? 'battle-floater--hurt' : 'battle-floater--damage'); break;
       case 'heal': addFloater(event.target, `+${event.amount} HP`, 'battle-floater--heal'); break;
       case 'defend': addFloater('hero', event.defense === 'dodge' ? 'READY!' : event.defense === 'barrier' ? 'BARRIER!' : 'GUARD!', 'battle-floater--shield'); break;
       case 'guard': addFloater(event.target, 'GUARD!', 'battle-floater--shield'); break;
@@ -240,30 +348,138 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
       case 'counter': addFloater(event.target, 'COUNTER!', 'battle-floater--status'); break;
       case 'opening':
       case 'opening-hit': addFloater(event.target, 'OPENING!', 'battle-floater--status'); break;
-      case 'break': addFloater(event.target, 'BREAK!', 'battle-floater--status'); break;
-      case 'power': addFloater('hero', `+${event.amount} POWER`, 'battle-floater--power'); break;
+      case 'break': addFloater(event.target, 'BREAK!', 'battle-floater--break'); break;
+      case 'ap': addFloater('hero', `+${event.amount} AP`, 'battle-floater--power'); setAp(event.ap); break;
       case 'barrierUp': addFloater('hero', 'BARRIER!', 'battle-floater--shield'); break;
       case 'chain': addFloater(event.target, 'CHAIN!', 'battle-floater--status'); break;
       case 'enrage': addFloater(event.target, 'ENRAGED!', 'battle-floater--status'); break;
+      case 'defeat': {
+        const node = container.querySelector(`[data-enemy-uid="${event.target}"]`);
+        node?.classList.add('battle-enemy--defeated');
+        break;
+      }
       default: break;
     }
+    return wanted;
   }
 
   async function replay(events) {
     if (!events?.length || destroyed) return;
     playing = true;
-    fastForward = reducedMotion;
     container.querySelector('.battle-view')?.setAttribute('aria-busy', 'true');
     for (const event of events) {
       if (destroyed) break;
       container.querySelectorAll('.battle-floater').forEach((node) => node.remove());
-      applyEvent(event);
-      await delay(fastForward ? REDUCED_EVENT_MS : EVENT_MS);
+      const wanted = applyEvent(event);
+      // The effects player knows how long its sequence needs; otherwise use the per-type default.
+      const base = reducedMotion ? REDUCED_EVENT_MS : (wanted ?? EVENT_MS[event.type] ?? EVENT_MS.default);
+      if (!fastForward) await delay(base);
       if (destroyed) break;
     }
     playing = false;
+  }
+
+  // Run a player step (skill, item or recovery), then the enemy phase, then any forced recovery.
+  async function runTurn(player) {
+    if (player.events[0]?.type === 'rejected') {
+      if (player.events[0].reason === 'unaffordable') apMeter?.deny();
+      render(eventMessage(player.events[0]));
+      return;
+    }
+    const gains = player.events.filter((event) => event.type === 'ap').reduce((sum, event) => sum + event.amount, 0);
+    display = snapshot(currentState);
+    currentState = player.state;
+    itemMenu = false;
     fastForward = false;
-    if (!destroyed) render(events.length ? eventMessage(events.at(-1)) : undefined);
+    playing = true;
+    render();
+    setAp(currentState.ap - gains);
+    const allEvents = [...player.events];
+    await replay(player.events);
+    if (!destroyed && currentState.turn === 'enemy') {
+      display = snapshot(currentState);
+      const enemy = resolveEnemyPhase(currentState);
+      currentState = enemy.state;
+      playing = true; // keep next turn's intents and hints hidden until the enemy phase has played
+      render();
+      await replay(enemy.events);
+      allEvents.push(...enemy.events);
+    }
+    recovering = false;
+    display = null;
+    if (!destroyed && mustRecover(currentState)) {
+      await runRecovery(allEvents);
+      return;
+    }
+    await settle(allEvents);
+  }
+
+  // An exhausted turn: show RECOVERING, fill +AP, then the enemies act while the hero rests.
+  async function runRecovery() {
+    recovering = true;
+    playing = true;
+    fastForward = false;
+    render();
+    sound?.sfx('recover');
+    if (!reducedMotion) await delay(RECOVER_PAUSE_MS);
+    if (destroyed) return;
+    const rest = recover(currentState);
+    display = snapshot(currentState);
+    currentState = rest.state;
+    await replay(rest.events);
+    if (destroyed) return;
+    // The recovery turn has no player action; runTurn plays the enemies' phase against the resting hero.
+    await runTurn({ state: currentState, events: [] });
+  }
+
+  async function settle(allEvents) {
+    fastForward = false;
+    if (destroyed) return;
+    const done = currentState.turn === 'won' || currentState.turn === 'lost';
+    render(allEvents.length ? eventMessage(allEvents.at(-1)) : undefined);
+    if (done) {
+      playing = true;
+      if (!reducedMotion) await delay(END_PAUSE_MS);
+      playing = false;
+    }
+    if (!destroyed) onAction(currentState, { events: allEvents });
+  }
+
+  async function act(skillId) {
+    if (destroyed || playing || currentState.turn !== 'player') return;
+    sound?.sfx('select');
+    await runTurn(useSkill(currentState, skillId, currentState.selectedUid));
+  }
+
+  async function actItem(itemId) {
+    if (destroyed || playing || currentState.turn !== 'player') return;
+    await runTurn(useItem(currentState, itemId));
+  }
+
+  function toggleItems(open) {
+    if (destroyed || playing || currentState.turn !== 'player') return;
+    itemMenu = open ?? !itemMenu;
+    sound?.sfx('cursor');
+    render();
+    container.querySelector(itemMenu ? '[data-item-id]:not(:disabled), [data-item-back]' : '[data-item-menu]')?.focus();
+  }
+
+  function chooseTarget(uid) {
+    if (destroyed || playing || currentState.turn !== 'player') return;
+    const next = selectTarget(currentState, uid);
+    if (next === currentState) return;
+    currentState = next;
+    sound?.sfx('cursor');
+    render();
+    onSelect(currentState);
+  }
+
+  function moveTarget(direction) {
+    if (destroyed || playing || currentState.turn !== 'player') return;
+    currentState = cycleTarget(currentState, direction);
+    sound?.sfx('cursor');
+    render();
+    onSelect(currentState);
   }
 
   function skipPlayback(event) {
@@ -279,49 +495,17 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
     return true;
   }
 
-  async function act(skillId) {
-    if (destroyed || playing || currentState.turn !== 'player') return;
-    const player = useSkill(currentState, skillId, currentState.selectedUid);
-    if (player.events[0]?.type === 'rejected') {
-      render(eventMessage(player.events[0]));
-      return;
-    }
-    currentState = player.state;
-    render();
-    await replay(player.events);
-    const allEvents = [...player.events];
-    if (!destroyed && currentState.turn === 'enemy') {
-      const enemy = resolveEnemyPhase(currentState);
-      currentState = enemy.state;
-      render();
-      await replay(enemy.events);
-      allEvents.push(...enemy.events);
-    }
-    if (!destroyed) onAction(currentState, { events: allEvents });
-  }
-
-  function chooseTarget(uid) {
-    if (destroyed || playing || currentState.turn !== 'player') return;
-    const next = selectTarget(currentState, uid);
-    if (next === currentState) return;
-    currentState = next;
-    render();
-    onSelect(currentState);
-  }
-
-  function moveTarget(direction) {
-    if (destroyed || playing || currentState.turn !== 'player') return;
-    currentState = cycleTarget(currentState, direction);
-    render();
-    onSelect(currentState);
-  }
-
   function onClick(event) {
     if (skipPlayback(event)) return;
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest('[data-battle-exit]')) { onExit(); return; }
+    if (target?.closest('[data-topbar-extra]')) return;
     const enemy = target?.closest('[data-select-uid]');
     if (enemy) { chooseTarget(Number(enemy.dataset.selectUid)); return; }
+    if (target?.closest('[data-item-menu]')) { toggleItems(true); return; }
+    if (target?.closest('[data-item-back]')) { toggleItems(false); return; }
+    const item = target?.closest('[data-item-id]');
+    if (item && !item.disabled) { actItem(item.dataset.itemId); return; }
     const skill = target?.closest('[data-skill-id]');
     if (skill && !skill.disabled) act(skill.dataset.skillId);
   }
@@ -332,12 +516,22 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
       if (event.key === 'Enter' || event.key === ' ') skipPlayback(event);
       return;
     }
-    if (event.key === 'Escape') { event.preventDefault(); onExit(); return; }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (itemMenu) toggleItems(false); else onExit();
+      return;
+    }
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
       moveTarget(event.key === 'ArrowRight' ? 1 : -1);
       return;
     }
+    if (itemMenu) {
+      if (event.key === '1') { event.preventDefault(); actItem('potion'); }
+      if (event.key === '5' || event.key === 'Backspace') { event.preventDefault(); toggleItems(false); }
+      return;
+    }
+    if (event.key === '5' || event.key.toLowerCase() === 'i') { event.preventDefault(); toggleItems(true); return; }
     if (/^[1-4]$/.test(event.key)) {
       const id = HEROES[currentState.heroId].skills[Number(event.key) - 1];
       if (id) { event.preventDefault(); act(id); }
@@ -346,7 +540,10 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
 
   container.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKeydown);
+  globalThis.addEventListener?.('resize', onResize);
   render();
+  apMeter?.set(shownAp, { quiet: true });
+  if (mustRecover(currentState)) queueMicrotask(() => runRecovery());
 
   return {
     get state() { return currentState; },
@@ -368,6 +565,7 @@ export function createBattleView(container, { state, onAction = () => {}, onSele
       effects.destroy();
       container.removeEventListener('click', onClick, true);
       document.removeEventListener('keydown', onKeydown);
+      globalThis.removeEventListener?.('resize', onResize);
       container.replaceChildren();
     },
   };

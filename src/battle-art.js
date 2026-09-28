@@ -1,15 +1,34 @@
 // The Adventure visual layer's public face. Callers ask for semantic art
 // (a character in a state, an icon, a backdrop) and never see how pixels are
 // drawn, so the art can be replaced without touching battle logic.
-import { ENEMY_IDS, FRAMES, HERO_IDS, ROWS, spriteSheet } from './pixel-sprites.js';
+import { DURATION_MS, ENEMY_IDS, FRAMES, HERO_IDS, LOOPING, ROWS, spriteSheet } from './pixel-sprites.js';
 import { backdropImage, effectSheet, iconImage } from './pixel-effects.js';
 import { sheetClass } from './pixel-core.js';
 
-export { createEffectsPlayer } from './pixel-effects.js';
+export { createEffectsPlayer } from './fx-player.js';
 export const SPRITE_STATES = ROWS;
 export const SPRITE_FRAMES = FRAMES;
 export const ART_IDS = Object.freeze({ heroes: HERO_IDS, enemies: ENEMY_IDS });
 const BOSSES = new Set(['dragon', 'demonKing', 'giantGolem', 'vampireLord']);
+
+/**
+ * CSS that plays each state's row: looping rows cycle, the rest play once and
+ * hold their last frame. Generated from the frame table so art and CSS agree.
+ */
+export function spriteStateCss() {
+  return ROWS.map((row, index) => {
+    const n = FRAMES[row], loop = LOOPING.has(row);
+    const end = loop ? 'var(--n)' : 'var(--last)';
+    return `.px-sprite[data-state="${row}"]{--row:${index};--n:${n};--last:${n - 1};animation:pxs-${row} ${DURATION_MS[row]}ms steps(${loop ? n : `${n}, jump-none`}) ${loop ? 'infinite' : 'forwards'}}`
+      + `@keyframes pxs-${row}{to{background-position-x:calc(${end} * var(--fw) * var(--px) * -1px)}}`;
+  }).join('\n');
+}
+if (typeof document !== 'undefined' && !document.getElementById('px-sprite-states')) {
+  const style = document.createElement('style');
+  style.id = 'px-sprite-states';
+  style.textContent = spriteStateCss();
+  document.head.append(style);
+}
 
 /** Markup for a hero or enemy in a semantic state (see SPRITE_STATES). */
 export function getBattleArt(id, state = 'idle', { variant = '' } = {}) {
@@ -40,9 +59,9 @@ export function backdropClass(stage) {
   return s ? sheetClass('pxb', `stage${stage}`, s) : '';
 }
 
-/** Sprite row for an enemy's standing condition. */
+/** Sprite row for an enemy's standing condition. A defeated enemy is not drawn at all. */
 export function enemyRestState(enemy) {
-  if (enemy.hp <= 0) return 'defeat';
+  if (enemy.hp <= 0) return 'gone';
   if (enemy.charging) return 'charge';
   if (enemy.tired) return 'tired';
   if (enemy.guarding) return 'guard';
@@ -68,6 +87,8 @@ export function eventSpriteStates(event) {
     case 'attack': return event.source ? [[event.source, 'attack']] : [['hero', HERO_ACTION[event.skillId] || 'attack']];
     case 'damage': return [[event.target, event.amount === 0 ? 'dodge' : 'hit']];
     case 'heal': return event.source ? [[event.source, 'cast']] : event.target === 'hero' ? [] : [[event.target, 'cast']];
+    case 'item': return [['hero', 'heal']];
+    case 'recover': return [['hero', 'tired']];
     case 'defend': return [['hero', event.defense]];
     case 'guard': return [[event.target, 'guard']];
     case 'charge': return [[event.target, 'charge']];
