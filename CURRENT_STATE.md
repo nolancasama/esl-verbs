@@ -6,9 +6,11 @@ The Adventure RPG upgrade (AP economy, HP/potion/XP campaign, RPG quiz UI,
 persistent AP meter, late-16-bit art, tiered effects, synthesized music) is
 implemented. On 2026-09-29 the follow-up list from the 2026-09-28 handoff was
 worked through (screen-fit review, idle-time sprite building, audio tests,
-SPEC rewrite). That work is **uncommitted**; `master` is one local checkpoint
-commit (`802f251`) ahead of `origin` (github.com/nolancasama/esl-verbs), and
-nothing from this task has been pushed.
+SPEC rewrite, in-play COMBO/OPENING/COUNTER explanations). Everything is
+committed and pushed to `origin/master` (github.com/nolancasama/esl-verbs),
+which GitHub Pages serves live at https://nolancasama.github.io/esl-verbs/
+(checked after the build: new code served, menu and a debug battle run with no
+console errors).
 
 Verified 2026-09-29:
 - `npm test` — 55 unit tests pass (battle, campaign, balance, art, quiz, audio).
@@ -45,11 +47,11 @@ Verified 2026-09-29:
 
 ## Next Steps
 
-1. Commit this work and push to origin (step 7 of the old list) — waiting for
-   the user's go-ahead.
+1. Play-test feedback from the user (they are playing the live/local build).
 2. Optional polish: richer stage backdrops; the smart-vs-hint balance margin is
    small (tactical rewards could be raised a little, then re-run
    `npm run balance` and `npm test`).
+3. Pushing `master` deploys live (GitHub Pages, legacy build from `/`).
 
 ## Manual Chromebook / classroom checks still needed
 
