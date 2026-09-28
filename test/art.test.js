@@ -102,6 +102,21 @@ test('battle hints: big attack first, then low HP potion, then keep-1-AP before 
   assert.equal(battleHint({ ...withIntent('charge'), ap: 0 }), null);
   assert.deepEqual(battleHint(withIntent('attack'), { skill: 'basic', text: 'hi' }), { skill: 'basic', text: 'hi' });
   assert.equal(battleHint({ ...withIntent('heavy'), turn: 'enemy' }), null);
+
+  // COMBO / OPENING / COUNTER point at the payoff, below the danger and keep-AP hints.
+  const hero = (state, changes) => ({ ...state, hero: { ...state.hero, ...changes }, enemies: state.enemies.map((enemy) => ({ ...enemy, intent: 'attack' })) });
+  const fighter = (level) => createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 4, level });
+  const combo = battleHint(hero(fighter(2), { combo: true }));
+  assert.equal(combo.skillId, 'powerSlash');
+  assert.match(combo.text, /COMBO.*\+4/);
+  assert.equal(battleHint(hero(fighter(1), { combo: true })), null, 'no combo hint before Power Slash unlocks');
+  assert.match(battleHint(hero(fighter(2), { combo: true, counter: true })).text, /\+8/);
+  assert.equal(battleHint(hero(fighter(1), { counter: true })).counter, true);
+  const opening = battleHint(hero(base, { openingUid: base.enemies[0].uid }));
+  assert.equal(opening.skillId, 'doubleStrike');
+  assert.match(opening.text, /OPENING/);
+  const charging = { ...hero(fighter(2), { combo: true }), enemies: fighter(2).enemies.map((enemy) => ({ ...enemy, intent: 'charge' })) };
+  assert.equal(battleHint(charging).keep, true, 'keeping 1 AP for a coming big attack still wins');
   assert.equal(eventMessage({ type: 'rejected', reason: 'unaffordable' }), 'Not enough AP!');
   assert.match(eventMessage({ type: 'ap', amount: 1, reason: 'recover', ap: 1 }), /RECOVERING/);
 });

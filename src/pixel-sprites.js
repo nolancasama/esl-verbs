@@ -110,6 +110,11 @@ export function spriteSheet(id, variant = '') {
   return built.get(key);
 }
 
+/** Whether spriteSheet(id, variant) is already built (a later call costs nothing). */
+export function hasSpriteSheet(id, variant = '') {
+  return built.has(`${id}:${variant}`);
+}
+
 function buildSheet(id, variant, key) {
   const isHero = HERO_IDS.includes(id);
   if (!isHero && !ENEMY_ART[id]) return null;

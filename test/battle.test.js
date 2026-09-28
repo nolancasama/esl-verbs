@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, ITEMS, SKILLS } from '../src/battle-data.js';
 import {
   availableItems, availableSkills, battleXp, chooseEncounter, chooseEnemyIntent, createBattle, cycleTarget, getEnemyIntent,
-  heroMaxHp, isDefeat, isVictory, mustRecover, potionHeal, recover, resolveEnemyPhase, selectTarget, skillTierForLevel, useItem, useSkill,
+  heroMaxHp, isDefeat, isVictory, mustRecover, potionHeal, recover, resolveEnemyPhase, selectTarget, skillBonus, skillTierForLevel, useItem,
+  useSkill,
 } from '../src/battle-engine.js';
 
 const fixed = (value) => () => value;
@@ -228,6 +229,33 @@ test('Ninja Opening, Double Strike, Keen Eye and chaining Shadow Strike', () => 
   const single = useSkill(boss, 'shadowStrike');
   assert.equal(single.state.enemies[0].hp, ENEMIES.golem.maxHp - SKILLS.shadowStrike.damage);
   assert.ok(!single.events.some((event) => event.type === 'chain'));
+});
+
+test('skillBonus is exactly the extra damage COMBO, COUNTER and OPENING add', () => {
+  const calm = (state) => ({ ...state, enemies: state.enemies.map((enemy) => ({ ...enemy, guarding: false, tired: false })) });
+  const withHero = (state, hero) => ({ ...state, hero: { ...state.hero, ...hero } });
+  const extra = (state, skillId, target = state.selectedUid) => {
+    const plain = withHero(state, { combo: false, counter: false, openingUid: null });
+    return damageTo(useSkill(state, skillId, target).events, target) - damageTo(useSkill(plain, skillId, target).events, target);
+  };
+  const fighter = calm(createBattle({ heroId: 'fighter', encounterId: 'golem', ap: 5, level: 3, rng: fixed(0.99) }));
+  const ninja = calm(createBattle({ heroId: 'ninja', encounterId: 'captain-goblins', ap: 5, level: 3, rng: fixed(0.99) }));
+  const keen = calm(createBattle({ heroId: 'ninja', encounterId: 'golem', ap: 5, level: 4, rng: fixed(0.99) }));
+  const cases = [
+    [withHero(fighter, { combo: true }), ['slash', 'powerSlash', 'cleave']],
+    [withHero(fighter, { counter: true }), ['slash', 'powerSlash', 'cleave']],
+    [withHero(fighter, { combo: true, counter: true }), ['powerSlash']],
+    [withHero(ninja, { openingUid: 1 }), ['strike', 'doubleStrike', 'shadowStrike']],
+    [withHero(ninja, { openingUid: 2 }), ['doubleStrike']],   // the OPENING is on another enemy
+    [withHero(ninja, { openingUid: 1, counter: true }), ['doubleStrike']],
+    [withHero(keen, { openingUid: 1 }), ['doubleStrike']],
+  ];
+  for (const [state, skills] of cases) {
+    for (const skillId of skills) assert.equal(skillBonus(state, skillId), extra(state, skillId), `${state.heroId} ${skillId} ${JSON.stringify(state.hero)}`);
+  }
+  assert.equal(skillBonus(withHero(fighter, { combo: true }), 'powerSlash'), BALANCE.comboBonus);
+  assert.equal(skillBonus(withHero(keen, { openingUid: 1 }), 'doubleStrike'), 2 * (BALANCE.openingBonus + HEROES.ninja.passive.effect.openingBonus));
+  assert.equal(skillBonus(withHero(fighter, { counter: true }), 'guard'), 0);
 });
 
 test('Fighter level-4 Iron Guard reduces guarded damage', () => {

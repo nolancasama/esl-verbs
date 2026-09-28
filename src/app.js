@@ -9,7 +9,7 @@ import {
   applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, createCampaign, recordDefeat, recordStage, xpProgress,
 } from './campaign.js';
 import { createBattleView } from './battle-ui.js';
-import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, getIcon } from './battle-art.js';
+import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, getIcon, prewarmArt } from './battle-art.js';
 import { createApMeter } from './ap-meter.js';
 import { createAudio } from './audio.js';
 
@@ -27,7 +27,7 @@ const apMeter = createApMeter();
 const audio = createAudio();
 let micFree = readMicFree(), round = null, quizContext = null, feedback = '', audioError = false;
 let recognitionErrors = 0, speechDenied = false, tap = null, lastHeard = '';
-let campaign = null, stageResult = null, battleView = null, screen = 'menu', debugConfig = null, screenTimers = [];
+let campaign = null, stageResult = null, battleView = null, screen = 'menu', debugConfig = null, screenTimers = [], upcomingEncounter = null;
 
 function readMicFree() { try { return localStorage.getItem(MIC_FREE_KEY) === 'true'; } catch { return false; } }
 function saveMicFree(value) { try { localStorage.setItem(MIC_FREE_KEY, String(value)); } catch {} }
@@ -73,7 +73,9 @@ function mainMenu() {
   const card = element('section', 'card menu-card'); card.append(element('h1', 'game-title', 'ESL VERBS'));
   const actions = element('div', 'menu-actions');
   const adventure = element('button', 'menu-choice adventure-choice px-button'); adventure.onclick = heroSelect;
-  const trio = element('span', 'adventure-trio'); trio.setAttribute('aria-hidden', 'true'); trio.innerHTML = ART_IDS.heroes.map((id) => battleArt(id)).join('');
+  // Hero sheets are slow to build on a Chromebook: paint the menu first, then add each hero as it is ready.
+  const trio = element('span', 'adventure-trio'); trio.setAttribute('aria-hidden', 'true');
+  prewarmArt(ART_IDS.heroes.map((id) => [id]), (id) => trio.insertAdjacentHTML('beforeend', battleArt(id)));
   adventure.append(trio, element('span', '', 'ADVENTURE'), element('small', '', 'ぼうけん'));
   const study = element('button', 'menu-choice', 'STUDY / れんしゅう'); study.onclick = levelSelect;
   const toggles = element('div', 'menu-toggles'); toggles.append(micToggle(), musicToggle());
@@ -117,8 +119,21 @@ function startRound(mode, items = createRound(VOCABULARY), context = 'study') {
   round = { mode, items, currentIndex: 0, correctCount: 0, currentStreak: 0, bestStreak: 0, missedIds: new Set(), allItems: VOCABULARY };
   quizContext = context; feedback = ''; audioError = false; recognitionErrors = 0;
   if (mode >= 3 && !micFree && !speechRecognitionAvailable()) { micFree = true; saveMicFree(true); feedback = MIC_MESSAGE; }
-  if (context === 'adventure') { apMeter?.set(0, { animate: false }); audio.play('field'); } else audio.stop();
+  if (context === 'adventure') { apMeter?.set(0, { animate: false }); audio.play('field'); prepareEncounter(); } else audio.stop();
   renderQuestion();
+}
+
+/** Pick this stage's encounter now and build its art while the student answers, so the battle opens without a stall. */
+function prepareEncounter() {
+  upcomingEncounter = chooseEncounter(campaign.stage);
+  const art = [];
+  ENCOUNTERS[upcomingEncounter.id].enemyIds.forEach((id) => {
+    const enemy = ENEMIES[id];
+    art.push([id]);
+    if (enemy.summonId) art.push([enemy.summonId]);
+    if (enemy.ai?.phase2) art.push([id, 'enraged']);
+  });
+  prewarmArt(art);
 }
 
 function renderQuestion(autoSpeak = true) {
@@ -254,7 +269,8 @@ function rpgTopbar(menuAction = confirmQuit) {
 }
 
 function finishAdventureStage() {
-  stopMedia(); const stage = campaign.stage; const encounter = chooseEncounter(stage); campaign = recordStage(campaign, round, encounter.id); stageResult = campaign.stageResults.at(-1);
+  stopMedia(); const stage = campaign.stage; const encounter = upcomingEncounter ?? chooseEncounter(stage); upcomingEncounter = null;
+  campaign = recordStage(campaign, round, encounter.id); stageResult = campaign.stageResults.at(-1);
   screen = 'stage-complete'; app.replaceChildren(); rpgScreen(); clearTimers();
   const card = element('section', 'rpg-card px-panel stage-card'); const { top, slot } = rpgTopbar(); card.append(top);
   const scene = element('div', `rpg-stage-scene ${backdropClass(stage)}`); scene.innerHTML = battleArt(campaign.heroId, 'victory'); scene.firstElementChild?.setAttribute('aria-hidden', 'true');
@@ -359,7 +375,11 @@ function playXpSequence(rewards, { fill, levelLabel, levelUps, rest, card }) {
     levelLabel.textContent = `LV ${reward.level}${reward.mastery ? ' · MASTER' : ''}`;
     levelUps.append(rewardLine('combo', `LEVEL UP!  LV ${reward.level}`, 'rpg-reward-line--levelup'));
     if (reward.maxHpGain) levelUps.append(rewardLine('heart', `MAX HP +${reward.maxHpGain}`));
-    reward.skills.forEach((id) => levelUps.append(rewardLine(id, `NEW SKILL!  ${SKILLS[id].name.toUpperCase()} / ${SKILLS[id].jaName} · ${SKILLS[id].cost} AP`, 'rpg-reward-line--skill')));
+    reward.skills.forEach((id) => {
+      const line = rewardLine(id, `NEW SKILL!  ${SKILLS[id].name.toUpperCase()} / ${SKILLS[id].jaName} · ${SKILLS[id].cost} AP`, 'rpg-reward-line--skill');
+      if (SKILLS[id].tip) line.lastElementChild.append(element('small', 'rpg-reward-tip', SKILLS[id].tip));
+      levelUps.append(line);
+    });
     if (reward.passive) levelUps.append(rewardLine('counter', `POWER UP!  ${reward.passive.name.toUpperCase()} — ${reward.passive.kanaText}`, 'rpg-reward-line--skill'));
     if (reward.mastery) levelUps.append(rewardLine('power', 'VERB MASTER! / マスター！', 'rpg-reward-line--skill'));
     audio.sfx('levelup');
@@ -423,11 +443,14 @@ function campaignResults() {
   const summary = campaignSummary(campaign); const hero = HEROES[campaign.heroId];
   const card = element('section', 'rpg-card px-panel results-card'); card.append(element('h1', 'rpg-title', 'VICTORY! VERB MASTER!'));
   const heroLine = element('div', 'results-hero'); const art = element('span', 'mini-art'); art.innerHTML = battleArt(hero.id, 'victory'); art.firstElementChild?.setAttribute('aria-hidden', 'true');
-  heroLine.append(art, element('strong', '', `${hero.name} / ${hero.jaName} · LV ${summary.level}`)); card.append(heroLine);
-  card.append(element('div', 'rpg-score', `${summary.totalCorrect} / ${summary.totalQuestions}`), element('p', '', `Best streak: ${summary.bestStreak}`));
+  const heroText = element('div', 'results-hero__text'); heroText.append(element('strong', '', `${hero.name} / ${hero.jaName} · LV ${summary.level}`), element('div', 'rpg-score', `${summary.totalCorrect} / ${summary.totalQuestions}`), element('p', '', `Best streak: ${summary.bestStreak}`));
+  heroLine.append(art, heroText); card.append(heroLine);
   const scores = element('div', 'stage-results'); campaign.stageResults.forEach((result, index) => scores.append(element('span', '', `Stage ${index + 1}: ${result.correct} / ${result.total}`))); card.append(scores);
   const missed = practiceItems(VOCABULARY, summary.missedIds);
-  if (missed.length) { const list = element('ul', 'missed'); missed.forEach((item) => list.append(element('li', '', `${item.en} — ${item.ja}`))); card.append(list); } else card.append(element('p', 'correct', 'PERFECT!'));
+  if (missed.length) {
+    const list = element('ul', 'missed'); list.setAttribute('aria-labelledby', 'missed-label'); missed.forEach((item) => list.append(element('li', '', `${item.en} — ${item.ja}`)));
+    const label = element('p', 'results-missed-label', `Review: ${missed.length} word${missed.length === 1 ? '' : 's'} / ふくしゅう：${missed.length}こ`); label.id = 'missed-label'; card.append(label, list);
+  } else card.append(element('p', 'correct', 'PERFECT!'));
   const actions = element('div', 'actions'); if (missed.length) { const practice = element('button', 'px-button', 'Practice mistakes'); practice.onclick = () => practiceModePicker(missed); actions.append(practice); }
   const again = element('button', 'px-button', 'Play Again'); again.onclick = () => startCampaign(campaign.heroId); const choose = element('button', 'secondary px-button', 'Choose Hero'); choose.onclick = heroSelect; const menu = element('button', 'secondary px-button', 'Main Menu'); menu.onclick = mainMenu;
   actions.append(again, choose, menu); card.append(actions); app.append(card);
@@ -478,11 +501,15 @@ function debugLauncher() {
   card.append(form, gallery); app.append(card);
 }
 
-function previewRewards(heroId, stage) {
+/** A campaign played up to `stage` (earlier stages scored `earlierCorrect`/10, longest words missed first), for previews. */
+function previewRewards(heroId, stage, earlierCorrect = 7) {
   let preview = createCampaign(heroId);
+  const longestFirst = [...VOCABULARY].sort((a, b) => (b.en + b.ja).length - (a.en + a.ja).length);
   for (let index = 1; index <= stage; index += 1) {
     const encounterId = chooseEncounter(index, () => 0).id;
-    preview = recordStage(preview, { mode: index, items: new Array(10).fill({ id: 'x' }), correctCount: index === stage ? 10 : 7, bestStreak: 7, missedIds: new Set() }, encounterId);
+    const correctCount = index === stage ? 10 : earlierCorrect;
+    const missed = longestFirst.slice((index - 1) * (10 - earlierCorrect), index * (10 - earlierCorrect)).map((item) => item.id);
+    preview = recordStage(preview, { mode: index, items: new Array(10).fill({ id: 'x' }), correctCount, bestStreak: 7, missedIds: new Set(index === stage ? [] : missed) }, encounterId);
     const state = createBattle({ ...battleSetup(preview), ap: 0 });
     const won = { ...state, potions: 0, hero: { ...state.hero, hp: Math.ceil(state.hero.maxHp * 0.3) }, enemies: state.enemies.map((enemy) => ({ ...enemy, hp: 0 })) };
     const result = applyVictory(preview, won);
@@ -501,7 +528,8 @@ function artGallery() {
   const preview = (label, show) => { const button = element('button', 'secondary', label); button.onclick = show; return button; };
   const victory = (stage) => () => { const result = previewRewards(heroFor(), stage); campaign = result.campaign; stageResult = result.stageResult; adventureVictory(stage, result.rewards); };
   const defeat = () => { const result = previewRewards(heroFor(), 2); campaign = recordDefeat(recordDefeat({ ...result.campaign, stageResults: [...result.campaign.stageResults, { ...result.stageResult, startingAp: 5, mode: 3 }] })); stageResult = campaign.stageResults.at(-1); adventureDefeat(); };
-  controls.append(state.label, who.label, variant.label, preview('Victory (level up)', victory(1)), preview('Victory (new skill)', victory(2)), preview('Victory (passive)', victory(3)), preview('Final victory', victory(4)), preview('Defeat', defeat), back);
+  const results = () => { campaign = previewRewards(heroFor(), 4, 4).campaign; campaignResults(); };
+  controls.append(state.label, who.label, variant.label, preview('Victory (level up)', victory(1)), preview('Victory (new skill)', victory(2)), preview('Victory (passive)', victory(3)), preview('Final victory', victory(4)), preview('Defeat', defeat), preview('Campaign results (18 missed)', results), back);
   const rows = element('div'); page.append(controls, rows);
   const cell = (id, row) => `<div class="art-cell">${battleArt(id, row, { variant: variant.select.value })}<span>${id} · ${row}</span></div>`;
   const draw = () => {

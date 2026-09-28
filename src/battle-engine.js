@@ -170,6 +170,23 @@ export function availableSkills(state) {
     .map(({ id, name, jaName, cost, kind, target }) => ({ id, name, jaName, cost, kind, target, affordable: state.ap >= cost }));
 }
 
+/**
+ * Extra damage `skillId` would deal right now from a set-up bonus: COUNTER (+4 on
+ * any damaging skill), COMBO (+4 on Power Slash after Slash) and OPENING (+3 per
+ * Double Strike hit on the marked enemy). Mirrors useSkill, for the UI's +N badges.
+ */
+export function skillBonus(state, skillId, targetUid = state.selectedUid) {
+  const skill = SKILLS[skillId];
+  if (!skill || !['damage', 'doubleDamage', 'splitDamage'].includes(skill.kind)) return 0;
+  const target = state.enemies.some((enemy) => enemy.uid === targetUid && living(enemy)) ? targetUid : firstLiving(state.enemies)?.uid;
+  let bonus = state.hero.counter ? BALANCE.counterBonus : 0;
+  if (skillId === 'powerSlash' && state.hero.combo) bonus += BALANCE.comboBonus;
+  if (skill.kind === 'doubleDamage' && target != null && state.hero.openingUid === target) {
+    bonus += 2 * (BALANCE.openingBonus + (passiveEffect(state).openingBonus ?? 0));
+  }
+  return bonus;
+}
+
 export function potionHeal(state) {
   return Math.ceil(state.hero.maxHp * ITEMS.potion.healPercent);
 }
@@ -317,9 +334,9 @@ export function useItem(state, itemId = 'potion') {
 
 /**
  * An exhausted turn: with no affordable action the hero recovers AP instead of
- * acting, and the enemies still take their phase against a tired hero (the
- * same x1.5 damage a resting enemy takes). Waiting can never create AP because
- * this is rejected whenever any action is affordable.
+ * acting, and the enemies still take their phase (at normal damage:
+ * BALANCE.exhaustedMultiplier is 1). Waiting can never create AP because this
+ * is rejected whenever any action is affordable.
  */
 export function recover(state) {
   if (!mustRecover(state)) return rejected(state, 'not-exhausted');

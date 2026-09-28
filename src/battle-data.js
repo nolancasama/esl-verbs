@@ -42,19 +42,20 @@ export const LEVELS = Object.freeze([
   Object.freeze({ level: 5, xp: 140, maxHpBonus: 14, skillTier: 2 }),
 ]);
 
+// `tip` (kana) explains an unlocked skill's twist on the victory screen that unlocks it.
 export const SKILLS = Object.freeze({
   slash: { id: 'slash', name: 'Slash', jaName: 'スラッシュ', cost: 1, kind: 'damage', target: 'one', damage: 4, tier: 0 },
   guard: { id: 'guard', name: 'Guard', jaName: 'ガード', cost: 1, kind: 'defense', target: 'self', defense: 'guard', tier: 0 },
-  powerSlash: { id: 'powerSlash', name: 'Power Slash', jaName: 'パワースラッシュ', cost: 2, kind: 'damage', target: 'one', damage: 10, tier: 1 },
-  cleave: { id: 'cleave', name: 'Cleave', jaName: 'なぎはらい', cost: 3, kind: 'damage', target: 'all', damage: 10, tier: 2 },
+  powerSlash: { id: 'powerSlash', name: 'Power Slash', jaName: 'パワースラッシュ', cost: 2, kind: 'damage', target: 'one', damage: 10, tier: 1, tip: `スラッシュの つぎに つかうと COMBO で +${BALANCE.comboBonus}！` },
+  cleave: { id: 'cleave', name: 'Cleave', jaName: 'なぎはらい', cost: 3, kind: 'damage', target: 'all', damage: 10, tier: 2, tip: 'てき ぜんいんに 10 ダメージ！' },
   magicBolt: { id: 'magicBolt', name: 'Magic Bolt', jaName: 'まほうだま', cost: 1, kind: 'damage', target: 'one', damage: 7, tier: 0 },
   barrier: { id: 'barrier', name: 'Barrier', jaName: 'バリア', cost: 1, kind: 'defense', target: 'self', defense: 'barrier', tier: 0 },
-  heal: { id: 'heal', name: 'Heal', jaName: 'かいふく', cost: 2, kind: 'heal', target: 'self', amount: 12, tier: 1 },
-  fireball: { id: 'fireball', name: 'Fireball', jaName: 'ファイアボール', cost: 3, kind: 'damage', target: 'all', damage: 10, tier: 2 },
+  heal: { id: 'heal', name: 'Heal', jaName: 'かいふく', cost: 2, kind: 'heal', target: 'self', amount: 12, tier: 1, tip: 'HP +12！ HP が はんぶんより すくないと バリアも！' },
+  fireball: { id: 'fireball', name: 'Fireball', jaName: 'ファイアボール', cost: 3, kind: 'damage', target: 'all', damage: 10, tier: 2, tip: 'てき ぜんいんに 10 ダメージ！' },
   strike: { id: 'strike', name: 'Strike', jaName: 'うつ', cost: 1, kind: 'damage', target: 'one', damage: 4, tier: 0 },
   dodge: { id: 'dodge', name: 'Dodge', jaName: 'よける', cost: 1, kind: 'defense', target: 'self', defense: 'dodge', tier: 0 },
-  doubleStrike: { id: 'doubleStrike', name: 'Double Strike', jaName: 'にれんだ', cost: 2, kind: 'doubleDamage', target: 'one', damage: 5, tier: 1 },
-  shadowStrike: { id: 'shadowStrike', name: 'Shadow Strike', jaName: 'かげうち', cost: 3, kind: 'splitDamage', target: 'one', damage: 14, splashDamage: 9, tier: 2 },
+  doubleStrike: { id: 'doubleStrike', name: 'Double Strike', jaName: 'にれんだ', cost: 2, kind: 'doubleDamage', target: 'one', damage: 5, tier: 1, tip: `うつ で OPENING を つくり、にれんだで +${BALANCE.openingBonus}×2！` },
+  shadowStrike: { id: 'shadowStrike', name: 'Shadow Strike', jaName: 'かげうち', cost: 3, kind: 'splitDamage', target: 'one', damage: 14, splashDamage: 9, tier: 2, tip: 'たおしたら つぎの てきにも 9 ダメージ！' },
 });
 
 export const HEROES = Object.freeze({

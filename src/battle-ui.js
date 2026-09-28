@@ -1,6 +1,7 @@
-import { ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
+import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
 import {
-  availableItems, cycleTarget, getEnemyIntent, mustRecover, recover, resolveEnemyPhase, selectTarget, useItem, useSkill,
+  availableItems, availableSkills, cycleTarget, getEnemyIntent, mustRecover, recover, resolveEnemyPhase, selectTarget, skillBonus,
+  useItem, useSkill,
 } from './battle-engine.js';
 import {
   backdropClass, createEffectsPlayer, enemyRestState, eventSpriteStates, getBarrierArt, getBattleArt, getIcon, heroRestState,
@@ -33,6 +34,13 @@ function hpBar(hp, maxHp, label) {
 
 const status = (kind, icon, text) => `<span class="battle-status battle-status--${kind}">${getIcon(icon)}${text}</span>`;
 
+// COMBO and OPENING only mean something once the skill that cashes them in is unlocked;
+// before that (battle 1) their badges, floaters and messages stay hidden.
+const PAYOFF_SKILL = { combo: 'powerSlash', opening: 'doubleStrike' };
+const payoffUnlocked = (state, kind) => SKILLS[PAYOFF_SKILL[kind]].tier <= state.skillTier;
+const HIDDEN_UNTIL_PAYOFF = { comboReady: 'combo', opening: 'opening' };
+const eventShown = (state, event) => !HIDDEN_UNTIL_PAYOFF[event.type] || payoffUnlocked(state, HIDDEN_UNTIL_PAYOFF[event.type]);
+
 function statusBadges(enemy, openingUid) {
   const badges = [];
   if (enemy.phase === 2) badges.push(status('angry', 'heavy', 'ANGRY!'));
@@ -63,13 +71,13 @@ function intentMarkup(state, enemy, hidden = false) {
   return `<span class="battle-intent${INTENT_TONE[intent] || ''}">${getIcon(INTENT_ICON[intent] || 'attack')}${esc(labels[intent] || intent)}</span>`;
 }
 
-function heroStatuses(hero, recovering) {
+function heroStatuses(hero, recovering, state) {
   const badges = [];
   if (recovering) badges.push(status('tired', 'rest', 'RECOVERING'));
   if (hero.defense) badges.push(hero.defense === 'dodge' ? status('guard', 'dodge', 'Dodge ready') : hero.defense === 'barrier' ? status('guard', 'barrier', 'Barrier') : status('guard', 'guard', 'Guarding'));
-  if (hero.combo) badges.push(status('combo', 'combo', 'COMBO READY'));
+  if (hero.combo && payoffUnlocked(state, 'combo')) badges.push(status('combo', 'combo', 'COMBO READY'));
   if (hero.counter) badges.push(status('counter', 'counter', 'COUNTER READY'));
-  if (hero.openingUid !== null) badges.push(status('opening', 'opening', 'OPENING'));
+  if (hero.openingUid !== null && payoffUnlocked(state, 'opening')) badges.push(status('opening', 'opening', 'OPENING'));
   return `<div class="battle-statuses battle-statuses--hero">${badges.join('')}</div>`;
 }
 
@@ -119,7 +127,22 @@ export function battleHint(state, onboarding = null) {
   const potion = availableItems(state)[0];
   if (potion?.usable && state.hero.hp <= state.hero.maxHp * DANGER_HP) return { item: true, text: 'HP がピンチ！ ポーションをつかおう' };
   if (living.some((enemy) => enemy.intent === 'charge') && state.ap >= 1) return { keep: true, text: '⚡ BIG ATTACK SOON — AP を 1 のこそう！' };
-  return onboarding;
+  return payoffHint(state) || onboarding;
+}
+
+/** COMBO / OPENING point at the skill that cashes the bonus in; COUNTER applies to any attack. */
+function payoffHint(state) {
+  const best = availableSkills(state)
+    .filter((skill) => skill.affordable)
+    .map((skill) => ({ skill, bonus: skillBonus(state, skill.id) }))
+    .filter((entry) => entry.bonus > 0)
+    .sort((a, b) => b.bonus - a.bonus)[0];
+  if (!best) return null;
+  const { skill, bonus } = best;
+  const setUp = bonus - (state.hero.counter ? BALANCE.counterBonus : 0);
+  if (setUp > 0 && skill.id === 'powerSlash') return { skillId: skill.id, text: `COMBO！ ${skill.jaName}で +${bonus}！` };
+  if (setUp > 0 && skill.kind === 'doubleDamage') return { skillId: skill.id, text: `OPENING！ ${skill.jaName}で +${bonus}！` };
+  return { counter: true, text: `COUNTER！ つぎの こうげき +${BALANCE.counterBonus}！` };
 }
 
 /**
@@ -192,9 +215,11 @@ export function createBattleView(container, {
       const reason = locked ? 'Unlocks later' : !affordable ? `Need ${skill.cost} AP` : '';
       const highlighted = !busy && ((activeHint?.skill === 'defense' && skill.kind === 'defense' && affordable)
         || (activeHint?.skill === 'basic' && index === 0) || activeHint?.skillId === id);
+      const bonus = locked || busy ? 0 : skillBonus(currentState, id);
       return `<button type="button" class="battle-skill px-button battle-skill--${skill.kind}${highlighted ? ' battle-skill--hint' : ''}" data-skill-id="${id}"
         ${disabled ? 'disabled' : ''} aria-describedby="${reason ? `skill-reason-${index}` : ''}" title="${esc(reason)}">
         <kbd>${index + 1}</kbd>${getIcon(id)}<span class="battle-skill__name">${esc(skill.name)} <small>${esc(skill.jaName)}</small></span>
+        ${bonus ? `<span class="battle-skill__bonus">+${bonus}<span class="sr-only"> damage</span></span>` : ''}
         ${costMarkup(skill, locked, affordable)}
         ${reason ? `<span class="battle-skill__why" id="skill-reason-${index}">${esc(reason)}</span>` : ''}
       </button>`;
@@ -225,7 +250,7 @@ export function createBattleView(container, {
         <span class="battle-enemy__name">${esc(data.name)}<small>${esc(data.jaName)}</small></span>
         ${hpBar(enemy.hp, enemy.maxHp, data.name)}
       </span>
-      <span class="battle-cues">${intentMarkup(currentState, current, playing)}${statusBadges(enemy, (display?.hero ?? currentState.hero).openingUid)}</span>
+      <span class="battle-cues">${intentMarkup(currentState, current, playing)}${statusBadges(enemy, payoffUnlocked(currentState, 'opening') ? (display?.hero ?? currentState.hero).openingUid : null)}</span>
       <span class="battle-art-wrap">${art}</span>
     </button>`;
   }
@@ -260,7 +285,7 @@ export function createBattleView(container, {
         <div class="battle-hero-panel px-panel">
           <h2>${esc(hero.name)} <small>${esc(hero.jaName)}</small><span class="battle-level">LV ${currentState.level}</span></h2>
           ${hpBar(heroShown.hp, heroShown.maxHp, hero.name)}
-          ${heroStatuses(heroShown, recovering)}
+          ${heroStatuses(heroShown, recovering, currentState)}
         </div>
         <div class="battle-skills${itemMenu ? ' battle-skills--items' : ''}" aria-label="${itemMenu ? 'Items' : 'Skills'}">${skillsMarkup(activeHint)}</div>
       </div>
@@ -274,7 +299,8 @@ export function createBattleView(container, {
     }
   }
 
-  /** Pick the largest whole-pixel scale (2-4) at which every sprite, its name plate and intents fit. */
+  /** Pick the largest whole-pixel scale (2-4) at which every sprite, its name plate and intents fit;
+      1 only when even 2 would clip a boss (a very short window), since a clipped floor line is worse than small art. */
   function fit() {
     const view = container.querySelector('.battle-view');
     const field = view?.querySelector('.battle-field');
@@ -285,9 +311,11 @@ export function createBattleView(container, {
     const heroNode = field.querySelector('.battle-hero .px-sprite');
     const heroH = heroNode ? read(heroNode, '--fh') : 72;
     const room = field.clientHeight - 12;
-    const px = Math.max(2, Math.min(4, Math.floor(Math.min((room - 118) / enemyH, room / heroH))));
-    fitPx = px;
+    let px = Math.max(1, Math.min(4, Math.floor(Math.min((room - 118) / enemyH, room / heroH))));
     view.style.setProperty('--px', px);
+    // The estimate assumes one-line name plates; step down while anything still spills below the field.
+    while (px > 1 && field.scrollHeight > field.clientHeight + 1) view.style.setProperty('--px', --px);
+    fitPx = px;
   }
   const onResize = () => { fitPx = null; if (!playing) render(); };
 
@@ -369,6 +397,7 @@ export function createBattleView(container, {
     container.querySelector('.battle-view')?.setAttribute('aria-busy', 'true');
     for (const event of events) {
       if (destroyed) break;
+      if (!eventShown(currentState, event)) continue;
       container.querySelectorAll('.battle-floater').forEach((node) => node.remove());
       const wanted = applyEvent(event);
       // The effects player knows how long its sequence needs; otherwise use the per-type default.

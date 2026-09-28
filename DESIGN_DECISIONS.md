@@ -242,6 +242,64 @@ Principle: **easy to understand casually; rewarding to play well.**
   remote audio), ducked under TTS, silenced during speech recognition, off in
   Study mode, and toggled with ♫ MUSIC ON/OFF saved in localStorage.
 
+## 2026-09-29 — screen-fit pass and idle-time sprite building
+
+- **Sprite sheets are built ahead of time, one per idle callback**
+  (`prewarmArt` in `battle-art.js`). Measured at 4× CPU throttle (roughly a
+  school Chromebook), a hero sheet costs 250–380 ms, a boss 380–510 ms and a
+  boss's enraged variant another ~420 ms. Built on demand, that froze the first
+  menu paint for ~1.3 s and froze a boss fight at the phase-2 moment. The main
+  menu now paints first and adds the hero trio as each sheet is ready (the row's
+  height is reserved).
+- **The stage's encounter is drawn when its quiz starts**, not at Stage Clear,
+  so the enemies, their summons and enraged variants build during the ten
+  questions (the longest idle window). Same random draw, earlier. Rejected: building
+  on the Stage Clear screen (a few seconds, and a stall would delay the BATTLE!
+  click), and a Web Worker (bigger change; grids would still have to cross to the
+  main thread for the canvas).
+- **Pixel scale may drop to 1** when even 2 would clip a boss (very short
+  windows such as 1024×600), and `fit()` now measures instead of trusting its
+  estimate: it steps the scale down while the field's content still overflows.
+  This supersedes "the view picks `--px` 2–4" above. A clipped floor line was
+  worse than small art, and letting the page scroll would push the skill
+  buttons below the fold.
+- **Enemy names wrap between the English and the Japanese name** instead of
+  spilling out of the plate (Goblin Captain ゴブリンたいちょう was 13 px wider than
+  its plate). The measured fit handles the taller two-line plate.
+- **Below 1100 px wide the hero panel is one row** (name · HP · statuses);
+  stacked, it was a mostly empty 90 px band taken from the field.
+- **Short screens**: victory/defeat cards tighten between 741 and 820 px tall
+  (the compact rules started at 740 but the full card needs ~790); the main menu
+  tightens at ≤740 px so the マイクなし / MUSIC toggles are not below the fold on a
+  1366×635 Chromebook window.
+- **Final-victory burst is rays only.** The solid sun disc behind VICTORY! made
+  "TO" unreadable, and rotating the whole ellipse swept rays above the card; the
+  gradient now turns (`@property --burst-turn`) inside a fixed band.
+- **Campaign results**: hero, score and streak share one row; buttons are two
+  columns; the missed words sit in a grid that scrolls inside the card, under a
+  `Review: n words` count. Rejected: CSS multi-column (with a max-height it
+  overflows sideways, hiding words with no cue) and letting the page scroll.
+
+## 2026-09-29 — COMBO / OPENING / COUNTER are explained where they pay off
+
+- **Taught in context, not in a rules screen.** Players saw COMBO READY,
+  OPENING and COUNTER READY with no idea what they did. Now a skill button
+  shows a gold `+N` while it would deal extra damage, and the one-hint-per-turn
+  line names the payoff (`COMBO！ パワースラッシュで +4！`). The payoff hint ranks
+  below the big-attack, low-HP and keep-1-AP hints, so it never hides a warning.
+  COUNTER highlights no button (every attack gets it); the badges carry it.
+  Rejected: a pop-up or rules page (students click through them, and the game
+  teaches everything else in context).
+- **`skillBonus` lives in the engine** beside `useSkill`, and a test pins it to
+  the damage `useSkill` actually adds, so the badge cannot drift from the hit.
+- **COMBO and OPENING are hidden until their payoff skill is unlocked.** In
+  battle 1 Slash announced COMBO READY although Power Slash was still locked.
+  The engine still tracks them (no balance change); only the UI hides the badge,
+  floater, message and sparkle.
+- **Each unlocked skill gets a one-line kana tip on the victory screen**
+  (`SKILLS[id].tip`), e.g. `スラッシュの つぎに つかうと COMBO で +4！`. The combo
+  and opening numbers come from `BALANCE`.
+
 A useful rule:
 
 > If a future developer or AI could reasonably ask, "Why is it designed this way?", record the answer here.

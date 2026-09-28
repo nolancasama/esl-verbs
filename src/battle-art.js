@@ -1,7 +1,7 @@
 // The Adventure visual layer's public face. Callers ask for semantic art
 // (a character in a state, an icon, a backdrop) and never see how pixels are
 // drawn, so the art can be replaced without touching battle logic.
-import { DURATION_MS, ENEMY_IDS, FRAMES, HERO_IDS, LOOPING, ROWS, spriteSheet } from './pixel-sprites.js';
+import { DURATION_MS, ENEMY_IDS, FRAMES, HERO_IDS, LOOPING, ROWS, hasSpriteSheet, spriteSheet } from './pixel-sprites.js';
 import { backdropImage, effectSheet, iconImage } from './pixel-effects.js';
 import { sheetClass } from './pixel-core.js';
 
@@ -40,6 +40,31 @@ export function getBattleArt(id, state = 'idle', { variant = '' } = {}) {
 }
 
 export const battleArt = getBattleArt;
+
+const whenIdle = globalThis.requestIdleCallback
+  ? (fn) => globalThis.requestIdleCallback(fn, { timeout: 3000 })
+  : (fn) => setTimeout(fn, 50);
+
+/**
+ * Build characters' sprite sheets ahead of time, one per idle moment: a sheet takes
+ * ~50-70 ms on a desktop and several times that on a school Chromebook, so building
+ * it on the frame that first shows it stalls the screen. `entries` are [id, variant]
+ * pairs; `onReady(id, variant)` runs as each is ready (at once when already built).
+ */
+export function prewarmArt(entries, onReady = () => {}) {
+  const queue = [];
+  for (const [id, variant = ''] of entries) {
+    if (queue.some(([i, v]) => i === id && v === variant)) continue;
+    if (hasSpriteSheet(id, variant)) onReady(id, variant); else queue.push([id, variant]);
+  }
+  const next = () => {
+    const [id, variant] = queue.shift();
+    getBattleArt(id, 'idle', { variant }); // builds the sheet and registers its CSS class
+    onReady(id, variant);
+    if (queue.length) whenIdle(next);
+  };
+  if (queue.length) whenIdle(next);
+}
 
 /** Small pixel icon markup (intent, skill, status). Decorative: text sits beside it. */
 export function getIcon(name) {
