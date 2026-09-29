@@ -581,6 +581,73 @@ const BACKDROPS = {
   },
 };
 
+/* ------------------------------------------------------ Matsubara City (story) */
+
+// One skyline in three moods for the intro/ending cinematics, plus a
+// transparent layer of monster silhouettes that CSS slides toward the city.
+const CITY = {
+  calm: { a: '#7cc6ef', b: '#a6dcf5', c: '#d3f0f8', s: '#fff3b0', h: '#9fc4c8', H: '#86b0b8', w: '#efe8d8', W: '#cfc4ad', r: '#c95a4b', R: '#9c4036', y: '#86bddf', t: '#4f9a6a', T: '#3a7c56', g: '#78b35a', G: '#62a04c', p: '#d2c08a', P: '#bca874', x: '#ffffff', k: '#2d4a52' },
+  danger: { a: '#1f1633', b: '#35204a', c: '#5a2a4f', s: '#d94f4f', h: '#3b2c4d', H: '#2e2240', w: '#6f6680', W: '#57506a', r: '#6e3444', R: '#4f2433', y: '#ffb347', t: '#2f3f45', T: '#243238', g: '#3f4a45', G: '#343d39', p: '#5d5663', P: '#4a4452', x: '#453650', k: '#140e20' },
+  safe: { a: '#8ecdf2', b: '#ffd9a0', c: '#ffeccc', s: '#fff6c2', h: '#b6b7cf', H: '#a1a3c0', w: '#fff4e0', W: '#e6d2b4', r: '#e0664f', R: '#b24a3b', y: '#ffe27a', t: '#58a970', T: '#428a5a', g: '#84c060', G: '#6dac52', p: '#e0cc92', P: '#c9b27a', x: '#ffffff', k: '#2d4a52' },
+};
+CITY.monsters = { k: '#140e20', K: '#241733', e: '#ff4a4a' };
+
+function drawCity(g, mood) {
+  sky(g, 'a', 'b', 'c');
+  if (mood === 'danger') {
+    // low storm clouds and a red moon
+    oval(g, 150, 8, 14, 14, 's');
+    [[0, 6, 70], [60, 2, 60], [120, 10, 80], [30, 20, 60], [140, 24, 60]].forEach(([x, y, w]) => { oval(g, x, y, w, 12, 'x'); oval(g, x + 10, y - 5, w / 2, 12, 'x'); });
+  } else {
+    oval(g, mood === 'safe' ? 20 : 150, mood === 'safe' ? 36 : 8, 16, 16, 's');
+    [[30, 12], [104, 18]].forEach(([x, y]) => { oval(g, x, y, 22, 7, 'x'); oval(g, x + 6, y - 4, 12, 8, 'x'); oval(g, x + 14, y - 1, 12, 6, 'x'); });
+  }
+  hills(g, 54, 14, 80, 'h', 30);
+  hills(g, 60, 8, 50, 'H', 5);
+  // back row: tall buildings with windows
+  [[34, 26, 14], [50, 18, 12], [64, 30, 16], [112, 22, 14], [128, 34, 12], [142, 20, 16]].forEach(([x, h, w]) => {
+    rect(g, x, 66 - h, w, h, 'W'); rect(g, x, 66 - h, w, 2, 'k');
+    for (let wy = 66 - h + 4; wy < 62; wy += 5) for (let wx = x + 2; wx < x + w - 2; wx += 4) rect(g, wx, wy, 2, 3, 'y');
+  });
+  // the city tower in the middle, with a flag
+  rect(g, 88, 22, 14, 48, 'w'); rect(g, 100, 22, 2, 48, 'W');
+  poly(g, [[85, 23], [95, 10], [105, 23]], 'r'); poly(g, [[95, 10], [105, 23], [101, 23]], 'R');
+  rect(g, 95, 2, 1, 9, 'k'); poly(g, [[96, 2], [103, 4], [96, 6]], mood === 'danger' ? 'R' : 'r');
+  oval(g, 91, 28, 8, 8, 'y'); px(g, 95, 30, 'k'); px(g, 95, 31, 'k'); px(g, 96, 32, 'k');
+  for (let wy = 42; wy < 64; wy += 8) rect(g, 93, wy, 4, 4, 'y');
+  // front row: small houses with pitched roofs, trees between them
+  [[4, 20], [26, 16], [72, 14], [108, 18], [150, 16], [172, 18]].forEach(([x, w]) => {
+    rect(g, x, 60, w, 10, 'w'); rect(g, x + w - 2, 60, 2, 10, 'W');
+    poly(g, [[x - 2, 61], [x + w / 2, 52], [x + w + 2, 61]], 'r'); rect(g, x - 2, 60, w + 4, 1, 'R');
+    rect(g, x + 3, 63, 3, 3, 'y'); rect(g, x + w - 7, 63, 3, 3, 'y');
+  });
+  [[48, 60], [98, 62], [132, 60], [192, 62]].forEach(([x, y]) => { oval(g, x - 5, y - 2, 10, 9, 'T'); oval(g, x - 3, y - 3, 7, 5, 't'); });
+  rect(g, 0, 68, BG_W, 2, 'T');
+  ground(g, 'g', 'G');
+  for (let x = 0; x < BG_W; x += 1) { const y = 86 + Math.round(2 * Math.sin((x / BG_W) * Math.PI * 4)); rect(g, x, y, 1, 8, 'p'); px(g, x, y + 8, 'P'); }
+}
+
+/** Monster silhouettes (with red eyes) on a transparent strip the size of a backdrop. */
+function drawMonsters(g) {
+  const blob = (x, y, w, h) => { oval(g, x, y, w, h, 'k'); oval(g, x + 2, y + 2, w - 4, h - 4, 'K'); px(g, x + w - 5, y + 4, 'e'); px(g, x + w - 8, y + 4, 'e'); };
+  blob(20, 56, 16, 14);
+  blob(44, 48, 22, 22); poly(g, [[46, 52], [48, 42], [52, 50]], 'k'); poly(g, [[58, 50], [62, 41], [64, 52]], 'k');
+  blob(76, 58, 12, 11);
+  // a winged one in the sky
+  oval(g, 30, 22, 10, 7, 'k'); poly(g, [[30, 25], [18, 18], [24, 28]], 'k'); poly(g, [[40, 25], [52, 18], [46, 28]], 'k'); px(g, 36, 24, 'e');
+  // a big shadow behind them all
+  poly(g, [[96, 70], [104, 30], [116, 20], [128, 30], [136, 70]], 'k'); poly(g, [[106, 30], [104, 14], [112, 24]], 'k'); poly(g, [[122, 24], [128, 12], [128, 28]], 'k');
+  px(g, 120, 32, 'e'); px(g, 121, 32, 'e'); px(g, 126, 32, 'e'); px(g, 127, 32, 'e');
+}
+
+/** Matsubara City backdrop: 'calm', 'danger', 'safe', or the 'monsters' overlay. */
+export function cityImage(mood) {
+  if (!CITY[mood]) return null;
+  const g = grid(BG_W, BG_H);
+  if (mood === 'monsters') drawMonsters(g); else drawCity(g, mood);
+  return image(`city-${mood}`, g, CITY[mood]);
+}
+
 export function backdropImage(stage) {
   const draw = BACKDROPS[stage];
   if (!draw) return null;

@@ -79,7 +79,8 @@ mic-free. 3 consecutive errors (network/audio-capture/other, excluding
 
 ## Mic-free (マイクなし)
 
-A toggle visible on the level-select screen and during modes 3–4. When on,
+A toggle visible on the Practice (level-select) screen and during Study modes
+3–4 — never in Adventure (see Adventure › Speaking below). When on,
 modes 3–4 replace the mic with 4 large English choice buttons: the correct `en`
 plus 3 distinct random distractors from VOCABULARY, shuffled. Keys 1–4 select.
 Choosing correct/wrong is scored like typed modes (wrong shows the answer, then
@@ -148,14 +149,34 @@ values quoted below are the current tuning, not a contract.
 ## Flow
 
 ```
-Main Menu ─┬─ ADVENTURE / ぼうけん → Choose Hero → [Stage n quiz (mode n) → Stage n Clear → Battle n → Victory] ×4 → Campaign Results
-           │                                                                    └─ Defeat → Retry battle n (the quiz is never redone)
-           └─ STUDY / れんしゅう → existing level select (unchanged behaviour, existing end screen)
+Main Menu ─┬─ ▶ START ADVENTURE → Choose Hero → Intro story → [Stage n quiz (mode n) → Stage n Clear → Battle n → Victory] ×4 → Ending story → Campaign Results
+           │                                                                                   └─ Defeat → Retry battle n (the quiz is never redone)
+           └─ PRACTICE ONLY / れんしゅうだけ → existing level select (unchanged behaviour, existing end screen)
 ```
 
+- The main menu makes Adventure the obvious game: a large gold-framed button
+  with the hero trio, `▶ START ADVENTURE` and `ぼうけんを はじめる！`. Practice is a
+  smaller, quieter button below. The main menu has only the music toggle.
 - Stage n uses quiz mode n (1→4), 10 unique questions, same engine, same
-  `answer()`, same speech/TTS/mic-free behaviour. The マイクなし toggle stays on
-  the main menu and in speech-mode questions.
+  `answer()`, same TTS behaviour.
+- **Speaking (stages 3–4).** Adventure has no マイクなし toggle: speaking is
+  the challenge. Multiple choice appears only as a technical fallback — no
+  SpeechRecognition, mic permission denied (for the page load), or 3 recognition
+  errors in the stage (retried next stage) — with 「マイクが使えないので、えらんで答えよう！」
+  beside Replay. The saved Study マイクなし preference never affects Adventure
+  (`choiceFallback` in `src/engine.js`).
+- **A wrong answer costs only the AP it did not earn.** Campaign HP never
+  changes in the quiz; the hero plays the quiz-only `stumble` state (lean back,
+  "!", sweat — no flash, no damage number) with a soft two-note SFX.
+- **Story: two short cinematics only** (`playCinematic` in `src/app.js`,
+  ~10 s each, `SKIP ▶`, run on the screen timers with a finish-once guard).
+  Intro after Choose Hero: calm Matsubara City → dark sky and monster
+  silhouettes (「まつばら市が あぶない！」) → the chosen hero steps in
+  (「まつばら市を まもろう！」) → `STAGE 1`. Ending after the final victory screen:
+  the darkness clears to a sunrise → the hero cheers with townsfolk
+  (「まつばら市を まもった！」) → `YOU PROTECTED THE CITY!`. City art is
+  programmatic (`cityImage` in `src/pixel-effects.js`), built during Choose
+  Hero / the final victory screen.
 - Battle tier = stage (1 tutorial, 2 group, 3 advanced, 4 boss). The encounter
   is drawn from the tier when the stage's quiz starts (so its art can be built
   while the student answers) and announced on Stage Clear.
@@ -346,15 +367,29 @@ chooseEncounter(tier, rng) · levelData · levelForXp · heroMaxHp · skillTierF
   `NEW SKILL! …` (with the skill's one-line kana `tip` from `SKILLS`) and
   `POWER UP! <passive>`; then `HP a → b / max (+healed)` and
   the potion restock; `NEXT STAGE` (focused). Any key or click finishes the
-  sequence at once. After battle 4: `VERB MASTER!` and `CAMPAIGN RESULTS`.
+  sequence at once (every line is laid out from the start, so that click still
+  lands on the button). After battle 4: `BOSS DEFEATED!` and
+  `NEXT ▶ つぎへ` to the ending story.
 - **Defeat**: `DEFEATED... もういちど！`, `RETRY: 5 AP + 3 HELP = 8 AP`, the
   restored HP and potions, a Guard / Barrier / Dodge tip from the second defeat
   on, `RETRY BATTLE (n AP)` and `MAIN MENU`.
-- **Campaign results**: `VICTORY! VERB MASTER!` · hero with LV · `34 / 40` ·
-  best streak · four stage scores · `Review: n words` and the missed verbs
-  (en — ja; a long list scrolls inside the card) or `PERFECT!`. Buttons in two
-  columns: `Practice mistakes` (pick mode 1–4, then a Study practice round of
-  the missed items), `Play Again`, `Choose Hero`, `Main Menu`.
+- **Campaign results**: `MATSUBARA CITY IS SAFE!` · hero with LV ·
+  `33 / 40 VERBS` · best streak · the **hero title** (below) with `FIRST CLEAR!`
+  / `NEW BEST!` and `NEXT TITLE: <title> — n / 40 · あと k もん！` or `MAX TITLE!` ·
+  a hero roster (★ completed / ☆ not yet, `BOSSES n / 4`, `ALL HEROES
+  COMPLETE!`) · four stage scores · `Review: n words` and the missed verbs or
+  `PERFECT!`. Buttons: `TRY AGAIN — BEAT YOUR SCORE / もういちど！` (focused),
+  `NEW ADVENTURE: PLAY AS <hero>` when a hero has not finished yet,
+  `Practice mistakes`, `Choose Hero`, `Main Menu`.
+- **Hero titles** (`src/records.js`, from the campaign's total correct out of
+  40; all positive): 38+ `LEGEND OF MATSUBARA` まつばらの でんせつ · 34+ `VERB
+  MASTER` どうしマスター · 28+ `ELITE DEFENDER` · 20+ `CITY GUARDIAN` · 0+ `BRAVE
+  ADVENTURER`. Thresholds are never shown before a campaign ends.
+- **Records** (`esl-verbs-adventure-records-v1` in localStorage, saved once when
+  the final boss falls): per hero `completed`, `bestCorrect`, `bestTitle`, plus
+  `discoveredBosses`. No names, no accounts; corrupt or missing data reads as
+  fresh. Choose Hero shows `★ 35/40 · <title>` on finished heroes and `NEW!` on
+  the others once any hero has finished. Records never add combat power.
 
 ## Music and sound (`src/audio.js`)
 
@@ -381,7 +416,7 @@ Study keeps its existing Escape → level select.
   combat path.
 - `?debug=art`: every character in any state and variant, the stage backdrops,
   and previews of each victory screen (level up / new skill / passive / final),
-  defeat, and campaign results with 18 missed words.
+  defeat, campaign results with 18 missed words, and both story cinematics.
 - `npm run art:png -- <outDir> [scale] [ids...]` writes sheets as PNGs without
   a browser; `npm run balance -- [seeds] [thresholds|detail]` prints win-rate
   tables.

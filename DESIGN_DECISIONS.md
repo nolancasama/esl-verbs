@@ -300,6 +300,61 @@ Principle: **easy to understand casually; rewarding to play well.**
   (`SKILLS[id].tip`), e.g. `スラッシュの つぎに つかうと COMBO で +4！`. The combo
   and opening numbers come from `BALANCE`.
 
+## 2026-09-29 — classroom feedback pass: menu, speaking, story, titles, replay
+
+Students played Adventure and liked it; this pass fixes what the classroom
+showed, without touching battle rules or balance.
+
+- **Adventure is visually the main game; Practice is explicitly secondary.**
+  Students pressed `STUDY / れんしゅう` because the illustrated Adventure panel did
+  not read as a button. Now: a big gold-framed button with a `▶ START ADVENTURE`
+  plate and a pressed state (no hover needed on touchpads), and a small quiet
+  `PRACTICE ONLY / れんしゅうだけ` below. Study stays — teachers need it. The main
+  menu lost its マイクなし toggle (it lives on the Practice screen), since on the
+  menu it looked like a setting for the game.
+- **Adventure speech stages have no voluntary マイクなし.** Most students ticked it
+  and tapped choices. Speaking is the challenge in stages 3–4, so choices are
+  only a technical fallback (no recognition, mic denied, or 3 recognition errors
+  in the stage — retried next stage), explained in kana, never penalised. The
+  Study preference `esl-verbs-mic-free` is separate and never forces Adventure
+  into choices; an Adventure fallback does not write it either. Rejected:
+  making speech mandatory (a broken mic would trap the student).
+- **Wrong quiz answers never damage campaign HP**; the hero uses a new
+  quiz-only `stumble` sprite state ("!", sweat, lean back) instead of `hit`,
+  and the error SFX is a soft two-note cue instead of a buzz. Missing AP is
+  already the consequence; HP loss would punish the same mistake twice. The
+  state is a real sprite row so it reuses the sprite pipeline; no battle event
+  maps to it (tested).
+- **Story is exactly two short cinematics** (intro after Choose Hero, ending
+  after the final victory screen), ~10 s, skippable, on the existing screen
+  timers with a finish-once guard. Simple premise (monsters threaten Matsubara
+  City; the chosen hero protects it), no named villain, always the chosen hero.
+  City art is programmatic pixel art in three moods plus a silhouette layer, so
+  there are no files or video. Rejected: dialogue between stages (it would slow
+  the quiz rhythm students liked). The ending comes after the final XP screen,
+  not before it, so level-ups are still shown right after the boss.
+- **The campaign awards a positive hero title from the 40 answers** (38/34/28/20
+  thresholds, `src/records.js`); every title means the city was saved, so none
+  is negative. The final victory no longer says `VERB MASTER!` since that is now
+  a title rank. The next rank and how many answers it needs are shown only on
+  results, as a replay surprise.
+- **Best result and hero completions persist locally** (per hero best score and
+  title, plus discovered final bosses) to give two replay paths: beat your score,
+  or play a hero who has not protected the city yet. Records never give combat
+  power; each campaign starts with the normal balance. Stored titles are
+  recomputed from the score on read. Missed-word weighting on replay was
+  skipped: optional, and the round generator stays untouched.
+- **Fighter Guard/Counter shield: the real back arm raises it.** The old pose
+  drew the normal hanging back arm behind the body *and* a fake forearm that
+  started inside the chest, then painted the shield over the breastplate. Now
+  the back upper arm stays behind the torso and the forearm, hand and shield
+  are drawn after it (shoulder → elbow → hand → shield), the shield held in
+  front, and the sword lowered at the side so it does not cross the shield.
+- **Reward lines are laid out before they are revealed** on the victory screen.
+  A first click there ends the XP sequence; revealing lines then grew the card,
+  so the button moved under the pointer and the click was lost (found while
+  scripting the campaign).
+
 A useful rule:
 
 > If a future developer or AI could reasonably ask, "Why is it designed this way?", record the answer here.

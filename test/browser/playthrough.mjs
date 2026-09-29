@@ -149,8 +149,14 @@ async function selectOption(control, value, labelPattern) {
 
 async function adventureFlow(page, baseUrl) {
   await page.goto(baseUrl);
-  await page.getByRole('button', { name: /ADVENTURE/i }).click();
+  await page.getByRole('button', { name: /START ADVENTURE/i }).click();
   await page.getByRole('button', { name: /Fighter/i }).click();
+  // The intro story plays first; SKIP goes straight to Stage 1, exactly once.
+  await page.locator('.cinematic--intro').waitFor();
+  await page.getByRole('button', { name: /Skip/i }).click();
+  await page.locator('.rpg-quiz').waitFor();
+  await page.waitForTimeout(3000); // past the reduced-motion intro's own timer
+  if (await page.locator('.rpg-quiz').count() !== 1 || !(await page.getByText(/^1 \/ 10$/).count())) throw new Error('Stage 1 should start exactly once after skipping the intro');
   await answerTenTypedQuestions(page);
 
   await page.getByText(/STAGE\s*1\s*CLEAR/i).waitFor();
@@ -212,7 +218,7 @@ async function musicToggle(page, baseUrl) {
 
 async function studyFlow(page, baseUrl) {
   await page.goto(baseUrl);
-  await page.getByRole('button', { name: /STUDY/i }).click();
+  await page.getByRole('button', { name: /PRACTICE ONLY/i }).click();
   await page.getByRole('button', { name: /^1\.|English.*Japanese/i }).first().click();
   await answerTenTypedQuestions(page);
   await page.getByRole('heading', { name: /Score:\s*10\s*\/\s*10/i }).waitFor();

@@ -2,7 +2,7 @@
 // (a character in a state, an icon, a backdrop) and never see how pixels are
 // drawn, so the art can be replaced without touching battle logic.
 import { DURATION_MS, ENEMY_IDS, FRAMES, HERO_IDS, LOOPING, ROWS, hasSpriteSheet, spriteSheet } from './pixel-sprites.js';
-import { backdropImage, effectSheet, iconImage } from './pixel-effects.js';
+import { backdropImage, cityImage, effectSheet, iconImage } from './pixel-effects.js';
 import { sheetClass } from './pixel-core.js';
 
 export { createEffectsPlayer } from './fx-player.js';
@@ -82,6 +82,12 @@ export function getBarrierArt() {
 export function backdropClass(stage) {
   const s = backdropImage(stage);
   return s ? sheetClass('pxb', `stage${stage}`, s) : '';
+}
+
+/** Class name that paints Matsubara City: 'calm', 'danger', 'safe', or the 'monsters' overlay. */
+export function cityClass(mood) {
+  const s = cityImage(mood);
+  return s ? sheetClass('pxc', mood, s) : '';
 }
 
 /** Sprite row for an enemy's standing condition. A defeated enemy is not drawn at all. */

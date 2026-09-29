@@ -44,6 +44,17 @@ export function makeChoices(item, vocab, rng = Math.random) {
   return shuffled([item, ...distractors], rng);
 }
 
+/**
+ * Whether speech questions (modes 3-4) are answered by multiple choice. Speech that
+ * cannot work (unsupported, mic denied) always falls back. Otherwise Study follows
+ * the student's マイクなし choice, while Adventure only falls back after recognition
+ * keeps failing: its stored Study preference never turns Adventure speaking off.
+ */
+export function choiceFallback({ context = 'study', micFree = false, speechAvailable = true, speechDenied = false, speechFailed = false } = {}) {
+  if (!speechAvailable || speechDenied) return true;
+  return context === 'adventure' ? Boolean(speechFailed) : Boolean(micFree);
+}
+
 export function viewModel(mode, item, { micFree = false } = {}) {
   const config = MODES[mode];
   if (!config) throw new Error(`Unknown mode: ${mode}`);

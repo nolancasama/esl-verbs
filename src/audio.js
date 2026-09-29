@@ -436,7 +436,9 @@ export function createAudio() {
       case 'cursor': tone('pulse', 1320, t, 0.035, 0.12); break;
       case 'select': notes(['E6', 'B6'], t, 0.04, 'square', 0.12, 0.05); break;
       case 'correct': notes(['C6', 'E6', 'G6', 'C7'], t, 0.055, 'triangle', 0.3, 0.14); break;
-      case 'wrong': tone('square', 220, t, 0.22, 0.12, 110); break;
+      // A soft "oops" for a missed quiz word, deliberately unlike the battle hit sounds.
+      case 'wrong': notes(['E5', 'C5'], t, 0.11, 'triangle', 0.16, 0.16); break;
+      case 'alarm': notes(['A5', 'F5', 'A5', 'F5'], t, 0.2, 'triangle', 0.13, 0.18); hiss(t, 0.9, 0.12, 300, 60); break;
       case 'slash': hiss(t, 0.12, 0.35, 6000, 1200, 'bandpass'); break;
       case 'hit': hiss(t, 0.09, 0.45, 2500, 300); tone('square', 160, t, 0.08, 0.2, 70); break;
       case 'bigHit': hiss(t, 0.28, 0.6, 1800, 120); tone('square', 110, t, 0.3, 0.28, 35); break;

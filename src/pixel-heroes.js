@@ -168,13 +168,17 @@ function drawFighter(pose = {}) {
   limb(p, 'indigo', s.backLeg.start, s.backLeg.knee, 3.6, 2.8);
   limb(p, 'indigo', s.backLeg.knee, s.backLeg.foot, 3, 2.2);
   boot(p, 'leather', s.backLeg.foot);
+  // The shield is on the back arm. Raised (guard), only the upper arm is behind
+  // the body; the forearm and shield are drawn in front of the torso below.
   limb(p, 'red', s.backArm.shoulder, s.backArm.elbow, 2.6, 2.2);
-  limb(p, 'leather', s.backArm.elbow, s.backArm.hand, 2.2, 2);
-  hand(p, 'leather', s.backArm.hand, 2.1);
+  if (!o.shieldUp) {
+    limb(p, 'leather', s.backArm.elbow, s.backArm.hand, 2.2, 2);
+    hand(p, 'leather', s.backArm.hand, 2.1);
+  }
 
   // torso: tunic with a flared skirt, breastplate, belt; the shield hangs behind
   const waist = pt(s.neck, s.hip, 0.72);
-  if (!o.shieldAt) shield(p, [s.backArm.hand[0] - 1, s.backArm.hand[1] - 3]);
+  if (!o.shieldUp) shield(p, [s.backArm.hand[0] - 1, s.backArm.hand[1] - 3]);
   p.shape('red', (id) => p.poly(id, [[nx - 7.5, ny + 1], [nx + 6.5, ny + 1], [waist[0] + 6, waist[1]], [px + 8.5, py + 7], [px - 8.5, py + 7], [waist[0] - 6.5, waist[1]]]), { shadow: 2 });
   p.shape('steel', (id) => p.poly(id, [[nx - 6.5, ny + 1.5], [nx + 6.5, ny + 1.5], [waist[0] + 6.5, waist[1] - 2], [waist[0] + 1, waist[1] + 1], [waist[0] - 6.5, waist[1] - 2]]), { gloss: true, shadow: 2 });
   p.shape('leather', (id) => p.poly(id, [[px - 7.5, py - 1.5], [px + 7.5, py - 1.5], [px + 7.5, py + 1.5], [px - 7.5, py + 1.5]]));
@@ -193,6 +197,13 @@ function drawFighter(pose = {}) {
   p.shape('red', (id) => p.poly(id, [[hx - 8, hy - 5.5], [hx + 8, hy - 6.5], [hx + 8.5, hy - 4], [hx - 8, hy - 3]]));
   face(p, hx, hy, { eyes: o.eyes, mouth: o.mouth });
 
+  if (o.shieldUp) {
+    // Guarding: the back forearm comes forward across the body and holds the shield out front.
+    limb(p, 'leather', s.backArm.elbow, s.backArm.hand, 2.2, 2);
+    hand(p, 'leather', s.backArm.hand, 2.1);
+    shield(p, [s.backArm.hand[0] + 1.5, s.backArm.hand[1]], o.flashShield);
+  }
+
   // front arm: sword behind the fist, pauldron on the shoulder
   limb(p, 'red', s.frontArm.shoulder, s.frontArm.elbow, 2.8, 2.4);
   if (!o.noSword) sword(p, s.frontArm.hand, o.weapon, o.swordLen ?? 21, o.glow);
@@ -200,11 +211,6 @@ function drawFighter(pose = {}) {
   hand(p, 'leather', s.frontArm.hand, 2.4);
   if (o.potion) potion(p, s.frontArm.hand);
   p.shape('steel', (id) => p.ellipse(id, s.frontArm.shoulder[0] + 0.5, s.frontArm.shoulder[1] - 0.5, 4.2, 3.4), { gloss: true });
-  if (o.shieldAt) {
-    // Guarding: the shield arm comes forward over the body.
-    limb(p, 'leather', [nx + 2, ny + 6], [nx + o.shieldAt[0] - 2, ny + o.shieldAt[1] + 2], 2.2, 2);
-    shield(p, [nx + o.shieldAt[0], ny + o.shieldAt[1]], o.flashShield);
-  }
 
   (o.fx || []).forEach((effect) => effect(p, s));
   return p.render();
@@ -338,6 +344,8 @@ const tipSpark = (big = true, key = 'spark') => (p, s) => {
   sparkle(p, s.frontArm.hand[0] + dx * len, s.frontArm.hand[1] + dy * len, big, key);
 };
 const sweat = (p, s) => { const [hx, hy] = s.head; p.dot(hx + 9, hy - 4, 'cyan'); p.dot(hx + 9, hy - 3, 'cyan'); p.dot(hx + 10, hy - 3, 'white'); p.dot(hx + 9, hy - 2, 'cyan'); };
+/** A small "!" over the head: surprised, not hurt (a wrong quiz answer). */
+const oops = (p, s) => { const [hx, hy] = s.head; const x = Math.round(hx + 10), y = Math.round(hy - 14); [0, 1, 2, 3].forEach((d) => { p.dot(x, y + d, 'gold4'); p.dot(x + 1, y + d, 'gold4'); }); p.dot(x, y + 5, 'gold4'); p.dot(x + 1, y + 5, 'gold4'); };
 const puff = (p, s) => { const [x, y] = s.backLeg.foot; [[-4, 0], [-7, -2], [-10, 0]].forEach(([dx, dy]) => sparkle(p, x + dx, y + dy - 1, false, 'speed')); };
 const streaks = (y0 = 26, len = 18, x0 = 22) => (p) => [0, 6, 12].forEach((dy, i) => { for (let k = 0; k < len - i * 3; k += 1) if (k % 6 !== 5) p.dot(x0 - k, y0 + dy, 'speed'); });
 const ring = (color, r = 10) => (p, s) => {
@@ -352,6 +360,8 @@ const N = (extra) => ({ id: 'ninja', ...extra });
 const NS = { lean: 14, backThigh: -34, backShin: 6, frontThigh: 44, frontShin: -4, frontUpper: 40, frontFore: 90, weapon: 20, backUpper: -30, backFore: 10 };
 const LUNGE = { backThigh: -34, backShin: -12, frontThigh: 42, frontShin: 12 };
 const KNEEL = { backThigh: 74, backShin: -88, frontThigh: 80, frontShin: -2 };
+// The fighter's raised shield: the back arm reaches forward from its own shoulder.
+const SHIELD_UP = { shieldUp: true, backUpper: 40, backFore: 100 };
 
 export const POSES = {
   fighter: {
@@ -372,9 +382,9 @@ export const POSES = {
       F({ x: 35, lean: 8, frontUpper: 30, frontFore: 70, weapon: 112, tail: 1 }),
     ],
     guard: [
-      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -20, frontFore: 4, weapon: 168, shieldAt: [9, 9], eyes: 'fierce', mouth: 'grit', tail: 2 }),
-      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -20, frontFore: 4, weapon: 168, shieldAt: [9, 9], eyes: 'fierce', mouth: 'grit', tail: 1, fx: [sparks([[45, 32, true]], 'white')] }),
-      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -20, frontFore: 4, weapon: 168, shieldAt: [9, 9], eyes: 'fierce', mouth: 'grit', tail: 2 }),
+      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -16, frontFore: 24, weapon: 30, ...SHIELD_UP, eyes: 'fierce', mouth: 'grit', tail: 2 }),
+      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -16, frontFore: 24, weapon: 30, ...SHIELD_UP, eyes: 'fierce', mouth: 'grit', tail: 1, fx: [sparks([[45, 32, true]], 'white')] }),
+      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -16, frontFore: 24, weapon: 30, ...SHIELD_UP, eyes: 'fierce', mouth: 'grit', tail: 2 }),
     ],
     dodge: [
       F({ x: 28, lift: 3, lean: -12, backThigh: -30, frontThigh: 40, frontShin: 20, eyes: 'fierce', ghosts: [[4, 0]] }),
@@ -400,6 +410,11 @@ export const POSES = {
       F({ frontUpper: 146, frontFore: 158, weapon: 160, eyes: 'happy', mouth: 'smile', tail: 2, fx: [tipSpark(false)] }),
       F({ lift: 1, frontUpper: 146, frontFore: 158, weapon: 160, eyes: 'happy', mouth: 'open', tail: 4, fx: [tipSpark(true, 'glow')] }),
     ],
+    stumble: [
+      F({ x: 29, lean: -10, head: -8, backThigh: -12, frontThigh: 30, eyes: 'open', mouth: 'open', tail: 3, fx: [oops] }),
+      F({ x: 28, bob: 1, lean: -12, head: -10, backThigh: -12, frontThigh: 30, eyes: 'shut', mouth: 'line', tail: 4, fx: [oops, sweat] }),
+      F({ x: 31, lean: -2, eyes: 'open', mouth: 'line', tail: 2, fx: [sweat] }),
+    ],
     tired: [
       F({ lean: 30, head: 10, backThigh: -20, backShin: 4, frontThigh: 40, frontShin: -6, frontUpper: 34, frontFore: 12, weapon: 16, backUpper: 22, backFore: 18, eyes: 'shut', mouth: 'open', fx: [sweat] }),
       F({ bob: 1, lean: 32, head: 12, backThigh: -20, backShin: 4, frontThigh: 40, frontShin: -6, frontUpper: 34, frontFore: 12, weapon: 16, backUpper: 22, backFore: 18, eyes: 'shut', mouth: 'line', fx: [sweat] }),
@@ -411,7 +426,7 @@ export const POSES = {
       F({ eyes: 'happy', mouth: 'smile', fx: [sparks([[22, 30, true], [48, 44]], 'green')] }),
     ],
     counter: [
-      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -20, frontFore: 4, weapon: 168, shieldAt: [9, 9], eyes: 'fierce', mouth: 'grit', flashShield: true, fx: [sparks([[45, 32, true], [36, 26]], 'white')] }),
+      F({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, frontUpper: -16, frontFore: 24, weapon: 30, ...SHIELD_UP, eyes: 'fierce', mouth: 'grit', flashShield: true, fx: [sparks([[45, 32, true], [36, 26]], 'white')] }),
       F({ x: 40, lean: 16, ...LUNGE, frontUpper: 92, frontFore: 90, weapon: 90, eyes: 'fierce', mouth: 'open', tail: 4, fx: [streaks(36, 14, 26)] }),
       F({ x: 42, lean: 18, ...LUNGE, frontUpper: 92, frontFore: 90, weapon: 90, eyes: 'fierce', mouth: 'open', tail: 5, fx: [tipSpark(true, 'glow')] }),
       F({ x: 40, lean: 18, ...LUNGE, frontUpper: 58, frontFore: 28, weapon: 18, eyes: 'fierce', tail: 3, fx: [swing(-60, 60, 27, 3)] }),
@@ -469,6 +484,11 @@ export const POSES = {
       M({ lift: 2, frontUpper: 164, frontFore: 172, weapon: 178, eyes: 'happy', mouth: 'open', hatTip: 4, fx: [tipSpark(true, 'cyan'), sparks([[18, 20], [52, 24]], 'violet')] }),
       M({ frontUpper: 160, frontFore: 170, weapon: 176, eyes: 'happy', mouth: 'smile', hatTip: 2, fx: [tipSpark(false, 'cyan')] }),
       M({ lift: 2, frontUpper: 164, frontFore: 172, weapon: 178, eyes: 'happy', mouth: 'open', hatTip: 4, fx: [tipSpark(true, 'white'), sparks([[22, 14], [48, 30]], 'violet')] }),
+    ],
+    stumble: [
+      M({ x: 29, lean: -10, head: -8, weapon: 186, eyes: 'open', mouth: 'open', hatTip: 3, fx: [oops] }),
+      M({ x: 28, bob: 1, lean: -12, head: -10, weapon: 190, eyes: 'shut', mouth: 'line', hatTip: 5, fx: [oops, sweat] }),
+      M({ x: 31, lean: -2, weapon: 178, eyes: 'open', mouth: 'line', hatTip: 2, fx: [sweat] }),
     ],
     tired: [
       M({ lean: 26, head: 12, frontUpper: 20, frontFore: 10, weapon: 186, backUpper: 20, backFore: 30, eyes: 'shut', mouth: 'open', hatTip: 6, fx: [sweat] }),
@@ -530,6 +550,11 @@ export const POSES = {
       N({ lean: 2, lift: 1, backThigh: -16, frontThigh: 20, frontUpper: 150, frontFore: 170, weapon: 170, backUpper: -40, backFore: -60, eyes: 'happy', scarf: 5, fx: [tipSpark(true)] }),
       N({ lean: 2, backThigh: -16, frontThigh: 20, frontUpper: 150, frontFore: 170, weapon: 170, backUpper: -40, backFore: -60, eyes: 'happy', scarf: 6, fx: [tipSpark(false)] }),
       N({ lean: 2, lift: 1, backThigh: -16, frontThigh: 20, frontUpper: 150, frontFore: 170, weapon: 170, backUpper: -40, backFore: -60, eyes: 'happy', scarf: 4, fx: [tipSpark(true, 'glow')] }),
+    ],
+    stumble: [
+      N({ ...NS, x: 29, lean: -4, head: -8, eyes: 'open', scarf: 4, fx: [oops] }),
+      N({ ...NS, x: 28, bob: 1, lean: -6, head: -10, eyes: 'shut', scarf: 5, fx: [oops, sweat] }),
+      N({ ...NS, x: 31, lean: 8, eyes: 'open', scarf: 2, fx: [sweat] }),
     ],
     tired: [
       N({ lean: 32, head: 12, backThigh: -24, backShin: 10, frontThigh: 44, frontShin: -8, frontUpper: 30, frontFore: 10, weapon: 10, backUpper: 24, backFore: 14, eyes: 'shut', scarf: 0, fx: [sweat] }),

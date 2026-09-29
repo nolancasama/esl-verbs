@@ -1,6 +1,6 @@
 import { VOCABULARY } from './vocab.js';
 import { isJapaneseCorrect } from './normalize.js';
-import { MODES, answer, createRound, makeChoices, practiceItems, viewModel } from './engine.js';
+import { MODES, answer, choiceFallback, createRound, makeChoices, practiceItems, viewModel } from './engine.js';
 import { TapToTalk } from './speech.js';
 import { speak } from './tts.js';
 import { CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
@@ -9,13 +9,17 @@ import {
   applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, createCampaign, recordDefeat, recordStage, xpProgress,
 } from './campaign.js';
 import { createBattleView } from './battle-ui.js';
-import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, getIcon, prewarmArt } from './battle-art.js';
+import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, getIcon, prewarmArt } from './battle-art.js';
+import {
+  ADVENTURE_RECORDS_KEY, FINAL_BOSSES, completedHeroes, heroTitle, nextHeroTitle, parseRecords, recordCompletion,
+} from './records.js';
 import { createApMeter } from './ap-meter.js';
 import { createAudio } from './audio.js';
 
 const app = document.querySelector('#app');
 const MIC_FREE_KEY = 'esl-verbs-mic-free';
 const MIC_MESSAGE = '音声認識を使えません。「マイクなし」を使ってください。';
+const ADVENTURE_MIC_MESSAGE = 'マイクが使えないので、えらんで答えよう！';
 const titles = {
   1: ['English → Japanese', 'See and hear English. Type Japanese.', 'えいごを見て聞いて、日本語を書こう'],
   2: ['Listen → Japanese', 'Hear English. Type Japanese.', 'えいごを聞いて、日本語を書こう'],
@@ -26,11 +30,19 @@ const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(pre
 const apMeter = createApMeter();
 const audio = createAudio();
 let micFree = readMicFree(), round = null, quizContext = null, feedback = '', audioError = false;
-let recognitionErrors = 0, speechDenied = false, tap = null, lastHeard = '';
+// speechFailed: recognition kept erroring during this Adventure stage, so it falls back to choices.
+let recognitionErrors = 0, speechDenied = false, speechFailed = false, tap = null, lastHeard = '';
 let campaign = null, stageResult = null, battleView = null, screen = 'menu', debugConfig = null, screenTimers = [], upcomingEncounter = null;
+let campaignOutcome = null; // the finished campaign's saved record, for the results screen
 
 function readMicFree() { try { return localStorage.getItem(MIC_FREE_KEY) === 'true'; } catch { return false; } }
 function saveMicFree(value) { try { localStorage.setItem(MIC_FREE_KEY, String(value)); } catch {} }
+function readRecords() { let raw = null; try { raw = localStorage.getItem(ADVENTURE_RECORDS_KEY); } catch {} return parseRecords(raw, ART_IDS.heroes); }
+function saveRecords(records) { try { localStorage.setItem(ADVENTURE_RECORDS_KEY, JSON.stringify(records)); } catch {} }
+/** Speech questions become multiple choice: Study by the student's マイクなし choice, Adventure only when speech cannot work. */
+function answerByChoices() {
+  return choiceFallback({ context: isAdventure() ? 'adventure' : 'study', micFree, speechAvailable: speechRecognitionAvailable(), speechDenied, speechFailed });
+}
 function currentItem() { return round?.items[round.currentIndex]; }
 function setMicFree(value) { micFree = value; saveMicFree(value); if (round) renderQuestion(false); }
 function element(tag, className = '', text = '') { const node = document.createElement(tag); node.className = className; node.textContent = text; return node; }
@@ -72,20 +84,24 @@ function mainMenu() {
   audio.play('title');
   const card = element('section', 'card menu-card'); card.append(element('h1', 'game-title', 'ESL VERBS'));
   const actions = element('div', 'menu-actions');
+  // Adventure is the game: one big framed button with a play arrow. Practice is the quiet second choice.
   const adventure = element('button', 'menu-choice adventure-choice px-button'); adventure.onclick = heroSelect;
+  adventure.setAttribute('aria-label', 'Start adventure / ぼうけんを はじめる');
   // Hero sheets are slow to build on a Chromebook: paint the menu first, then add each hero as it is ready.
   const trio = element('span', 'adventure-trio'); trio.setAttribute('aria-hidden', 'true');
   prewarmArt(ART_IDS.heroes.map((id) => [id]), (id) => trio.insertAdjacentHTML('beforeend', battleArt(id)));
-  adventure.append(trio, element('span', '', 'ADVENTURE'), element('small', '', 'ぼうけん'));
-  const study = element('button', 'menu-choice', 'STUDY / れんしゅう'); study.onclick = levelSelect;
-  const toggles = element('div', 'menu-toggles'); toggles.append(micToggle(), musicToggle());
+  const cta = element('span', 'adventure-cta'); cta.append(element('span', 'adventure-cta__arrow', '▶'), element('span', '', 'START ADVENTURE'));
+  adventure.append(trio, cta, element('small', '', 'ぼうけんを はじめる！'));
+  const study = element('button', 'menu-choice practice-choice secondary'); study.onclick = levelSelect;
+  study.append(element('span', '', 'PRACTICE ONLY'), element('small', '', 'れんしゅうだけ'));
+  const toggles = element('div', 'menu-toggles'); toggles.append(musicToggle());
   actions.append(adventure, study); card.append(actions, toggles); app.append(card);
 }
 
 function levelSelect() {
   clearScreen(); round = null; quizContext = null; screen = 'study-select';
   audio.stop();
-  const card = element('section', 'card'); card.append(element('h1', '', 'Study / れんしゅう'));
+  const card = element('section', 'card'); card.append(element('h1', '', 'Practice / れんしゅう'));
   const back = element('button', 'secondary', '← Main Menu'); back.onclick = mainMenu; card.append(back);
   const levels = element('div', 'levels');
   Object.entries(titles).forEach(([mode, title]) => {
@@ -103,22 +119,38 @@ function heroSelect() {
   const back = element('button', 'secondary px-button', '← Main Menu'); back.onclick = mainMenu;
   const right = element('div', 'topline-actions'); right.append(musicToggle(), back); top.append(title, right); card.append(top);
   const grid = element('div', 'hero-grid');
+  // Replay progress appears only once some hero has finished a campaign.
+  const records = readRecords(); const anyDone = completedHeroes(records).length > 0;
   Object.values(HEROES).forEach((hero) => {
     const button = element('button', 'hero-card px-button'); button.dataset.hero = hero.id; const art = element('span', 'hero-card-art'); art.innerHTML = battleArt(hero.id);
     art.firstElementChild?.setAttribute('aria-hidden', 'true');
+    const record = records.heroes[hero.id];
+    let progress = '';
+    if (record?.completed) {
+      button.classList.add('hero-card--done');
+      const badge = element('span', 'hero-badge hero-badge--done'); badge.append(element('b', '', `★ ${record.bestCorrect}/40`), element('span', '', record.bestTitle));
+      art.append(badge); progress = ` Completed. Best ${record.bestCorrect}/40, ${record.bestTitle}.`;
+    } else if (anyDone) { art.append(element('span', 'hero-badge hero-badge--new', 'NEW!')); progress = ' New!'; }
     button.append(art, element('strong', '', hero.name.toUpperCase()), element('span', 'hero-ja', hero.jaName), element('span', 'hero-kana', hero.kanaSummary), element('small', '', hero.summary));
-    button.setAttribute('aria-label', `${hero.name} / ${hero.jaName}: ${hero.kanaSummary} ${hero.summary}`);
+    button.setAttribute('aria-label', `${hero.name} / ${hero.jaName}: ${hero.kanaSummary} ${hero.summary}${progress}`);
     button.onclick = () => startCampaign(hero.id); grid.append(button);
-  }); card.append(grid); app.append(card);
+  }); card.append(grid);
+  if (completedHeroes(records).length === ART_IDS.heroes.length) card.append(element('p', 'all-heroes rpg-burst', 'ALL HEROES COMPLETE! ★★★'));
+  app.append(card);
+  // The intro cinematic's city is drawn now, so choosing a hero starts it without a stall.
+  ['calm', 'danger', 'monsters'].forEach((mood) => cityClass(mood));
 }
 
 /* ------------------------------------------------------------------- quiz */
 
-function startCampaign(heroId) { campaign = createCampaign(heroId); startRound(1, createRound(VOCABULARY), 'adventure'); }
+function startCampaign(heroId) {
+  campaign = createCampaign(heroId); campaignOutcome = null;
+  introCinematic(() => startRound(1, createRound(VOCABULARY), 'adventure'));
+}
 function startRound(mode, items = createRound(VOCABULARY), context = 'study') {
   round = { mode, items, currentIndex: 0, correctCount: 0, currentStreak: 0, bestStreak: 0, missedIds: new Set(), allItems: VOCABULARY };
-  quizContext = context; feedback = ''; audioError = false; recognitionErrors = 0;
-  if (mode >= 3 && !micFree && !speechRecognitionAvailable()) { micFree = true; saveMicFree(true); feedback = MIC_MESSAGE; }
+  quizContext = context; feedback = ''; audioError = false; recognitionErrors = 0; speechFailed = false;
+  if (context === 'study' && mode >= 3 && !micFree && !speechRecognitionAvailable()) { micFree = true; saveMicFree(true); feedback = MIC_MESSAGE; }
   if (context === 'adventure') { apMeter?.set(0, { animate: false }); audio.play('field'); prepareEncounter(); } else audio.stop();
   renderQuestion();
 }
@@ -139,7 +171,7 @@ function prepareEncounter() {
 function renderQuestion(autoSpeak = true) {
   if (isAdventure()) { renderAdventureQuestion(autoSpeak); return; }
   tap?.cancel(); tap = null; clearBattle(); screen = 'study-quiz';
-  const item = currentItem(); const vm = viewModel(round.mode, item, { micFree }); app.replaceChildren(); app.className = 'app';
+  const item = currentItem(); const vm = viewModel(round.mode, item, { micFree: answerByChoices() }); app.replaceChildren(); app.className = 'app';
   const card = element('section', 'card'); const top = element('div', 'topline');
   const back = element('button', 'secondary', '← Level select'); back.onclick = levelSelect;
   const hud = element('div', 'hud', `${round.currentIndex + 1} / ${round.items.length}`); top.append(back, hud); card.append(top);
@@ -151,16 +183,17 @@ function renderQuestion(autoSpeak = true) {
   card.append(controls, answerArea(vm, item)); app.append(card); if (autoSpeak) playPrompt(vm);
 }
 
+/** Quiz reactions never look like combat damage: a miss is a surprised stumble, and HP is untouched. */
 function heroQuizPose() {
   if (feedback.startsWith('Correct')) return 'victory';
-  if (/^(Wrong|Answer)/.test(feedback)) return 'hit';
+  if (/^(Wrong|Answer)/.test(feedback)) return 'stumble';
   return 'idle';
 }
 
 /** Adventure quiz: the same question flow inside an RPG frame, with the AP meter on top. */
 function renderAdventureQuestion(autoSpeak = true) {
   tap?.cancel(); tap = null; clearBattle(); clearTimers(); screen = 'adventure-quiz';
-  const item = currentItem(); const vm = viewModel(round.mode, item, { micFree });
+  const item = currentItem(); const vm = viewModel(round.mode, item, { micFree: answerByChoices() });
   const stage = campaign.stage; const hero = HEROES[campaign.heroId];
   app.replaceChildren(); app.className = 'app rpg-app rpg-quiz-app';
   const root = element('section', `rpg-quiz stage-${stage}`);
@@ -185,7 +218,8 @@ function renderAdventureQuestion(autoSpeak = true) {
   promptRow.append(element('div', vm.promptText === null ? 'rpg-quiz__prompt rpg-quiz__prompt--audio' : 'rpg-quiz__prompt', vm.promptText ?? '🔊'));
   const controls = element('div', 'rpg-quiz__controls');
   const replay = element('button', 'secondary px-button', '🔊 Replay'); replay.onclick = () => playPrompt(vm); controls.append(replay);
-  if (round.mode >= 3) controls.append(micToggle());
+  // Adventure speech stages have no マイクなし: choices appear only when the mic cannot work.
+  if (round.mode >= 3 && vm.input === 'choices') controls.append(element('span', 'rpg-quiz__mic-note', ADVENTURE_MIC_MESSAGE));
   win.append(promptRow, controls);
   if (audioError) win.append(element('div', 'audio-error', MODES[round.mode].showPrompt ? '音が出ません（表示のことばを読んでください）' : '音が出ません'));
   win.append(answerArea(vm, item, true));
@@ -237,7 +271,12 @@ function mark(correct, item, shown = false) {
   renderQuestion(false);
 }
 function nextQuestion() { round = { ...round, currentIndex: round.currentIndex + 1 }; feedback = ''; audioError = false; if (round.currentIndex >= round.items.length) isAdventure() ? finishAdventureStage() : endScreen(); else renderQuestion(); }
-function fallback(reason) { if (reason === 'denied') speechDenied = true; micFree = true; saveMicFree(true); feedback = MIC_MESSAGE; renderQuestion(false); }
+function fallback(reason) {
+  if (reason === 'denied') speechDenied = true;
+  // Adventure keeps the Study マイクなし preference untouched and explains the fallback beside the choices.
+  if (isAdventure()) { speechFailed = true; feedback = ''; } else { micFree = true; saveMicFree(true); feedback = MIC_MESSAGE; }
+  renderQuestion(false);
+}
 function playPrompt(vm) {
   speak(vm.speak.text, vm.speak.lang, {
     onStart: () => audio.duck('tts', true), onEnd: () => audio.duck('tts', false),
@@ -315,6 +354,7 @@ function battleEnded(state, options) {
   if (state.turn === 'won') {
     const { campaign: next, rewards } = applyVictory(campaign, state);
     campaign = next;
+    if (options.stage === 4) saveCampaignOutcome();
     adventureVictory(options.stage, rewards);
   } else {
     campaign = recordDefeat(campaign);
@@ -338,7 +378,9 @@ function adventureVictory(stage, rewards) {
   audio.play(final ? 'finale' : 'victory');
   const card = element('section', `rpg-card px-panel result-card victory-card${final ? ' victory-card--final' : ''}`);
   const title = element('h1', `rpg-title${final ? ' rpg-burst' : ''}`, 'VICTORY!'); card.append(title, heroPose('victory', stage));
-  if (final) card.append(element('h2', 'rpg-title rpg-master', 'VERB MASTER!'));
+  if (final) card.append(element('h2', 'rpg-title rpg-master', 'BOSS DEFEATED!'));
+  // The ending's city art is drawn while this screen is up.
+  if (final) cityClass('safe');
 
   const xpBox = element('div', 'rpg-xp px-panel');
   const gained = element('div', 'rpg-xp__gain', `+${rewards.xpGained} XP`);
@@ -353,12 +395,11 @@ function adventureVictory(stage, rewards) {
   if (!final) {
     rest.append(rewardLine('heart', `HP ${rewards.hpBefore} → ${rewards.hp} / ${rewards.maxHp}  (+${rewards.healed})`));
     if (rewards.potions > rewards.potionsBefore) rest.append(rewardLine('potion', `ポーション ×${rewards.potionsBefore} → ×${rewards.potions}`));
-    rest.hidden = true;
     card.append(rest);
   }
 
-  const next = element('button', 'px-button', final ? 'CAMPAIGN RESULTS' : 'NEXT STAGE');
-  next.onclick = final ? campaignResults : () => startRound(campaign.stage, createRound(VOCABULARY), 'adventure');
+  const next = element('button', 'px-button', final ? 'NEXT ▶  つぎへ' : 'NEXT STAGE');
+  next.onclick = final ? () => endingCinematic(campaignResults) : () => startRound(campaign.stage, createRound(VOCABULARY), 'adventure');
   card.append(next); app.append(card); queueMicrotask(() => next.focus());
   playXpSequence(rewards, { fill, levelLabel, levelUps, rest, card });
 }
@@ -371,43 +412,54 @@ function playXpSequence(rewards, { fill, levelLabel, levelUps, rest, card }) {
     void fill.offsetWidth;
     fill.style.width = `${Math.round(ratio * 100)}%`;
   };
-  const showLevel = (reward) => {
-    levelLabel.textContent = `LV ${reward.level}${reward.mastery ? ' · MASTER' : ''}`;
-    levelUps.append(rewardLine('combo', `LEVEL UP!  LV ${reward.level}`, 'rpg-reward-line--levelup'));
-    if (reward.maxHpGain) levelUps.append(rewardLine('heart', `MAX HP +${reward.maxHpGain}`));
+  // Every reward line is laid out from the start and only revealed later, so the
+  // card never changes size under the pointer: a click that ends the sequence early
+  // still lands on the button it pressed.
+  const groups = rewards.levelUps.map((reward) => {
+    const lines = [rewardLine('combo', `LEVEL UP!  LV ${reward.level}`, 'rpg-reward-line--levelup')];
+    if (reward.maxHpGain) lines.push(rewardLine('heart', `MAX HP +${reward.maxHpGain}`));
     reward.skills.forEach((id) => {
       const line = rewardLine(id, `NEW SKILL!  ${SKILLS[id].name.toUpperCase()} / ${SKILLS[id].jaName} · ${SKILLS[id].cost} AP`, 'rpg-reward-line--skill');
       if (SKILLS[id].tip) line.lastElementChild.append(element('small', 'rpg-reward-tip', SKILLS[id].tip));
-      levelUps.append(line);
+      lines.push(line);
     });
-    if (reward.passive) levelUps.append(rewardLine('counter', `POWER UP!  ${reward.passive.name.toUpperCase()} — ${reward.passive.kanaText}`, 'rpg-reward-line--skill'));
-    if (reward.mastery) levelUps.append(rewardLine('power', 'VERB MASTER! / マスター！', 'rpg-reward-line--skill'));
+    if (reward.passive) lines.push(rewardLine('counter', `POWER UP!  ${reward.passive.name.toUpperCase()} — ${reward.passive.kanaText}`, 'rpg-reward-line--skill'));
+    if (reward.mastery) lines.push(rewardLine('power', 'VERB MASTER! / マスター！', 'rpg-reward-line--skill'));
+    lines.forEach((line) => line.classList.add('rpg-pending'));
+    levelUps.append(...lines);
+    return lines;
+  });
+  rest?.classList.add('rpg-pending');
+  const showLevel = (reward, index) => {
+    levelLabel.textContent = `LV ${reward.level}${reward.mastery ? ' · MASTER' : ''}`;
+    groups[index].forEach((line) => line.classList.remove('rpg-pending'));
     audio.sfx('levelup');
   };
   const start = xpProgress(rewards.xpBefore);
   setBar(start.ratio, true);
   let at = 450;
-  rewards.levelUps.forEach((reward) => {
+  rewards.levelUps.forEach((reward, index) => {
     steps.push([at, () => setBar(1)]);
     at += 750;
-    steps.push([at, () => { showLevel(reward); setBar(0, true); }]);
+    steps.push([at, () => { showLevel(reward, index); setBar(0, true); }]);
     at += 350;
   });
   const end = xpProgress(rewards.xp);
   steps.push([at, () => setBar(end.ratio)]);
   at += 700;
-  steps.push([at, () => { if (rest) rest.hidden = false; }]);
+  steps.push([at, () => rest?.classList.remove('rpg-pending')]);
 
   let done = false;
   const finish = () => {
     if (done) return;
     done = true;
     clearTimers();
-    levelUps.replaceChildren();
-    rewards.levelUps.forEach(showLevel);
+    const pending = rewards.levelUps.some((_, index) => groups[index][0].classList.contains('rpg-pending'));
+    levelUps.querySelectorAll('.rpg-pending').forEach((line) => line.classList.remove('rpg-pending'));
+    if (pending) audio.sfx('levelup');
     levelLabel.textContent = `LV ${rewards.level}${rewards.level === LEVELS.length ? ' · MASTER' : ''}`;
     setBar(end.ratio, true);
-    if (rest) rest.hidden = false;
+    rest?.classList.remove('rpg-pending');
     card.removeEventListener('pointerdown', finish);
     document.removeEventListener('keydown', finish, true);
   };
@@ -438,22 +490,137 @@ function adventureDefeat() {
   queueMicrotask(() => retry.focus());
 }
 
+/** The final boss of this campaign (stage 4's encounter), if any. */
+function campaignBoss(from = campaign) {
+  const encounterId = from.stageResults[3]?.encounterId;
+  return ENCOUNTERS[encounterId]?.enemyIds.find((id) => ENEMIES[id].boss) ?? null;
+}
+
+/** Store the finished campaign's result once, when the final boss falls. */
+function saveCampaignOutcome() {
+  const { totalCorrect } = campaignSummary(campaign);
+  const result = recordCompletion(readRecords(), campaign.heroId, totalCorrect, campaignBoss());
+  saveRecords(result.records);
+  campaignOutcome = { ...result, heroId: campaign.heroId };
+}
+
+function scoreLine(summary) {
+  const score = element('div', 'rpg-score', `${summary.totalCorrect} / ${summary.totalQuestions}`);
+  score.append(element('small', 'rpg-score__unit', ' VERBS'));
+  return score;
+}
+
 function campaignResults() {
   clearScreen(); rpgScreen(); screen = 'campaign-results'; audio.play('title');
   const summary = campaignSummary(campaign); const hero = HEROES[campaign.heroId];
-  const card = element('section', 'rpg-card px-panel results-card'); card.append(element('h1', 'rpg-title', 'VICTORY! VERB MASTER!'));
+  // Debug previews reach this screen without finishing a campaign: show the stored records, save nothing.
+  const outcome = campaignOutcome?.heroId === campaign.heroId ? campaignOutcome : { records: readRecords(), newBest: false, firstClear: false };
+  const title = heroTitle(summary.totalCorrect); const next = nextHeroTitle(summary.totalCorrect);
+  const card = element('section', 'rpg-card px-panel results-card');
+  const heading = element('h1', 'rpg-title', 'MATSUBARA CITY IS SAFE!'); heading.append(element('span', 'rpg-ja', 'まつばら市を まもった！')); card.append(heading);
+
   const heroLine = element('div', 'results-hero'); const art = element('span', 'mini-art'); art.innerHTML = battleArt(hero.id, 'victory'); art.firstElementChild?.setAttribute('aria-hidden', 'true');
-  const heroText = element('div', 'results-hero__text'); heroText.append(element('strong', '', `${hero.name} / ${hero.jaName} · LV ${summary.level}`), element('div', 'rpg-score', `${summary.totalCorrect} / ${summary.totalQuestions}`), element('p', '', `Best streak: ${summary.bestStreak}`));
-  heroLine.append(art, heroText); card.append(heroLine);
+  const heroText = element('div', 'results-hero__text'); heroText.append(element('strong', '', `${hero.name.toUpperCase()} / ${hero.jaName} · LV ${summary.level}`), scoreLine(summary), element('p', '', `Best streak: ${summary.bestStreak}`));
+  heroLine.append(art, heroText);
+
+  // The hero title is the campaign's main reward; the score stays beside it.
+  const rank = element('div', 'results-title px-panel');
+  if (outcome.firstClear || outcome.newBest) rank.append(element('span', 'results-title__flag', outcome.firstClear ? 'FIRST CLEAR!' : 'NEW BEST!'));
+  rank.append(element('strong', 'results-title__en', title.en), element('span', 'results-title__ja', title.ja));
+  rank.append(next
+    ? element('span', 'results-title__next', `NEXT TITLE: ${next.en} — ${next.min} / 40  ·  あと ${next.needed} もん！`)
+    : element('span', 'results-title__next results-title__next--max', 'MAX TITLE! ★'));
+  const top = element('div', 'results-top'); top.append(heroLine, rank); card.append(top);
+
+  // Which heroes have protected the city, and which final bosses were met.
+  const done = completedHeroes(outcome.records);
+  const roster = element('div', 'results-roster');
+  roster.append(element('span', 'results-roster__label', 'HEROES / ヒーロー'));
+  ART_IDS.heroes.forEach((id) => roster.append(element('span', `results-roster__hero${done.includes(id) ? ' is-done' : ''}`, `${done.includes(id) ? '★' : '☆'} ${HEROES[id].name.toUpperCase()}`)));
+  roster.append(element('span', 'results-roster__bosses', `BOSSES ${outcome.records.discoveredBosses.length} / ${FINAL_BOSSES.length}`));
+  if (done.length === ART_IDS.heroes.length) roster.append(element('span', 'results-roster__all rpg-burst', 'ALL HEROES COMPLETE!'));
+  card.append(roster);
+
   const scores = element('div', 'stage-results'); campaign.stageResults.forEach((result, index) => scores.append(element('span', '', `Stage ${index + 1}: ${result.correct} / ${result.total}`))); card.append(scores);
   const missed = practiceItems(VOCABULARY, summary.missedIds);
   if (missed.length) {
     const list = element('ul', 'missed'); list.setAttribute('aria-labelledby', 'missed-label'); missed.forEach((item) => list.append(element('li', '', `${item.en} — ${item.ja}`)));
     const label = element('p', 'results-missed-label', `Review: ${missed.length} word${missed.length === 1 ? '' : 's'} / ふくしゅう：${missed.length}こ`); label.id = 'missed-label'; card.append(label, list);
   } else card.append(element('p', 'correct', 'PERFECT!'));
-  const actions = element('div', 'actions'); if (missed.length) { const practice = element('button', 'px-button', 'Practice mistakes'); practice.onclick = () => practiceModePicker(missed); actions.append(practice); }
-  const again = element('button', 'px-button', 'Play Again'); again.onclick = () => startCampaign(campaign.heroId); const choose = element('button', 'secondary px-button', 'Choose Hero'); choose.onclick = heroSelect; const menu = element('button', 'secondary px-button', 'Main Menu'); menu.onclick = mainMenu;
-  actions.append(again, choose, menu); card.append(actions); app.append(card);
+
+  // Two replay paths: beat your own score, or protect the city as a hero who has not yet.
+  const actions = element('div', 'actions results-actions');
+  const again = element('button', 'px-button results-again'); again.append(element('span', '', 'TRY AGAIN — BEAT YOUR SCORE'), element('small', '', 'もういちど！'));
+  again.onclick = () => startCampaign(campaign.heroId); actions.append(again);
+  const newHero = ART_IDS.heroes.find((id) => id !== hero.id && !done.includes(id));
+  if (newHero) {
+    const other = element('button', 'px-button results-new-hero'); other.append(element('span', '', `NEW ADVENTURE: PLAY AS ${HEROES[newHero].name.toUpperCase()}`), element('small', '', `${HEROES[newHero].jaName}で ぼうけん！`));
+    other.onclick = () => startCampaign(newHero); actions.append(other);
+  }
+  if (missed.length) { const practice = element('button', 'secondary px-button results-practice', 'Practice mistakes'); practice.onclick = () => practiceModePicker(missed); actions.append(practice); }
+  const choose = element('button', 'secondary px-button', 'Choose Hero'); choose.onclick = heroSelect; const menu = element('button', 'secondary px-button', 'Main Menu'); menu.onclick = mainMenu;
+  actions.append(choose, menu); card.append(actions); app.append(card);
+  queueMicrotask(() => again.focus());
+}
+
+/* ------------------------------------------------------------- cinematics */
+
+// The whole story: a short intro after Hero Select and a short ending after the
+// final boss. Each is a few timed shots on one DOM scene, run on the screen
+// timers (so leaving the screen cancels them) and skippable at any moment.
+const INTRO_SHOTS = [
+  { at: 0, mood: 'calm', en: 'MATSUBARA CITY', ja: 'まつばら市' },
+  { at: 2800, mood: 'danger', monsters: 'near', en: 'MATSUBARA CITY IS IN DANGER!', ja: 'まつばら市が あぶない！', music: null, sfx: 'alarm' },
+  { at: 6000, hero: 'idle', en: 'PROTECT THE CITY!', ja: 'まつばら市を まもろう！', sfx: 'fanfare' },
+  { at: 8800, hero: 'victory', en: 'STAGE 1', ja: 'ステージ 1', big: true, sfx: 'select' },
+];
+const INTRO_MS = 10300;
+const ENDING_SHOTS = [
+  { at: 0, mood: 'danger', monsters: 'near', hero: 'idle', en: '', ja: '', music: null },
+  { at: 900, mood: 'safe', monsters: 'gone', en: 'THE DARKNESS IS GONE!', ja: 'やみが きえた！', sfx: 'barrier' },
+  { at: 3700, hero: 'victory', citizens: true, en: 'MATSUBARA CITY IS SAFE!', ja: 'まつばら市を まもった！', music: 'victory' },
+  { at: 6600, en: 'YOU PROTECTED THE CITY!', ja: 'まちを まもってくれて ありがとう！', big: true },
+];
+const ENDING_MS = 9400;
+
+function introCinematic(onDone) { playCinematic('intro', INTRO_SHOTS, INTRO_MS, onDone); }
+function endingCinematic(onDone) { playCinematic('ending', ENDING_SHOTS, ENDING_MS, onDone); }
+
+function playCinematic(kind, shots, totalMs, onDone) {
+  clearScreen(); rpgScreen(); screen = 'cinematic';
+  const heroId = campaign.heroId;
+  const root = element('section', `cinematic cinematic--${kind}`); root.setAttribute('aria-label', kind === 'intro' ? 'Story: Matsubara City' : 'Story: the city is safe');
+  const scene = element('div', 'cinematic__scene');
+  // One layer per city mood; a shot fades the wanted one in over the others.
+  const layers = Object.fromEntries(['calm', 'danger', 'safe'].map((mood) => [mood, element('div', `cinematic__city ${cityClass(mood)}`)]));
+  const monsters = element('div', `cinematic__monsters ${cityClass('monsters')}`);
+  const citizens = element('div', 'cinematic__citizens'); for (let i = 0; i < 5; i += 1) citizens.append(element('span', 'cinematic__citizen'));
+  const heroSlot = element('div', 'cinematic__hero');
+  const caption = element('div', 'cinematic__caption px-panel'); caption.setAttribute('aria-live', 'polite');
+  scene.append(...Object.values(layers), monsters, citizens, heroSlot);
+  const skip = element('button', 'cinematic__skip px-button secondary', 'SKIP ▶'); skip.setAttribute('aria-label', 'Skip / とばす');
+  root.append(scene, caption, skip); app.append(root);
+
+  let finished = false;
+  const finish = () => { if (finished) return; finished = true; clearTimers(); onDone(); };
+  const show = (shot) => {
+    if (shot.mood) Object.entries(layers).forEach(([mood, layer]) => layer.classList.toggle('is-on', mood === shot.mood));
+    if (shot.monsters) { monsters.classList.toggle('is-near', shot.monsters === 'near'); monsters.classList.toggle('is-gone', shot.monsters === 'gone'); }
+    if (shot.citizens) citizens.classList.add('is-on');
+    if (shot.hero) { heroSlot.innerHTML = battleArt(heroId, shot.hero); heroSlot.firstElementChild?.setAttribute('aria-hidden', 'true'); heroSlot.classList.add('is-on'); }
+    if (shot.en !== undefined) {
+      caption.classList.toggle('cinematic__caption--big', Boolean(shot.big)); caption.hidden = !shot.en;
+      caption.replaceChildren(element('strong', '', shot.en), element('span', '', shot.ja));
+    }
+    if (shot.music === null) audio.stop(); else if (shot.music) audio.play(shot.music);
+    if (shot.sfx) audio.sfx(shot.sfx);
+  };
+  skip.onclick = finish;
+  // Reduced motion: the last shot's words, briefly, with no animation.
+  if (reducedMotion()) { root.classList.add('cinematic--still'); shots.forEach(show); later(2500, finish); queueMicrotask(() => skip.focus()); return; }
+  shots.forEach((shot) => (shot.at === 0 ? show(shot) : later(shot.at, () => show(shot))));
+  later(totalMs, finish);
+  queueMicrotask(() => skip.focus());
 }
 function practiceModePicker(items) {
   clearScreen(); screen = 'practice-picker'; const card = element('section', 'card'); card.append(element('h1', '', 'Practice mode / れんしゅうモード')); const levels = element('div', 'levels');
@@ -529,7 +696,9 @@ function artGallery() {
   const victory = (stage) => () => { const result = previewRewards(heroFor(), stage); campaign = result.campaign; stageResult = result.stageResult; adventureVictory(stage, result.rewards); };
   const defeat = () => { const result = previewRewards(heroFor(), 2); campaign = recordDefeat(recordDefeat({ ...result.campaign, stageResults: [...result.campaign.stageResults, { ...result.stageResult, startingAp: 5, mode: 3 }] })); stageResult = campaign.stageResults.at(-1); adventureDefeat(); };
   const results = () => { campaign = previewRewards(heroFor(), 4, 4).campaign; campaignResults(); };
-  controls.append(state.label, who.label, variant.label, preview('Victory (level up)', victory(1)), preview('Victory (new skill)', victory(2)), preview('Victory (passive)', victory(3)), preview('Final victory', victory(4)), preview('Defeat', defeat), preview('Campaign results (18 missed)', results), back);
+  const intro = () => { campaign = createCampaign(heroFor()); introCinematic(artGallery); };
+  const ending = () => { campaign = previewRewards(heroFor(), 4, 4).campaign; endingCinematic(campaignResults); };
+  controls.append(state.label, who.label, variant.label, preview('Victory (level up)', victory(1)), preview('Victory (new skill)', victory(2)), preview('Victory (passive)', victory(3)), preview('Final victory', victory(4)), preview('Defeat', defeat), preview('Campaign results (18 missed)', results), preview('Intro story', intro), preview('Ending story', ending), back);
   const rows = element('div'); page.append(controls, rows);
   const cell = (id, row) => `<div class="art-cell">${battleArt(id, row, { variant: variant.select.value })}<span>${id} · ${row}</span></div>`;
   const draw = () => {
@@ -553,7 +722,7 @@ function debugBattleEnd(state, options) {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') { if (screen === 'study-quiz' || screen === 'study-end') levelSelect(); else if (['adventure-quiz', 'stage-complete', 'battle'].includes(screen) && !(screen === 'battle' && battleView?.playing)) confirmQuit(); }
-  if (round && event.key >= '1' && event.key <= '4' && document.querySelector('.choices') && viewModel(round.mode, currentItem(), { micFree }).input === 'choices') document.querySelectorAll('.choices button')[Number(event.key) - 1]?.click();
+  if (round && event.key >= '1' && event.key <= '4' && document.querySelector('.choices') && viewModel(round.mode, currentItem(), { micFree: answerByChoices() }).input === 'choices') document.querySelectorAll('.choices button')[Number(event.key) - 1]?.click();
 });
 
 const debugMode = new URLSearchParams(location.search).get('debug');

@@ -8,13 +8,13 @@ import { HERO_FRAME, POSES, heroFrame } from './pixel-heroes.js';
 import { ENEMY_ART } from './pixel-enemies.js';
 
 export const ROWS = Object.freeze(['idle', 'attack', 'special', 'guard', 'cast', 'dodge', 'hit', 'charge', 'defeat', 'victory',
-  'broken', 'enraged', 'tired', 'heal', 'barrier', 'counter', 'shadow']);
+  'broken', 'enraged', 'tired', 'heal', 'barrier', 'counter', 'shadow', 'stumble']);
 export const FRAMES = Object.freeze({ idle: 4, attack: 5, special: 6, guard: 3, cast: 5, dodge: 4, hit: 3, charge: 2, defeat: 5, victory: 4,
-  broken: 3, enraged: 2, tired: 2, heal: 4, barrier: 3, counter: 5, shadow: 6 });
+  broken: 3, enraged: 2, tired: 2, heal: 4, barrier: 3, counter: 5, shadow: 6, stumble: 3 });
 /** Rows that loop; every other row plays once and holds its last frame. */
 export const LOOPING = Object.freeze(new Set(['idle', 'charge', 'victory', 'enraged', 'tired']));
 export const DURATION_MS = Object.freeze({ idle: 1000, attack: 420, special: 640, guard: 330, cast: 460, dodge: 380, hit: 330, charge: 520, defeat: 620,
-  victory: 820, broken: 400, enraged: 320, tired: 1300, heal: 500, barrier: 380, counter: 480, shadow: 660 });
+  victory: 820, broken: 400, enraged: 320, tired: 1300, heal: 500, barrier: 380, counter: 480, shadow: 660, stumble: 520 });
 
 const PALETTE = Object.freeze({ ...RIG_PALETTE, _: '#1a1c2c55' });
 
@@ -96,6 +96,7 @@ function enemyRows(spec, angry) {
     counter: attack,
     shadow: attack,
     victory: idle,
+    stumble: idle,
   };
   const foot = footprint(base, spec.float ? 16 : 8);
   return { rows, fw: base.w, fh: base.h, shadow: { x: foot.x, w: foot.w * (spec.float ? 0.6 : 0.9) } };

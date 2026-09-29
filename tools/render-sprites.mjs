@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 import path from 'node:path';
 import { ENEMY_IDS, HERO_IDS, ROWS, spriteSheet } from '../src/pixel-sprites.js';
-import { EFFECT_NAMES, backdropImage, effectSheet } from '../src/pixel-effects.js';
+import { EFFECT_NAMES, backdropImage, cityImage, effectSheet } from '../src/pixel-effects.js';
 
 const out = process.argv[2] || 'art-review';
 const scale = Number(process.argv[3] || 4);
@@ -55,8 +55,9 @@ function renderSheet(sheet, name, background = [120, 170, 200]) {
   console.log(`${name}.png  ${fw}x${fh}  rows ${grids.length}`);
 }
 
-const ids = only.length ? only : [...HERO_IDS, ...ENEMY_IDS, 'backdrops', 'effects'];
+const ids = only.length ? only : [...HERO_IDS, ...ENEMY_IDS, 'backdrops', 'city', 'effects'];
 for (const id of ids) {
+  if (id === 'city') { for (const mood of ['calm', 'danger', 'safe', 'monsters']) renderSheet(cityImage(mood), `city-${mood}`); continue; }
   if (id === 'backdrops') { for (const stage of [1, 2, 3, 4]) renderSheet(backdropImage(stage), `backdrop-${stage}`); continue; }
   if (id === 'effects') { for (const name of EFFECT_NAMES) renderSheet(effectSheet(name), `fx-${name}`, [40, 44, 70]); continue; }
   renderSheet(spriteSheet(id), id);
