@@ -76,10 +76,23 @@ export function battleSetup(campaign, stageResult = campaign.stageResults.at(-1)
     heroId: campaign.heroId,
     encounterId: stageResult?.encounterId,
     level: campaign.level,
-    heroHp: campaign.heroHp,
+    heroHp: retryHp(campaign),
     potions: campaign.potions,
     ap: battleAp(campaign, stageResult),
   };
+}
+
+/**
+ * HP a battle attempt starts with. Matsubara always restarts from the HP the
+ * battle began with; in a city campaign each consecutive defeat also lifts the
+ * retry to a rising share of max HP, so a hero who arrives weak cannot be stuck.
+ */
+export function retryHp(campaign) {
+  const origin = (campaign.cityId ?? 'matsubara') === 'matsubara';
+  if (origin || !campaign.retries) return campaign.heroHp;
+  const floors = CAMPAIGN.cityRetryHp;
+  const floor = Math.ceil(campaignMaxHp(campaign) * floors[Math.min(campaign.retries, floors.length) - 1]);
+  return Math.max(campaign.heroHp, floor);
 }
 
 /** A lost battle: the retry gets +retryApBonus AP per consecutive defeat. */

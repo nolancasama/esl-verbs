@@ -158,3 +158,17 @@ test('campaign summary aggregates quiz results and reports the level', () => {
   const second = recordStage(first, { ...round(2, 2, 2), missedIds: new Set(['run']) }, 'bat');
   assert.deepEqual(campaignSummary(second), { totalCorrect: 3, totalQuestions: 4, bestStreak: 2, missedIds: ['jump', 'run'], level: 1 });
 });
+
+test('city retries start with rising HP; Matsubara retries restart from the battle-start HP', async () => {
+  const { retryHp } = await import('../src/campaign.js');
+  const { CAMPAIGN } = await import('../src/battle-data.js');
+  const city = { ...createCampaign('ninja', { cityId: 'sakai', level: 5 }), heroHp: 10 };
+  const max = heroMaxHp('ninja', 5);
+  assert.equal(retryHp(city), 10, 'first attempt keeps the carried HP');
+  CAMPAIGN.cityRetryHp.forEach((share, index) => assert.equal(retryHp({ ...city, retries: index + 1 }), Math.max(10, Math.ceil(max * share))));
+  assert.equal(retryHp({ ...city, retries: 9 }), max, 'later retries are capped at full HP');
+  assert.equal(retryHp({ ...city, heroHp: max, retries: 1 }), max, 'never lowers HP');
+  const origin = { ...createCampaign('ninja'), heroHp: 10, retries: 3 };
+  assert.equal(retryHp(origin), 10, 'Matsubara retries are unchanged');
+  assert.equal(battleSetup({ ...city, retries: 2, stageResults: [{ encounterId: 'sakai-4', startingAp: 5 }] }).heroHp, retryHp({ ...city, retries: 2 }));
+});

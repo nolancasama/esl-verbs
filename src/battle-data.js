@@ -2,6 +2,7 @@
 export const BALANCE = Object.freeze({
   maxAp: 10,               // quiz score is starting AP, so 10 is the meter's capacity
   recoveryAp: 1,           // AP regained on an exhausted (0 AP) turn; the enemies still act
+  waveClearAp: 2,          // deterministic refill between waves; one-wave Matsubara battles are unchanged
   retryApBonus: 1,         // retry assist unit: +1, +3, +6, +10 AP after 1-4 defeats
   exploitAp: 1,            // Mage: Magic Bolt on a charging or tired enemy
   defenseAp: 1,            // Guard or Barrier up when a big attack lands (Dodge avoids it instead)
@@ -26,6 +27,8 @@ export const CAMPAIGN = Object.freeze({
   victoryHealPercent: 0.28,
   minimumNextBattleHpPercent: 0.4,
   perfectQuizXp: 5,
+  // City campaigns (not Matsubara): a retry after 1/2/3+ defeats starts with at least this share of max HP.
+  cityRetryHp: Object.freeze([0.6, 0.8, 1]),
 });
 
 export const ITEMS = Object.freeze({
@@ -123,41 +126,29 @@ export const ENCOUNTERS = Object.freeze({
   'sakai-1': Object.freeze({
     id: 'sakai-1', city: 'sakai', stage: 1,
     name: 'First Assault', jaName: 'さいしょの こうげき', music: 'battle',
-    enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'wolf']),
-    waves: Object.freeze([
-      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'wolf']) }),
-    ]),
-    ally: null, reserve: 0,
+    enemyIds: Object.freeze(['goblin','wolf','goblin','bat']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['goblin','wolf','goblin','bat']) })]),
+    ally: null, reserve: 6,
   }),
   'sakai-2': Object.freeze({
     id: 'sakai-2', city: 'sakai', stage: 2,
     name: 'Horde Battle', jaName: 'ホードの なみ', music: 'battle',
-    enemyIds: Object.freeze(['slime', 'goblin', 'bat']),
-    waves: Object.freeze([
-      Object.freeze({ enemyIds: Object.freeze(['slime', 'goblin', 'bat']) }),
-      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'bat']) }),
-    ]),
+    enemyIds: Object.freeze(['slime','goblin','bat']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['slime','goblin','bat']) }), Object.freeze({ enemyIds: Object.freeze(['goblin','wolf','bat','slime']) })]),
     ally: null, reserve: 3,
   }),
   'sakai-3': Object.freeze({
     id: 'sakai-3', city: 'sakai', stage: 3,
     name: 'Defenders Overwhelmed', jaName: 'まもりびとの ピンチ', music: 'battle',
-    enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'bat']),
-    waves: Object.freeze([
-      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'bat']) }),
-      Object.freeze({ enemyIds: Object.freeze(['shieldGoblin', 'healer']) }),
-    ]),
-    ally: Object.freeze({ id: 'osakaDefender', joinsAtWave: 2 }), reserve: 2,
+    enemyIds: Object.freeze(['goblin','wolf','goblin','bat']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['goblin','wolf','goblin','bat']) }), Object.freeze({ enemyIds: Object.freeze(['shieldGoblin','wolf','bat']) })]),
+    ally: Object.freeze({ id: 'osakaDefender', joinsAtWave: 2 }), reserve: 3,
   }),
   'sakai-4': Object.freeze({
     id: 'sakai-4', city: 'sakai', stage: 4,
     name: 'Final Sakai Defense', jaName: 'さかい さいごの たたかい', music: 'boss',
-    enemyIds: Object.freeze(['goblin', 'wolf', 'bat']),
-    waves: Object.freeze([
-      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'bat']) }),
-      Object.freeze({ enemyIds: Object.freeze(['shieldGoblin', 'healer']) }),
-      Object.freeze({ enemyIds: Object.freeze(['hordeCommander']) }),
-    ]),
-    ally: Object.freeze({ id: 'osakaDefender', joinsAtWave: 1 }), reserve: 3,
+    enemyIds: Object.freeze(['wolf','goblin','bat']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['wolf','goblin','bat']) }), Object.freeze({ enemyIds: Object.freeze(['shieldGoblin','healer']) }), Object.freeze({ enemyIds: Object.freeze(['hordeCommander','goblin','goblin']) })]),
+    ally: Object.freeze({ id: 'osakaDefender', joinsAtWave: 1 }), reserve: 5,
   }),
 });

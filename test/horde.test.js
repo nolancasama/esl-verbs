@@ -40,6 +40,11 @@ test('Sakai encounter and ally data follow the frozen schema and enemy cap', () 
     }
   }
   assert.ok(ENCOUNTERS['sakai-4'].waves.at(-1).enemyIds.includes('hordeCommander'));
+  assert.ok(ENCOUNTERS['sakai-2'].waves.length >= 2);
+  assert.ok(ENCOUNTERS['sakai-3'].waves.length >= 2 && ENCOUNTERS['sakai-3'].waves.length <= 3);
+  const enemyCount = (encounter) => encounter.waves.reduce((sum, wave) => sum + wave.enemyIds.length, 0);
+  assert.ok(enemyCount(ENCOUNTERS['sakai-4']) > Math.max(...['sakai-1', 'sakai-2', 'sakai-3'].map((id) => enemyCount(ENCOUNTERS[id]))));
+  assert.ok(ENCOUNTERS['sakai-4'].waves.at(-1).enemyIds.length >= 2, 'commander has an escort');
   assert.equal('boss' in ENEMIES.hordeCommander, false);
   assert.deepEqual(ALLIES.osakaDefender, {
     id: 'osakaDefender', name: 'Osaka Defender', jaName: '大阪の まもりびと',
@@ -53,7 +58,7 @@ test('wave one is initialised, normal encounters remain one wave, and waveInfo c
     { wave: 1, waveCount: 2, ally: null, clearedXp: 0, protected: false });
   assert.deepEqual(horde.enemies.map((enemy) => enemy.id), ENCOUNTERS['sakai-2'].enemyIds);
   assert.deepEqual(horde.enemies.map((enemy) => enemy.uid), [1, 2, 3]);
-  assert.deepEqual(waveInfo(horde), { wave: 1, waveCount: 2, reserveCount: 3 });
+  assert.deepEqual(waveInfo(horde), { wave: 1, waveCount: 2, reserveCount: 4 });
 
   for (const encounter of Object.values(ENCOUNTERS).filter((candidate) => !candidate.city)) {
     const state = makeBattle(encounter.id);
@@ -88,8 +93,9 @@ test('player clears into fresh UIDs on their turn and only the final wave wins',
   assert.equal(first.state.wave, 2);
   assert.equal(first.state.turn, 'player');
   assert.equal(first.state.round, 2);
-  assert.deepEqual(first.events.slice(-2), [
+  assert.deepEqual(first.events.slice(-3), [
     { type: 'waveClear', wave: 1 },
+    { type: 'ap', amount: 1, reason: 'wave', ap: 10 },
     { type: 'waveStart', wave: 2, waveCount: 2, targets: first.state.enemies.map((enemy) => enemy.uid) },
   ]);
   assert.ok(first.state.enemies.every((enemy) => !firstUids.includes(enemy.uid)));
@@ -104,7 +110,7 @@ test('player clears into fresh UIDs on their turn and only the final wave wins',
   assert.ok(!final.events.some((event) => event.type === 'waveStart'));
 });
 
-test('wave changes preserve resources and combat setups except temporary defence/opening', () => {
+test('wave changes refund AP and preserve other resources/setups except temporary defence/opening', () => {
   let state = makeBattle('sakai-4');
   state = patchEnemies(state, (enemy) => ({ hp: enemy.uid === state.enemies[0].uid ? 2 : 0, intent: enemy.uid === state.enemies[0].uid ? 'attack' : null }));
   state = {
@@ -113,8 +119,9 @@ test('wave changes preserve resources and combat setups except temporary defence
   };
   const result = resolveEnemyPhase(state, fixed(0.99));
   assert.equal(result.events[0].type, 'allyAttack');
+  assert.deepEqual(result.events.find((event) => event.type === 'ap'), { type: 'ap', amount: BALANCE.waveClearAp, reason: 'wave', ap: 9 });
   assert.deepEqual({ hp: result.state.hero.hp, ap: result.state.ap, potions: result.state.potions, combo: result.state.hero.combo, counter: result.state.hero.counter },
-    { hp: 23, ap: 7, potions: 1, combo: true, counter: true });
+    { hp: 23, ap: 9, potions: 1, combo: true, counter: true });
   assert.deepEqual({ defense: result.state.hero.defense, exhausted: result.state.hero.exhausted, openingUid: result.state.hero.openingUid, protected: result.state.hero.protected },
     { defense: null, exhausted: false, openingUid: null, protected: false });
   assert.equal(result.state.turn, 'player');
@@ -130,8 +137,9 @@ test('ally join timing and createBattle startWave follow encounter data', () => 
   assert.deepEqual(makeBattle('sakai-4').ally, { id: 'osakaDefender' });
 
   const joined = playerClearsWave(makeBattle('sakai-3'));
-  assert.deepEqual(joined.events.slice(-3), [
+  assert.deepEqual(joined.events.slice(-4), [
     { type: 'waveClear', wave: 1 },
+    { type: 'ap', amount: 1, reason: 'wave', ap: 10 },
     { type: 'waveStart', wave: 2, waveCount: 2, targets: joined.state.enemies.map((enemy) => enemy.uid) },
     { type: 'allyJoin', allyId: 'osakaDefender' },
   ]);
@@ -182,9 +190,9 @@ test('ally can clear an intermediate wave or win the final wave without spending
   middle = patchEnemies(middle, (enemy) => ({ hp: enemy.uid === 1 ? ALLIES.osakaDefender.damage : 0, intent: enemy.uid === 1 ? 'attack' : null }));
   middle = { ...middle, turn: 'enemy', ap: 4 };
   const advanced = resolveEnemyPhase(middle, fixed(0.99));
-  assert.deepEqual(advanced.events.map((event) => event.type).slice(0, 5), ['allyAttack', 'damage', 'defeat', 'waveClear', 'waveStart']);
+  assert.deepEqual(advanced.events.map((event) => event.type).slice(0, 6), ['allyAttack', 'damage', 'defeat', 'waveClear', 'ap', 'waveStart']);
   assert.equal(advanced.state.turn, 'player');
-  assert.equal(advanced.state.ap, 4);
+  assert.equal(advanced.state.ap, 4 + BALANCE.waveClearAp);
 
   let last = makeBattle('sakai-4', { startWave: 3 });
   last = patchEnemies(last, (enemy) => ({ hp: enemy.uid === last.enemies.at(-1).uid ? ALLIES.osakaDefender.damage : 0, intent: null }));

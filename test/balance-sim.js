@@ -9,7 +9,7 @@ import {
   availableItems, availableSkills, chooseEncounter, createBattle, heroMaxHp, mustRecover, recover,
   resolveEnemyPhase, useItem, useSkill,
 } from '../src/battle-engine.js';
-import { applyVictory, battleSetup, createCampaign, recordDefeat, recordStage } from '../src/campaign.js';
+import { applyVictory, battleSetup, chapterRest, createCampaign, recordDefeat, recordStage } from '../src/campaign.js';
 
 export function seeded(seed) {
   let value = seed >>> 0;
@@ -138,17 +138,26 @@ export function simulateBattle({ policy = competent, seed = 1, rng = seeded(seed
   let turns = 0;
   let recoveries = 0;
   let potionsUsed = 0;
+  let heroDamage = 0;
+  let allyDamage = 0;
   while (state.turn === 'player' && turns < maxTurns) {
     const choice = policy(state);
     const result = step(state, choice, rng);
     if (result.events[0]?.type === 'rejected') throw new Error(`${options.heroId} ${options.encounterId}: rejected ${JSON.stringify(choice)} (${result.events[0].reason})`);
     if (choice.recover) recoveries += 1;
     if (choice.itemId) potionsUsed += 1;
+    heroDamage += result.events.filter((event) => event.type === 'damage' && event.target !== 'hero').reduce((sum, event) => sum + event.amount, 0);
     state = result.state;
     turns += 1;
-    if (state.turn === 'enemy') state = resolveEnemyPhase(state, rng).state;
+    if (state.turn === 'enemy') {
+      const enemyPhase = resolveEnemyPhase(state, rng);
+      if (enemyPhase.events.some((event) => event.type === 'allyAttack')) {
+        allyDamage += enemyPhase.events.filter((event) => event.type === 'damage' && event.target !== 'hero').reduce((sum, event) => sum + event.amount, 0);
+      }
+      state = enemyPhase.state;
+    }
   }
-  return { state, won: state.turn === 'won', turns, recoveries, potionsUsed, hp: state.hero.hp };
+  return { state, won: state.turn === 'won', turns, recoveries, potionsUsed, hp: state.hero.hp, heroDamage, allyDamage };
 }
 
 /**
@@ -187,16 +196,10 @@ export function sakaiEncounters() {
   return SAKAI_ENCOUNTER_IDS.map((id) => ENCOUNTERS[id]);
 }
 
-/** Four fixed Sakai battles at level 5, carrying victory HP and potions with no retries. */
-export function simulateSakaiCampaign({ heroId, ap, policy = smart, seed = 1 }) {
+/** Four fixed Sakai battles at level 5, carrying victory resources and using the real retry assist. */
+export function simulateSakaiCampaign({ heroId, ap, policy = smart, seed = 1, maxAttempts = 1 }) {
   const rng = seeded(seed);
-  let campaign = {
-    ...createCampaign(heroId),
-    level: 5,
-    xp: LEVELS.at(-1).xp,
-    heroHp: heroMaxHp(heroId, 5),
-    potions: 2,
-  };
+  let campaign = chapterRest(createCampaign(heroId, { cityId: 'sakai', level: 5, xp: LEVELS.at(-1).xp }));
   const stages = [];
   for (let index = 0; index < SAKAI_ENCOUNTER_IDS.length; index += 1) {
     const encounterId = SAKAI_ENCOUNTER_IDS[index];
@@ -211,9 +214,16 @@ export function simulateSakaiCampaign({ heroId, ap, policy = smart, seed = 1 }) 
     campaign = recordStage(campaign, round, encounterId);
     const entryHp = campaign.heroHp;
     const entryPotions = campaign.potions;
-    const result = simulateBattle({ ...battleSetup(campaign), policy, rng });
+    let attempts = 0;
+    let result = null;
+    while (attempts < maxAttempts) {
+      attempts += 1;
+      result = simulateBattle({ ...battleSetup(campaign), policy, rng });
+      if (result.won) break;
+      campaign = recordDefeat(campaign);
+    }
     stages.push({
-      stage: index + 1, encounterId, won: result.won, entryHp, entryPotions,
+      stage: index + 1, encounterId, attempts, won: result.won, entryHp, entryPotions,
       hpLeft: result.hp, potionsLeft: result.state.potions, turns: result.turns, recoveries: result.recoveries,
     });
     if (!result.won) return { campaign, stages, completed: false };
