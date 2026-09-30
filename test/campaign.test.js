@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { BALANCE, CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS } from '../src/battle-data.js';
 import { createBattle, heroMaxHp, levelForXp } from '../src/battle-engine.js';
 import {
-  applyVictory, battleAp, battleSetup, campaignSummary, createCampaign, levelUpReward, recordDefeat, recordStage, retryAssist,
+  applyVictory, battleAp, battleSetup, campaignSummary, chapterRest, createCampaign, levelUpReward, recordDefeat, recordStage, retryAssist,
   startingApFor, xpProgress,
 } from '../src/campaign.js';
 
@@ -29,10 +29,27 @@ test('quiz score is exactly the starting AP', () => {
 
 test('a new campaign starts at level 1, full HP, two potions', () => {
   const campaign = createCampaign('mage');
+  assert.equal(campaign.cityId, 'matsubara');
   assert.deepEqual(
     { stage: campaign.stage, level: campaign.level, xp: campaign.xp, heroHp: campaign.heroHp, potions: campaign.potions, retries: campaign.retries, active: campaign.active },
     { stage: 1, level: 1, xp: 0, heroHp: HEROES.mage.maxHp, potions: CAMPAIGN.startingPotions, retries: 0, active: true },
   );
+});
+
+test('a city campaign starts at full HP for its carried level and XP', () => {
+  const campaign = createCampaign('fighter', { cityId: 'sakai', level: 5, xp: 123 });
+  assert.equal(campaign.cityId, 'sakai');
+  assert.equal(campaign.level, 5);
+  assert.equal(campaign.xp, 123);
+  assert.equal(campaign.heroHp, heroMaxHp('fighter', 5));
+  assert.equal(campaign.potions, CAMPAIGN.startingPotions);
+});
+
+test('chapter rest restores full HP, maximum potions, and clears retries', () => {
+  const rested = chapterRest({ ...createCampaign('ninja', { cityId: 'sakai', level: 4, xp: 70 }), heroHp: 1, potions: 0, retries: 3 });
+  assert.equal(rested.heroHp, heroMaxHp('ninja', 4));
+  assert.equal(rested.potions, CAMPAIGN.maxPotions);
+  assert.equal(rested.retries, 0);
 });
 
 test('HP carries over with a partial victory heal, a safety floor, and the max HP cap', () => {

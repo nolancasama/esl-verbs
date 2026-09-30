@@ -3,10 +3,33 @@
 import { BALANCE, CAMPAIGN, HEROES, LEVELS, SKILLS } from './battle-data.js';
 import { battleXp, heroMaxHp, levelData, levelForXp } from './battle-engine.js';
 
-export function createCampaign(heroId) {
+export function createCampaign(heroId, { cityId = 'matsubara', level = 1, xp = 0 } = {}) {
   return {
-    heroId, stage: 1, stageResults: [], active: true,
-    heroHp: heroMaxHp(heroId, 1), level: 1, xp: 0, potions: CAMPAIGN.startingPotions, retries: 0,
+    heroId, cityId, stage: 1, stageResults: [], active: true,
+    heroHp: heroMaxHp(heroId, level), level, xp, potions: CAMPAIGN.startingPotions, retries: 0,
+  };
+}
+
+/** Start a new city chapter with restored resources and the same hero progression. */
+export function chapterRest(campaign) {
+  return {
+    ...campaign,
+    heroHp: campaignMaxHp(campaign),
+    potions: CAMPAIGN.maxPotions,
+    retries: 0,
+  };
+}
+
+/** Rebuild a campaign from a validated regional checkpoint. */
+export function resumeCampaign(region) {
+  const checkpoint = region.checkpoint;
+  if (!checkpoint) return null;
+  return {
+    ...createCampaign(region.heroId, { cityId: checkpoint.cityId, level: region.level, xp: region.xp }),
+    stage: checkpoint.stage,
+    heroHp: checkpoint.heroHp,
+    potions: checkpoint.potions,
+    stageResults: checkpoint.stageResults.map((result) => ({ ...result })),
   };
 }
 

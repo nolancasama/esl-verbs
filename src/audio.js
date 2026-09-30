@@ -77,8 +77,30 @@ const TITLE_CHORDS = ['D', 'G', 'Bm', 'A', 'D', 'G', 'Em', 'A', 'G', 'A', 'F#m',
 const FIELD_CHORDS = ['F', 'Dm', 'Bb', 'C', 'F', 'Am', 'Bb', 'C', 'F', 'Dm', 'Bb', 'C', 'F', 'Am', 'Bb', 'C'];
 const BATTLE_CHORDS = ['Am', 'F', 'G', 'Am', 'Am', 'F', 'G', 'E', 'Dm', 'Am', 'Bb', 'E', 'Dm', 'Am', 'F', 'E'];
 const BOSS_CHORDS = ['Dm', 'Bb', 'C', 'A', 'Dm', 'Bb', 'Gm', 'A', 'Gm', 'Dm', 'Bb', 'A', 'Gm', 'Dm', 'Edim', 'A'];
+const OMINOUS_CHORDS = ['Dm', 'Dm', 'Bb', 'Dm', 'Gm', 'Bb', 'A', 'Dm'];
+const AWAKEN_CHORDS = ['Dm', 'Bb', 'F', 'C', 'Dm', 'Bb', 'A', 'Dm'];
 
 export const TRACKS = {
+  ominous: {
+    bpm: 66, loop: true,
+    channels: [
+      // A restrained classroom-invasion bed: low minor drone and an unhurried pulse.
+      { inst: 'pad', vol: 0.22, seq: padLine(OMINOUS_CHORDS, 3) },
+      { inst: 'bass', vol: 0.38, seq: bassLine(OMINOUS_CHORDS, 'half') },
+      { inst: 'organ', vol: 0.1, seq: 'D3+A3:16 | D3+A3:16 | D3+F3+Bb3:16 | D3+A3:16 | D3+G3+Bb3:16 | D3+F3+Bb3:16 | C#3+E3+A3:16 | D3+A3:16' },
+    ],
+    drums: { bars: 8, kick: 'x...............', snare: '............x...', hat: '................' },
+  },
+  awaken: {
+    bpm: 66, loop: true,
+    channels: [
+      // The same tonal world as ominous, with a patient rising horn motif for the hero reveal.
+      { inst: 'brass', vol: 0.38, seq: 'D4:6 F4:4 A4:6 | F4:6 Bb4:4 D5:6 | A4:6 C5:4 F5:6 | G4:6 C5:4 E5:6 | F4:4 A4:4 D5:8 | Bb4:4 D5:4 F5:8 | A4:4 C#5:4 E5:4 A5:4 | D5:8 A5:4 D6:4' },
+      { inst: 'pad', vol: 0.2, seq: padLine(AWAKEN_CHORDS, 3) },
+      { inst: 'bass', vol: 0.34, seq: bassLine(AWAKEN_CHORDS, 'half') },
+    ],
+    drums: { bars: 8, kick: 'x.......x.......', snare: '............x...', hat: '................' },
+  },
   title: {
     bpm: 132, loop: true,
     channels: [
@@ -178,7 +200,7 @@ export const COMPILED = Object.fromEntries(Object.entries(TRACKS).map(([name, tr
 /* ------------------------------------------------------------------ engine */
 
 function silentAudio(enabled) {
-  return { enabled, setEnabled() {}, unlock() {}, play() {}, stop() {}, duck() {}, sfx() {} };
+  return { enabled, setEnabled() {}, unlock() {}, play() {}, stop() {}, cut() {}, duck() {}, sfx() {} };
 }
 
 export function createAudio() {
@@ -370,6 +392,15 @@ export function createAudio() {
     } catch {}
   }
 
+  function cutOut(entry) {
+    if (!entry || !ctx) return;
+    try {
+      entry.gain.gain.cancelScheduledValues(ctx.currentTime);
+      entry.gain.gain.setValueAtTime(0, ctx.currentTime);
+      entry.gain.disconnect();
+    } catch {}
+  }
+
   function start(name) {
     if (!ctx || !enabled || !COMPILED[name]) return;
     if (current?.name === name) return;
@@ -405,6 +436,8 @@ export function createAudio() {
       start(name);
     },
     stop() { wanted = null; fadeOut(current); current = null; stopTimer(); },
+    /** Stop music immediately, without the fade used by stop(). */
+    cut() { wanted = null; cutOut(current); current = null; stopTimer(); },
     /** Lower the music while speech plays ('tts') or silence it while the mic listens ('stt'). */
     duck(reason, on) {
       if (on) ducks.add(reason); else ducks.delete(reason);
@@ -460,6 +493,21 @@ export function createAudio() {
       case 'levelup': notes(['C5', 'E5', 'G5', 'C6', 'E6', 'G6'], t, 0.06, 'pulse', 0.18, 0.2); tone('triangle', noteFrequency('C6'), t + 0.36, 0.5, 0.2); break;
       case 'xp': for (let i = 0; i < 8; i += 1) tone('pulse', 1500 + i * 60, t + i * 0.05, 0.03, 0.07); break;
       case 'fanfare': notes(['G5', 'C6', 'E6', 'G6'], t, 0.08, 'square', 0.14, 0.16); break;
+      case 'heroSting': {
+        // Bright D-major brass cadence, about 1.5 seconds from first attack to release.
+        for (const note of ['G4', 'B4', 'D5']) tone('sawtooth', noteFrequency(note), t, 0.42, 0.1);
+        for (const note of ['A4', 'C#5', 'E5']) tone('sawtooth', noteFrequency(note), t + 0.38, 0.42, 0.11);
+        for (const note of ['D4', 'F#4', 'A4', 'D5']) tone('sawtooth', noteFrequency(note), t + 0.76, 0.72, 0.13);
+        break;
+      }
+      case 'allySting':
+        notes(['A4', 'D5', 'F5', 'A5'], t, 0.1, 'sawtooth', 0.12, 0.24);
+        for (const note of ['Bb4', 'D5', 'F5']) tone('triangle', noteFrequency(note), t + 0.42, 0.48, 0.14);
+        break;
+      case 'wave':
+        tone('sawtooth', 110, t, 0.95, 0.16, 82);
+        tone('triangle', 220, t, 0.82, 0.08, 164);
+        break;
       case 'potion': notes(['E6', 'G#6', 'B6'], t, 0.05, 'sine', 0.2, 0.18); hiss(t, 0.2, 0.12, 5000, 2000, 'highpass'); break;
       default: break;
     }
