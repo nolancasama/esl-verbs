@@ -358,3 +358,11 @@ showed, without touching battle rules or balance.
 A useful rule:
 
 > If a future developer or AI could reasonably ask, "Why is it designed this way?", record the answer here.
+
+## 2026-09-30 — Osaka regional campaign persistence
+
+- Regional progress uses the versioned local save key `esl-verbs-region-v1` and stores only `{ heroId, level, xp, savedCities, checkpoint }`; it contains no player names or other personal data.
+- Cities are `saved`, `danger`, or `locked`. A playable city is dangerous only after all prerequisites are saved, while declared future cities with no campaign remain locked.
+- Starting a chapter after the origin city is a chapter rest: the continuing hero keeps level and XP, returns to full HP and maximum potions, and clears retries.
+- Stage checkpoints are written only for non-origin city campaigns. Matsubara keeps its original no-resume campaign behavior.
+- The level cap remains unchanged at level 5; XP can continue accumulating after the cap.

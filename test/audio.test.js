@@ -68,7 +68,8 @@ test('drum patterns are one bar of 16 steps', () => {
 });
 
 test('the game has music for every phase it asks for', () => {
-  for (const name of ['title', 'field', 'battle', 'boss', 'victory', 'defeat', 'finale']) assert.ok(COMPILED[name], name);
+  for (const name of ['ominous', 'awaken', 'title', 'field', 'battle', 'boss', 'victory', 'defeat', 'finale']) assert.ok(COMPILED[name], name);
+  for (const name of ['ominous', 'awaken']) assert.equal(COMPILED[name].loop, true, `${name} loops`);
   for (const name of ['victory', 'defeat', 'finale']) assert.equal(COMPILED[name].loop, false, `${name} plays once`);
 });
 
@@ -76,8 +77,9 @@ test('without Web Audio the engine is a silent no-op that never throws', () => {
   const audio = createAudio();
   assert.equal(typeof audio.enabled, 'boolean');
   assert.doesNotThrow(() => {
-    audio.unlock(); audio.play('battle'); audio.duck('tts', true); audio.sfx('hit'); audio.duck('tts', false);
-    audio.setEnabled(false); audio.stop();
+    audio.unlock(); audio.play('ominous'); audio.play('awaken'); audio.duck('tts', true); audio.sfx('hit'); audio.duck('tts', false);
+    for (const name of ['heroSting', 'allySting', 'wave']) audio.sfx(name);
+    audio.setEnabled(false); audio.stop(); audio.cut();
   });
   assert.equal(audio.enabled, false);
 });
