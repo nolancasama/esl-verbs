@@ -3,7 +3,7 @@
 // heroes with the same top-left light. draw({ mode, f, angry }) returns a grid;
 // modes: idle, attack, cast, guard, charge, tired (anything else falls back).
 import { Painter, along, skeleton } from './pixel-rig.js';
-import { flipX } from './pixel-core.js';
+import { flipX, recolor } from './pixel-core.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const pt = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
@@ -418,6 +418,12 @@ function goblinCaptain({ mode, f }) {
   return done(p);
 }
 
+// The Shadow Horde's field commander: the captain's rig in the invaders' colours.
+const COMMANDER_MATERIAL = { goblin: 'shade', steel: 'shadowCloth', red: 'crimson', gold: 'ember', leather: 'indigo' };
+function hordeCommander(opts) {
+  return recolor(goblinCaptain(opts), (key) => key.replace(/^([a-zA-Z]+)(\d)$/, (all, name, level) => (COMMANDER_MATERIAL[name] ? `${COMMANDER_MATERIAL[name]}${level}` : all)));
+}
+
 function necromancer({ mode, f }) {
   const p = new Painter(62, 82, LIGHT);
   const cast = mode === 'cast' || mode === 'charge';
@@ -704,6 +710,7 @@ export const ENEMY_ART = {
   healer: { draw: healer, modes: { idle: 4, attack: 4, cast: 3, tired: 2 } },
   golem: { draw: golem, large: true, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
   goblinCaptain: { draw: goblinCaptain, large: true, modes: { idle: 4, attack: 4, charge: 2, guard: 2, tired: 2 } },
+  hordeCommander: { draw: hordeCommander, large: true, modes: { idle: 4, attack: 4, charge: 2, guard: 2, tired: 2 } },
   necromancer: { draw: necromancer, float: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, tired: 2 } },
   dragon: { draw: dragon, boss: true, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
   demonKing: { draw: demonKing, boss: true, modes: { idle: 4, attack: 4, cast: 2, charge: 2, guard: 2, tired: 2 } },
