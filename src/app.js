@@ -3,13 +3,13 @@ import { isJapaneseCorrect } from './normalize.js';
 import { MODES, answer, choiceFallback, createRound, makeChoices, practiceItems, viewModel } from './engine.js';
 import { TapToTalk } from './speech.js';
 import { speak } from './tts.js';
-import { CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
+import { BALANCE, CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
 import { battleXp, chooseEncounter, createBattle } from './battle-engine.js';
 import {
   applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, createCampaign, recordDefeat, recordStage, xpProgress,
 } from './campaign.js';
 import { createBattleView } from './battle-ui.js';
-import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, getIcon, prewarmArt } from './battle-art.js';
+import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, getIcon, groundClass, prewarmArt } from './battle-art.js';
 import {
   ADVENTURE_RECORDS_KEY, FINAL_BOSSES, completedHeroes, heroTitle, nextHeroTitle, parseRecords, recordCompletion,
 } from './records.js';
@@ -139,6 +139,7 @@ function heroSelect() {
   app.append(card);
   // The intro cinematic's city is drawn now, so choosing a hero starts it without a stall.
   ['calm', 'danger', 'monsters'].forEach((mood) => cityClass(mood));
+  prewarmArt([['trainingDummy']]);
 }
 
 /* ------------------------------------------------------------------- quiz */
@@ -184,49 +185,125 @@ function renderQuestion(autoSpeak = true) {
 }
 
 /** Quiz reactions never look like combat damage: a miss is a surprised stumble, and HP is untouched. */
-function heroQuizPose() {
-  if (feedback.startsWith('Correct')) return 'victory';
+function heroQuizPose(strike = false) {
+  if (strike) return TRAINING_STRIKE[campaign.heroId]?.pose ?? 'attack';
   if (/^(Wrong|Answer)/.test(feedback)) return 'stumble';
   return 'idle';
 }
 
-/** Adventure quiz: the same question flow inside an RPG frame, with the AP meter on top. */
+// A correct Adventure answer is a quick class strike on the training dummy; the
+// AP point lands when the hit does. Timings in ms from the answer.
+const TRAINING_STRIKE = {
+  fighter: { pose: 'attack', hit: 'slash', impact: 230 },
+  mage: { pose: 'cast', projectile: 'boltProj', launch: 160, hit: 'boltHit', impact: 420 },
+  ninja: { pose: 'attack', hit: 'strikeX', impact: 200 },
+};
+let quizStrike = false; // set by a correct Adventure answer; the next render plays it once
+
+/** The Action Energy gauge: a mirror of the same AP value as the top meter, never its own state. */
+function actionEnergy(value) {
+  const box = element('div', 'rpg-energy'); box.setAttribute('aria-hidden', 'true');
+  const label = element('span', 'rpg-energy__label'); label.append(element('b', '', 'ACTION ENERGY'), element('small', '', 'アクション・エネルギー'));
+  const cells = element('span', 'rpg-energy__cells');
+  for (let index = 0; index < BALANCE.maxAp; index += 1) cells.append(element('i', index < value ? 'is-on' : ''));
+  box.append(element('span', 'rpg-energy__core'), label, cells);
+  box.charge = (next) => {
+    const cell = cells.children[next - 1];
+    cell?.classList.add('is-on', 'is-new');
+    box.classList.remove('is-charged'); void box.offsetWidth; box.classList.add('is-charged');
+  };
+  return box;
+}
+
+/** A one-shot pixel effect inside the quiz field, centred on (x, y). */
+function fieldEffect(field, name, x, y, { dur = 360, travel = null } = {}) {
+  const art = effectArt(name);
+  if (!art) return null;
+  const node = element('span', `px-fx ${art.className}${travel ? ' px-fx--loop px-proj' : ''}`);
+  node.style.cssText = `left:${Math.round(x)}px;top:${Math.round(y)}px;--n:${art.frames};--dur:${dur}ms`
+    + (travel ? `;--dx:${Math.round(travel.dx)}px;--dy:${Math.round(travel.dy)}px;--travel:${travel.ms}ms` : '');
+  node.setAttribute('aria-hidden', 'true');
+  field.append(node);
+  later((travel?.ms ?? dur) + 40, () => node.remove());
+  return node;
+}
+
+function trainingStrike({ field, heroNode, dummy, energy, value }) {
+  const move = TRAINING_STRIKE[campaign.heroId] ?? TRAINING_STRIKE.fighter;
+  const heroSprite = heroNode.querySelector('.battle-sprite'), dummySprite = dummy.querySelector('.battle-sprite');
+  const land = () => { apMeter?.set(value); energy.charge(value); };
+  if (reducedMotion()) { land(); return; }
+  const box = field.getBoundingClientRect(), from = heroNode.getBoundingClientRect(), to = dummy.getBoundingClientRect();
+  const at = { x: to.left - box.left + to.width * 0.5, y: to.top - box.top + to.height * 0.45 };
+  if (move.projectile) {
+    const start = { x: from.right - box.left - from.width * 0.15, y: from.top - box.top + from.height * 0.38 };
+    later(move.launch, () => fieldEffect(field, move.projectile, start.x, start.y, { travel: { dx: at.x - start.x, dy: at.y - start.y, ms: move.impact - move.launch } }));
+  }
+  later(move.impact, () => {
+    fieldEffect(field, move.hit, at.x, at.y);
+    fieldEffect(field, 'impact', at.x, at.y, { dur: 300 });
+    if (dummySprite) dummySprite.dataset.state = 'hit';
+    dummy.classList.add('is-hit');
+    audio.sfx('hit');
+    land();
+  });
+  later(move.impact + 460, () => { dummy.classList.remove('is-hit'); if (dummySprite) dummySprite.dataset.state = 'idle'; });
+  later(Math.max(700, move.impact + 300), () => { if (heroSprite) heroSprite.dataset.state = 'idle'; });
+}
+
+/**
+ * Adventure quiz: one training field under a thin top strip (menu, AP, music).
+ * The word, the answer, the hero and a training dummy share the scene; a
+ * correct answer is a strike on the dummy that charges the Action Energy.
+ */
 function renderAdventureQuestion(autoSpeak = true) {
   tap?.cancel(); tap = null; clearBattle(); clearTimers(); screen = 'adventure-quiz';
   const item = currentItem(); const vm = viewModel(round.mode, item, { micFree: answerByChoices() });
   const stage = campaign.stage; const hero = HEROES[campaign.heroId];
+  const strike = quizStrike; quizStrike = false;
   app.replaceChildren(); app.className = 'app rpg-app rpg-quiz-app';
   const root = element('section', `rpg-quiz stage-${stage}`);
+  const { top, slot } = rpgTopbar();
 
-  const top = element('div', 'rpg-topbar');
-  const back = element('button', 'secondary px-button rpg-topbar__menu', '← Menu'); back.onclick = confirmQuit;
-  const slot = element('span', 'ap-slot'); const right = element('div', 'rpg-topbar__right'); right.append(musicToggle());
-  top.append(back, slot, right);
+  const field = element('div', `rpg-field rpg-field--${vm.input}`);
+  field.append(element('div', `rpg-field__sky ${backdropClass(stage)}`), element('div', `rpg-field__ground ${groundClass(stage)}`));
 
-  const status = element('div', 'rpg-quiz__status px-panel');
-  status.append(element('span', 'rpg-quiz__stage', `STAGE ${stage}`), element('span', 'rpg-quiz__mode', titles[round.mode][2]), element('span', 'rpg-quiz__count', `${round.currentIndex + 1} / ${round.items.length}`));
+  const hud = element('div', 'rpg-field__hud');
+  hud.append(element('span', 'rpg-field__stage', `STAGE ${stage}`), element('span', 'rpg-field__mode', titles[round.mode][2]), element('span', 'rpg-field__count', `${round.currentIndex + 1} / ${round.items.length}`));
+  const energy = actionEnergy(round.correctCount - (strike ? 1 : 0));
 
-  const scene = element('div', `rpg-quiz__scene ${backdropClass(stage)}`);
-  const pose = element('span', 'rpg-quiz__hero'); pose.innerHTML = battleArt(hero.id, heroQuizPose()); pose.firstElementChild?.setAttribute('aria-hidden', 'true');
-  const party = element('div', 'rpg-quiz__party px-panel');
-  party.append(element('strong', '', `${hero.name.toUpperCase()} LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), element('span', 'rpg-quiz__potions', `ポーション ×${campaign.potions}`));
-  scene.append(pose, party);
-  if (round.currentStreak >= 2) scene.append(element('div', 'rpg-quiz__streak', `${round.currentStreak} in a row!`));
+  const arena = element('div', 'rpg-field__arena');
+  const prompt = element('div', 'rpg-field__prompt');
+  const speaker = element('button', 'rpg-speaker px-button secondary', '🔊'); speaker.type = 'button';
+  speaker.setAttribute('aria-label', 'Listen again / もういちど きく'); speaker.onclick = () => playPrompt(vm);
+  if (vm.promptText === null) {
+    // Listening modes have no word to show: the speaker itself is the prompt.
+    prompt.classList.add('rpg-field__prompt--audio'); speaker.classList.add('rpg-speaker--big');
+    prompt.append(speaker, element('span', 'rpg-field__listen', 'きいて こたえよう！'));
+  } else prompt.append(element('span', 'rpg-field__word', vm.promptText), speaker);
+  const heroNode = element('span', 'rpg-field__hero'); heroNode.innerHTML = battleArt(hero.id, heroQuizPose(strike));
+  const dummy = element('span', 'rpg-field__dummy'); dummy.innerHTML = battleArt('trainingDummy');
+  [heroNode, dummy].forEach((node) => node.firstElementChild?.setAttribute('aria-hidden', 'true'));
+  arena.append(prompt, heroNode, dummy);
+  if (round.currentStreak >= 2) arena.append(element('div', 'rpg-field__streak', `${round.currentStreak} in a row!`));
 
-  const win = element('div', 'rpg-quiz__window px-panel');
-  const promptRow = element('div', 'rpg-quiz__prompt-row');
-  promptRow.append(element('div', vm.promptText === null ? 'rpg-quiz__prompt rpg-quiz__prompt--audio' : 'rpg-quiz__prompt', vm.promptText ?? '🔊'));
-  const controls = element('div', 'rpg-quiz__controls');
-  const replay = element('button', 'secondary px-button', '🔊 Replay'); replay.onclick = () => playPrompt(vm); controls.append(replay);
+  const bottom = element('div', 'rpg-field__bottom');
+  const mini = element('div', 'rpg-field__mini');
+  const potions = element('span', 'rpg-field__potions'); potions.innerHTML = getIcon('potion'); potions.append(`×${campaign.potions}`);
+  potions.setAttribute('aria-label', `ポーション ×${campaign.potions}`);
+  mini.append(element('strong', '', `${hero.name.toUpperCase()} LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), potions);
+  const answer = answerArea(vm, item, true); answer.classList.add('rpg-field__answer');
+  answer.classList.toggle('is-answered', /^(Correct|Wrong|Answer)/.test(feedback));
   // Adventure speech stages have no マイクなし: choices appear only when the mic cannot work.
-  if (round.mode >= 3 && vm.input === 'choices') controls.append(element('span', 'rpg-quiz__mic-note', ADVENTURE_MIC_MESSAGE));
-  win.append(promptRow, controls);
-  if (audioError) win.append(element('div', 'audio-error', MODES[round.mode].showPrompt ? '音が出ません（表示のことばを読んでください）' : '音が出ません'));
-  win.append(answerArea(vm, item, true));
+  if (round.mode >= 3 && vm.input === 'choices') answer.append(element('span', 'rpg-field__note', ADVENTURE_MIC_MESSAGE));
+  if (audioError) answer.append(element('div', 'audio-error', MODES[round.mode].showPrompt ? '音が出ません（表示のことばを読んでください）' : '音が出ません'));
+  bottom.append(mini, answer, element('span', 'rpg-field__balance'));
 
-  const body = element('div', 'rpg-quiz__body'); body.append(scene, win);
-  root.append(top, status, body); app.append(root);
-  apMeter?.mount(slot); apMeter?.set(round.correctCount);
+  field.append(hud, energy, arena, bottom);
+  root.append(top, field); app.append(root);
+  apMeter?.mount(slot);
+  if (strike) trainingStrike({ field, heroNode, dummy, energy, value: round.correctCount });
+  else apMeter?.set(round.correctCount);
   if (autoSpeak) playPrompt(vm);
 }
 
@@ -267,7 +344,7 @@ function answerArea(vm, item, rpg = false) {
 function mark(correct, item, shown = false) {
   tap?.cancel(); round = answer(round, correct);
   feedback = correct ? `Correct! / せいかい！${isAdventure() ? '  +1 AP' : ''}` : shown ? `Answer: ${item.en}` : `Wrong. Answer: ${round.mode >= 3 ? item.en : round.mode === 2 ? `${item.ja} (${item.en})` : item.ja}`;
-  if (isAdventure()) audio.sfx(correct ? 'correct' : 'wrong');
+  if (isAdventure()) { audio.sfx(correct ? 'correct' : 'wrong'); quizStrike = correct; }
   renderQuestion(false);
 }
 function nextQuestion() { round = { ...round, currentIndex: round.currentIndex + 1 }; feedback = ''; audioError = false; if (round.currentIndex >= round.items.length) isAdventure() ? finishAdventureStage() : endScreen(); else renderQuestion(); }
@@ -726,4 +803,12 @@ document.addEventListener('keydown', (event) => {
 });
 
 const debugMode = new URLSearchParams(location.search).get('debug');
-if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else mainMenu();
+/** ?debug=quiz&stage=3&hero=mage: an Adventure quiz stage straight away, for layout review. */
+function debugQuiz(params) {
+  const heroId = HEROES[params.get('hero')] ? params.get('hero') : 'fighter';
+  const stage = Math.max(1, Math.min(4, Number(params.get('stage')) || 1));
+  campaign = { ...createCampaign(heroId), stage };
+  startRound(stage, createRound(VOCABULARY), 'adventure');
+}
+
+if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'quiz') debugQuiz(new URLSearchParams(location.search)); else mainMenu();

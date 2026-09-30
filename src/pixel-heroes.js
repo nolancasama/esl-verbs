@@ -10,6 +10,7 @@ const BODY = {
   fighter: { thigh: 11, shin: 11.5, torso: 13.5, upperArm: 8, foreArm: 7.5, headLift: 10 },
   mage: { thigh: 10, shin: 10.5, torso: 13, upperArm: 7.5, foreArm: 7.5, headLift: 10 },
   ninja: { thigh: 10.5, shin: 11, torso: 13, upperArm: 8, foreArm: 7.5, headLift: 9.5 },
+  osakaDefender: { thigh: 11, shin: 11.5, torso: 13.5, upperArm: 8, foreArm: 7.5, headLift: 10 },
 };
 
 /* ------------------------------------------------------------ shared bits */
@@ -211,6 +212,85 @@ function drawFighter(pose = {}) {
   hand(p, 'leather', s.frontArm.hand, 2.4);
   if (o.potion) potion(p, s.frontArm.hand);
   p.shape('steel', (id) => p.ellipse(id, s.frontArm.shoulder[0] + 0.5, s.frontArm.shoulder[1] - 0.5, 4.2, 3.4), { gloss: true });
+
+  (o.fx || []).forEach((effect) => effect(p, s));
+  return p.render();
+}
+
+/* --------------------------------------------------------- osaka defender */
+
+// The Sakai guest ally: blue and white with a crested helmet, a spear and a
+// small round shield, so it reads as a local guard rather than a fourth hero.
+function spear(p, handAt, deg, tassel = true) {
+  const [dx, dy] = along(deg);
+  const [hx, hy] = handAt;
+  const tip = [hx + dx * 20, hy + dy * 20];
+  limb(p, 'wood', [hx - dx * 14, hy - dy * 14], [hx + dx * 15, hy + dy * 15], 1, 1, { gloss: true });
+  if (tassel) p.shape('red', (id) => p.ellipse(id, hx + dx * 14.5 - dy * 1.2, hy + dy * 14.5 + dx * 1.2, 1.6, 1.6));
+  p.shape('steel', (id) => p.poly(id, [
+    [hx + dx * 14.5 - dy * 1.8, hy + dy * 14.5 + dx * 1.8], [hx + dx * 14.5 + dy * 1.8, hy + dy * 14.5 - dx * 1.8], [tip[0], tip[1]],
+  ]), { gloss: true, light: 1 });
+  return tip;
+}
+
+function roundShield(p, center, bright = false) {
+  const [cx, cy] = center;
+  p.shape('white', (id) => p.ellipse(id, cx, cy, 5.5, 6.5), { gloss: true });
+  p.shape(bright ? 'crystal' : 'blue', (id) => p.ellipse(id, cx + 0.3, cy + 0.2, 3.6, 4.6), { line: false, dark: 1 });
+  p.dot(cx, cy, 'gold4'); p.dot(cx + 1, cy, 'gold3');
+  p.dot(cx - 2, cy - 4, 'white');
+}
+
+function drawDefender(pose = {}) {
+  const p = new Painter(HERO_FRAME.w, HERO_FRAME.h);
+  const s = skeleton(pose, BODY.osakaDefender);
+  const o = s.pose;
+  const [hx, hy] = s.head;
+  const [nx, ny] = s.neck, [px, py] = s.hip;
+
+  limb(p, 'navy', s.backLeg.start, s.backLeg.knee, 3.5, 2.8);
+  limb(p, 'navy', s.backLeg.knee, s.backLeg.foot, 3, 2.2);
+  boot(p, 'leather', s.backLeg.foot);
+  limb(p, 'blue', s.backArm.shoulder, s.backArm.elbow, 2.5, 2.2);
+  if (!o.shieldUp) {
+    limb(p, 'white', s.backArm.elbow, s.backArm.hand, 2.2, 2);
+    hand(p, 'skin', s.backArm.hand, 2);
+    roundShield(p, [s.backArm.hand[0] - 1, s.backArm.hand[1] - 2]);
+  }
+
+  // blue tabard with white trim over white plate, a navy sash
+  const waist = pt(s.neck, s.hip, 0.72);
+  p.shape('blue', (id) => p.poly(id, [[nx - 7, ny + 1], [nx + 6.5, ny + 1], [waist[0] + 6, waist[1]], [px + 8, py + 8], [px - 8, py + 8], [waist[0] - 6.5, waist[1]]]), { shadow: 2 });
+  p.shape('white', (id) => p.poly(id, [[px - 8, py + 6], [px + 8, py + 6], [px + 8, py + 8], [px - 8, py + 8]]), { line: false });
+  p.shape('white', (id) => p.poly(id, [[nx - 6, ny + 1.5], [nx + 6, ny + 1.5], [waist[0] + 5.5, waist[1] - 2], [waist[0] - 6, waist[1] - 2]]), { gloss: true, shadow: 2 });
+  p.shape('blue', (id) => p.poly(id, [[nx - 1, ny + 2], [nx + 2, ny + 2], [waist[0] + 1.5, waist[1] - 2.5], [waist[0] - 1.5, waist[1] - 2.5]]), { line: false });
+  p.shape('navy', (id) => p.poly(id, [[px - 7.5, py - 1.5], [px + 7.5, py - 1.5], [px + 7.5, py + 1.5], [px - 7.5, py + 1.5]]));
+
+  limb(p, 'navy', s.frontLeg.start, s.frontLeg.knee, 3.7, 3);
+  limb(p, 'navy', s.frontLeg.knee, s.frontLeg.foot, 3.1, 2.3);
+  boot(p, 'leather', s.frontLeg.foot);
+  p.shape('white', (id) => p.ellipse(id, s.frontLeg.knee[0] + 0.5, s.frontLeg.knee[1] - 0.5, 2.1, 2.1), { gloss: true });
+
+  // head: short dark hair under a rounded helmet with a gold crescent crest
+  p.shape('skin', (id) => p.ellipse(id, hx, hy, 7.6, 8));
+  ear(p, hx, hy);
+  p.shape('shadowCloth', (id) => p.poly(id, [[hx - 8.5, hy + 3], [hx - 8.5, hy - 3], [hx - 3, hy - 2], [hx - 5, hy + 4]]));
+  p.shape('steel', (id) => { p.ellipse(id, hx - 0.5, hy - 5, 9, 5.8); p.rect(id, Math.round(hx - 9.5), Math.round(hy - 4), 3, 7); }, { gloss: true });
+  p.shape('blue', (id) => p.rect(id, Math.round(hx - 9), Math.round(hy - 3.5), 18, 2), { line: false });
+  p.shape('gold', (id) => { p.capsule(id, hx + 1, hy - 9, hx - 4, hy - 16, 1, 0.6); p.capsule(id, hx + 1, hy - 9, hx + 7, hy - 15, 1, 0.6); }, { gloss: true });
+  face(p, hx, hy, { eyes: o.eyes, mouth: o.mouth });
+
+  if (o.shieldUp) {
+    limb(p, 'white', s.backArm.elbow, s.backArm.hand, 2.2, 2);
+    hand(p, 'skin', s.backArm.hand, 2);
+    roundShield(p, [s.backArm.hand[0] + 1.5, s.backArm.hand[1]], o.flashShield);
+  }
+
+  limb(p, 'blue', s.frontArm.shoulder, s.frontArm.elbow, 2.7, 2.4);
+  spear(p, s.frontArm.hand, o.weapon);
+  limb(p, 'white', s.frontArm.elbow, s.frontArm.hand, 2.3, 2.1);
+  hand(p, 'skin', s.frontArm.hand, 2.2);
+  p.shape('white', (id) => p.ellipse(id, s.frontArm.shoulder[0] + 0.5, s.frontArm.shoulder[1] - 0.5, 4, 3.2), { gloss: true });
 
   (o.fx || []).forEach((effect) => effect(p, s));
   return p.render();
@@ -569,10 +649,42 @@ export const POSES = {
   },
 };
 
+// The guest ally only needs the states its battles use: idle, a spear thrust,
+// protecting the hero, a knock-back and a cheer.
+const D = (extra) => ({ id: 'osakaDefender', weapon: 168, ...extra });
+POSES.osakaDefender = {
+  idle: [D({}), D({ bob: 1, frontFore: 62 }), D({ bob: 1, frontFore: 62 }), D({})],
+  attack: [
+    D({ lean: -6, backThigh: -16, frontThigh: 20, frontUpper: 150, frontFore: 110, weapon: 100, eyes: 'fierce', mouth: 'grit' }),
+    D({ x: 32, lean: 14, ...LUNGE, frontUpper: 96, frontFore: 90, weapon: 86, eyes: 'fierce', mouth: 'open', fx: [streaks(36, 14, 18)] }),
+    D({ x: 35, lean: 20, ...LUNGE, frontUpper: 92, frontFore: 86, weapon: 82, eyes: 'fierce', mouth: 'open', fx: [sparks([[68, 34, true]], 'white')] }),
+    D({ x: 33, lean: 12, ...LUNGE, frontUpper: 88, frontFore: 88, weapon: 86, eyes: 'fierce' }),
+    D({ x: 34, lean: 4 }),
+  ],
+  guard: [
+    D({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, ...SHIELD_UP, eyes: 'fierce', mouth: 'grit' }),
+    D({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, ...SHIELD_UP, eyes: 'fierce', mouth: 'grit', flashShield: true, fx: [sparks([[46, 32, true]], 'white')] }),
+    D({ bob: 1, lean: -3, backThigh: -26, frontThigh: 30, ...SHIELD_UP, eyes: 'fierce', mouth: 'grit' }),
+  ],
+  hit: [
+    D({ flash: true }),
+    D({ x: 27, lean: -16, head: -10, backThigh: -8, frontThigh: 34, weapon: 200, eyes: 'hurt', mouth: 'open' }),
+    D({ x: 30, lean: -6, eyes: 'shut', mouth: 'grit' }),
+  ],
+  victory: [
+    D({ frontUpper: 150, frontFore: 170, weapon: 178, eyes: 'happy', mouth: 'open' }),
+    D({ lift: 1, frontUpper: 150, frontFore: 170, weapon: 178, eyes: 'happy', mouth: 'open', fx: [sparks([[48, 6, true]])] }),
+    D({ frontUpper: 150, frontFore: 170, weapon: 178, eyes: 'happy', mouth: 'smile' }),
+    D({ lift: 1, frontUpper: 150, frontFore: 170, weapon: 178, eyes: 'happy', mouth: 'open', fx: [sparks([[48, 6, true]], 'glow')] }),
+  ],
+};
+
 // Kept so tools can preview the fighter's poses by name.
 export const FIGHTER_POSES = POSES.fighter;
 
-const DRAW = { fighter: drawFighter, mage: drawMage, ninja: drawNinja };
+const DRAW = { fighter: drawFighter, mage: drawMage, ninja: drawNinja, osakaDefender: drawDefender };
+/** Friendly guest characters drawn on the hero rig; never selectable heroes. */
+export const ALLY_IDS = Object.freeze(['osakaDefender']);
 const isOutline = (key) => /^[a-zA-Z]+0$/.test(key);
 const FLASH = (key) => (isOutline(key) ? key : 'flash');
 const GHOST = () => 'ghost';

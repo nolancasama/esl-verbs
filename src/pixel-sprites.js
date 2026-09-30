@@ -4,8 +4,8 @@
 // rules are generated from FRAMES / LOOPING / DURATION_MS in battle-art.js.
 import { RIG_PALETTE } from './pixel-rig.js';
 import { dissolve, grid, oval, overlay, recolor, sheet, shift } from './pixel-core.js';
-import { HERO_FRAME, POSES, heroFrame } from './pixel-heroes.js';
-import { ENEMY_ART } from './pixel-enemies.js';
+import { ALLY_IDS, HERO_FRAME, POSES, heroFrame } from './pixel-heroes.js';
+import { ENEMY_ART, PROP_ART } from './pixel-enemies.js';
 
 export const ROWS = Object.freeze(['idle', 'attack', 'special', 'guard', 'cast', 'dodge', 'hit', 'charge', 'defeat', 'victory',
   'broken', 'enraged', 'tired', 'heal', 'barrier', 'counter', 'shadow', 'stumble']);
@@ -25,6 +25,7 @@ const HERO_FALLBACK = {
   fighter: { cast: 'attack', charge: 'idle', broken: 'hit', enraged: 'idle', barrier: 'guard', shadow: 'special' },
   mage: { attack: 'cast', guard: 'barrier', counter: 'cast', charge: 'idle', broken: 'hit', enraged: 'idle', shadow: 'special' },
   ninja: { guard: 'dodge', cast: 'attack', barrier: 'dodge', charge: 'idle', broken: 'hit', enraged: 'idle' },
+  osakaDefender: { special: 'attack', counter: 'attack', shadow: 'attack', cast: 'attack', barrier: 'guard', dodge: 'guard', defeat: 'hit', stumble: 'hit' },
 };
 
 const isOutline = (key) => /^[a-zA-Z]+0$/.test(key);
@@ -117,9 +118,10 @@ export function hasSpriteSheet(id, variant = '') {
 }
 
 function buildSheet(id, variant, key) {
-  const isHero = HERO_IDS.includes(id);
-  if (!isHero && !ENEMY_ART[id]) return null;
-  const art = isHero ? heroRows(id) : enemyRows(ENEMY_ART[id], variant === 'enraged');
+  const isHero = HERO_IDS.includes(id) || ALLY_IDS.includes(id);
+  const spec = ENEMY_ART[id] ?? PROP_ART[id];
+  if (!isHero && !spec) return null;
+  const art = isHero ? heroRows(id) : enemyRows(spec, variant === 'enraged');
   const rows = ROWS.map((row) => {
     const frames = art.rows[row].slice(0, FRAMES[row]);
     while (frames.length < FRAMES[row]) frames.push(frames.at(-1));

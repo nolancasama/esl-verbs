@@ -698,6 +698,38 @@ function vampireLord({ mode, f, angry }) {
   return done(p);
 }
 
+// The Adventure quiz's practice target: a wooden post, a straw-padded body with
+// a painted target and a stitched sack head. Friendly equipment, not a monster.
+function trainingDummy({ mode, f }) {
+  const p = new Painter(44, 64, LIGHT);
+  const sway = mode === 'idle' ? [0, 1, 0, -1][f] : 0;
+  const cx = 22, top = 18;
+  // feet, post, crossbar
+  poly(p, 'wood', [[11, 63], [33, 63], [30, 59], [14, 59]], { shadow: 1 });
+  limb(p, 'wood', [cx, 60], [cx + sway, top], 2.4, 2, { gloss: true });
+  limb(p, 'wood', [cx - 14 + sway, 33], [cx + 14 + sway, 33], 1.7, 1.7);
+  p.dots([[cx - 15 + sway, 32], [cx + 15 + sway, 32]], 'wood1');
+  // straw body with rope bands and a painted target
+  blob(p, 'belly', cx + sway, 39, 9.5, 12.5, { dither: true, shadow: 2 });
+  [30, 47].forEach((y) => p.shape('leather', (id) => p.rect(id, cx - 8 + sway, y, 17, 2), { line: false }));
+  blob(p, 'red', cx + sway, 39, 5.2, 5.2, { line: false });
+  blob(p, 'white', cx + sway, 39, 3.4, 3.4, { line: false });
+  blob(p, 'red', cx + sway, 39, 1.6, 1.6, { line: false });
+  // straw tufts
+  p.dots([[cx - 9 + sway, 50], [cx - 7 + sway, 52], [cx + 8 + sway, 51], [cx + 10 + sway, 49], [cx + sway, 53]], 'belly4');
+  // sack head with stitched eyes, tied at the neck
+  blob(p, 'cream', cx + sway, top, 7, 7.5, { gloss: true });
+  p.shape('leather', (id) => p.rect(id, cx - 4 + sway, top + 6, 9, 2), { line: false });
+  [[-3, -1], [3, -1]].forEach(([dx, dy]) => p.stamp(['k.k', '.k.', 'k.k'], cx + dx - 1 + sway, top + dy - 1, { k: 'ink' }));
+  p.stamp(['kkk'], cx - 1 + sway, top + 3, { k: 'leather1' });
+  return done(p);
+}
+
+/** Props on the sprite pipeline that are not enemies (no battle data). */
+export const PROP_ART = {
+  trainingDummy: { draw: trainingDummy, modes: { idle: 4, attack: 1 } },
+};
+
 // Frame counts per drawn mode; derived rows (hit, defeat, dodge...) are built in pixel-sprites.js.
 export const ENEMY_ART = {
   slime: { draw: slime, modes: { idle: 4, attack: 4, tired: 2, charge: 2 } },

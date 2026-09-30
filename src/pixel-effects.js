@@ -648,6 +648,53 @@ export function cityImage(mood) {
   return image(`city-${mood}`, g, CITY[mood]);
 }
 
+// The Adventure quiz field shows far more ground than a backdrop has: this
+// tile continues each stage's floor below the backdrop and repeats downward.
+// Rows continue the backdrop floor (which covers HORIZON..BG_H) and each tile
+// height is a whole number of that floor's repeats, so tiles stack without seams.
+const FLOOR = BG_H - HORIZON;
+function groundTile(g, base, alt, speck) {
+  for (let y = 0; y < g.h; y += 1) for (let x = 0; x < BG_W; x += 1) {
+    const band = Math.floor((y + FLOOR) / 6) % 2;
+    px(g, x, y, band && ditherMask(x, y, 0.25) ? alt : base);
+    if (speck && ((x * 7 + y * 13) % 53 === 0)) px(g, x, y, speck);
+  }
+}
+const GROUNDS = {
+  1: [48, (g) => {
+    groundTile(g, 'g', 'G', 'd');
+    [[10, 8], [52, 30], [96, 14], [140, 26], [176, 6], [30, 22], [120, 40]].forEach(([x, y], i) => {
+      px(g, x, y, 'k'); px(g, x + 1, y - 1, 'k'); px(g, x + 2, y, 'k');
+      if (i % 3 === 0) px(g, x + 1, y - 2, i % 2 ? 'f' : 'y');
+    });
+  }],
+  2: [48, (g) => {
+    groundTile(g, 'g', 'G', 'd');
+    [[16, 10], [84, 28], [150, 16], [118, 40]].forEach(([x, y]) => { rect(g, x, y, 3, 2, 'w'); px(g, x, y + 2, 'P'); });
+  }],
+  3: [40, (g) => {
+    for (let y = 0; y < g.h; y += 1) for (let x = 0; x < BG_W; x += 1) {
+      const row = Math.floor((y + FLOOR) / 10), bx = (x + (row % 2) * 12) % 24;
+      px(g, x, y, (y + FLOOR) % 10 === 9 || bx === 23 ? 'G' : ditherMask(x, y, 0.1) ? 'd' : 'g');
+    }
+  }],
+  4: [48, (g) => {
+    for (let y = 0; y < g.h; y += 1) for (let x = 0; x < BG_W; x += 1) {
+      const row = Math.floor((y + FLOOR) / 8), bx = (x + (row % 2) * 8) % 16;
+      px(g, x, y, (y + FLOOR) % 8 === 7 || bx === 15 ? 'G' : 'g');
+    }
+    [[40, 6, 52, 12], [150, 26, 160, 32]].forEach(([x0, y0, x1, y1]) => line(g, x0, y0, x1, y1, 'P'));
+  }],
+};
+
+export function groundImage(stage) {
+  if (!GROUNDS[stage]) return null;
+  const [h, draw] = GROUNDS[stage];
+  const g = grid(BG_W, h);
+  draw(g);
+  return image(`ground-${stage}`, g, BG[stage]);
+}
+
 export function backdropImage(stage) {
   const draw = BACKDROPS[stage];
   if (!draw) return null;
