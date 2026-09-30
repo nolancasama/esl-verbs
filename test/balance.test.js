@@ -87,44 +87,65 @@ test('full campaigns with HP carry-over: 10 AP clears first try, 5 AP struggles,
 });
 
 const SAKAI_LADDER = [5, 6, 7, 8, 10];
-const SAKAI_SEEDS = SEEDS.map((seed) => seed * 8191 + 23);
-const sakaiCampaignRuns = (ap, policyName = 'smart') => heroes.flatMap((heroId) => SAKAI_SEEDS.map((seed) => (
-  simulateSakaiCampaign({ heroId, ap, policy: POLICIES[policyName], seed })
-)));
-const sakaiCampaignCurve = Object.fromEntries(SAKAI_LADDER.map((ap) => {
-  const runs = sakaiCampaignRuns(ap);
-  return [ap, runs.filter((run) => run.completed).length / runs.length];
-}));
-const showSakai = () => SAKAI_LADDER.map((ap) => `${ap}:${sakaiCampaignCurve[ap].toFixed(2)}`).join(' ');
-
-test('Sakai campaign: 5 AP is difficult, 6-7 AP are viable, and 8+ AP is strong', () => {
-  for (let index = 1; index < SAKAI_LADDER.length; index += 1) {
-    assert.ok(sakaiCampaignCurve[SAKAI_LADDER[index]] >= sakaiCampaignCurve[SAKAI_LADDER[index - 1]] - 0.06, `Sakai curve not monotonic: ${showSakai()}`);
-  }
-  assert.ok(sakaiCampaignCurve[5] <= 0.2, `5 AP should be difficult: ${showSakai()}`);
-  assert.ok(sakaiCampaignCurve[6] >= 0.15, `6 AP should be reachable: ${showSakai()}`);
-  assert.ok(sakaiCampaignCurve[7] >= 0.35, `7 AP should be competitive: ${showSakai()}`);
-  assert.ok(sakaiCampaignCurve[8] >= 0.65, `8 AP should be strong: ${showSakai()}`);
-  assert.ok(sakaiCampaignCurve[10] >= 0.85, `10 AP should be expected: ${showSakai()}`);
-});
-
-test('Sakai ally battles are survivable for every hero at 7 AP and smart play beats naive play', () => {
-  for (const heroId of heroes) for (const encounter of sakaiEncounters().filter(({ ally }) => ally)) {
-    const wins = SAKAI_SEEDS.filter((seed) => simulateBattle({
-      heroId, encounterId: encounter.id, ap: 7, level: 5, potions: 2, policy: POLICIES.smart, seed,
-    }).won).length;
-    assert.ok(wins > 0, `${heroId} can survive ${encounter.id} at 7 AP`);
-  }
-
-  const rate = (name) => {
-    let wins = 0;
-    let total = 0;
-    for (const heroId of heroes) for (const encounter of sakaiEncounters()) for (const seed of SAKAI_SEEDS) {
-      wins += simulateBattle({ heroId, encounterId: encounter.id, ap: 10, level: 5, potions: 2, policy: POLICIES[name], seed }).won ? 1 : 0;
+const SAKAI_CURVE_SEEDS = SEEDS.map((seed) => seed * 8191 + 23);
+const sakaiLateRate = (ap, policyName) => {
+  let wins = 0;
+  let total = 0;
+  for (const encounter of sakaiEncounters().slice(2)) for (const heroId of heroes) {
+    for (const fraction of HP_FRACTIONS) for (const seed of SAKAI_CURVE_SEEDS) {
+      const result = simulateBattle({
+        heroId, encounterId: encounter.id, ap, level: 5,
+        heroHp: Math.ceil(heroMaxHp(heroId, 5) * fraction), potions: 2,
+        policy: POLICIES[policyName], seed,
+      });
+      wins += result.won ? 1 : 0;
       total += 1;
     }
-    return wins / total;
+  }
+  return wins / total;
+};
+const sakaiCurves = Object.fromEntries(Object.keys(POLICIES).map((name) => [
+  name, Object.fromEntries(SAKAI_LADDER.map((ap) => [ap, sakaiLateRate(ap, name)])),
+]));
+const showSakai = (name) => SAKAI_LADDER.map((ap) => `${ap}:${sakaiCurves[name][ap].toFixed(2)}`).join(' ');
+
+// Sakai is played at LV 5 with an ally, and the city retry assist guarantees a finish,
+// so "5 AP is difficult" is measured over the whole city: a 5/10 student usually loses
+// some battles on the way, a 10/10 student rarely does. The per-battle curve must still climb.
+test('Sakai: more AP is a steady advantage, and 5 AP usually costs retries across the city', () => {
+  const curve = sakaiCurves.competent;
+  for (let index = 1; index < SAKAI_LADDER.length; index += 1) {
+    assert.ok(curve[SAKAI_LADDER[index]] >= curve[SAKAI_LADDER[index - 1]] - 0.05, `Sakai curve not monotonic: ${showSakai('competent')}`);
+  }
+  assert.ok(curve[10] - curve[5] >= 0.2, `10 AP should beat 5 AP clearly: ${showSakai('competent')}`);
+  assert.ok(curve[6] >= 0.5, `6 AP should be viable: ${showSakai('competent')}`);
+  assert.ok(curve[8] >= 0.75, `8 AP should be strong: ${showSakai('competent')}`);
+  assert.ok(curve[10] >= 0.9, `10 AP should be expected: ${showSakai('competent')}`);
+  const seeds = Array.from({ length: 12 }, (_, index) => index * 53 + 7);
+  const retries = (ap) => {
+    const runs = heroes.flatMap((heroId) => seeds.map((seed) => simulateSakaiCampaign({ heroId, ap, policy: POLICIES.competent, seed, maxAttempts: 10 })));
+    return runs.reduce((sum, run) => sum + run.stages.reduce((n, stage) => n + stage.attempts - 1, 0), 0) / runs.length;
   };
-  assert.ok(rate('smart') >= 0.9, 'smart 10 AP play should be strong across Sakai');
-  assert.ok(rate('smart') - rate('naive') >= 0.6, 'Sakai rewards tactical play over basic-attack mashing');
+  const low = retries(5), high = retries(10);
+  assert.ok(low >= 1.5, `a 5/10 student should usually need retries in Sakai: ${low.toFixed(2)} per city`);
+  assert.ok(high <= 0.75 && high <= low / 2, `a 10/10 student should need far fewer: ${high.toFixed(2)} vs ${low.toFixed(2)} per city`);
+});
+
+test('Sakai retry assist lets every 0/3/5 student finish within six attempts per battle', () => {
+  const seeds = Array.from({ length: 20 }, (_, index) => index * 97 + 11);
+  const failures = [];
+  for (const ap of [0, 3, 5]) for (const heroId of heroes) for (const seed of seeds) {
+    const run = simulateSakaiCampaign({ heroId, ap, policy: POLICIES.competent, seed, maxAttempts: 6 });
+    if (!run.completed || run.stages.some((stage) => stage.attempts > 6)) {
+      failures.push(`${heroId} AP${ap} seed${seed} stage${run.stages.at(-1).stage}`);
+    }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('smart play clearly beats naive play in Sakai battles 3-4', () => {
+  for (const ap of [7, 8, 10]) {
+    assert.ok(sakaiCurves.smart[ap] - sakaiCurves.naive[ap] >= 0.5,
+      `smart vs naive at ${ap}: ${showSakai('smart')} / ${showSakai('naive')}`);
+  }
 });

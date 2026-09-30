@@ -131,7 +131,8 @@ function finish(state, events, rng = Math.random) {
   if (state.enemies.every((enemy) => !living(enemy))) {
     if (state.wave < state.waveCount) {
       events.push({ type: 'waveClear', wave: state.wave });
-      return { state: beginNextWave(state, events, rng), events };
+      const replenished = gainAp(state, BALANCE.waveClearAp, 'wave', events);
+      return { state: beginNextWave(replenished, events, rng), events };
     }
     return { state: { ...state, turn: 'won', selectedUid: null }, events: [...events, { type: 'victory' }] };
   }
