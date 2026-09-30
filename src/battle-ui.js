@@ -260,7 +260,8 @@ export function createBattleView(container, {
     if (!waves || waves.length < 2 && !encounter.reserve) return '';
     const wave = display?.wave ?? currentState.wave ?? 1;
     const later = waves.slice(wave).flatMap((next) => next.enemyIds);
-    const extra = wave < waves.length ? Array.from({ length: encounter.reserve ?? 0 }, (_, index) => waves[0].enemyIds[index % waves[0].enemyIds.length]) : [];
+    // Extra silhouettes are the watching army: shown in a one-wave city battle, spent by a multi-wave battle's last wave.
+    const extra = wave < waves.length || waves.length === 1 ? Array.from({ length: encounter.reserve ?? 0 }, (_, index) => waves[0].enemyIds[index % waves[0].enemyIds.length]) : [];
     const ids = [...later, ...extra].slice(0, 9);
     if (!ids.length) return '';
     return `<div class="battle-reserve" aria-hidden="true">${ids.map((id, index) => `<span class="battle-reserve__unit" style="--i:${index}">${getBattleArt(id, 'idle')}</span>`).join('')}</div>`;

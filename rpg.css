@@ -736,3 +736,22 @@
 .city-results .results-actions > .secondary { grid-column: span 3; }
 .city-results .results-actions:not(:has(> .results-practice)) > .secondary { grid-column: 1 / -1; }
 @media (max-height: 620px) { .menu-card:has(.new-adventure-choice) .menu-actions { gap: 8px; } .new-adventure-choice { min-height: 54px; padding-block: .3rem; } .menu-card:has(.new-adventure-choice) .practice-choice { min-height: 46px; } }
+/* The CONTINUE ADVENTURE row makes results one button taller: the missed-word list gives up that room. */
+.results-card:has(.results-map) .missed { max-height: max(80px, 100vh - 636px); }
+@media (max-height: 740px) { .results-card:has(.results-map) .missed { max-height: max(72px, 100vh - 560px); } }
+.results-card .results-actions > .results-map > span { font-family: var(--read-font); font-weight: 900; font-size: 1.25rem; }
+.results-card .results-actions > .results-map > small { font-family: var(--pixel-font); font-weight: 400; font-size: 10px; }
+@media (max-height: 700px) {
+  .results-card:has(.results-map) { gap: 6px; }
+  .results-card:has(.results-map) .results-actions { gap: 6px; }
+  .results-card:has(.results-map) .results-actions > .px-button { min-height: 40px; padding-block: 3px; }
+  .results-card .results-actions > .results-map { min-height: 48px; }
+}
+@media (max-height: 620px) { .app.rpg-app:has(.results-card) { padding-block: 6px; } }
+/* Continue layout: three choices, so the title, the hero and the buttons tighten and the CTA stays on one line. */
+.menu-card:has(.new-adventure-choice) .game-title { font-size: clamp(2.2rem, 6vw, 3.6rem); margin-bottom: .7rem; }
+.menu-card:has(.new-adventure-choice) .adventure-choice .adventure-trio { --px: 1.6; }
+.menu-card:has(.new-adventure-choice) .adventure-cta { white-space: nowrap; font-size: clamp(14px, 2.6vw, 21px); }
+.menu-card:has(.new-adventure-choice) .new-adventure-choice { min-height: 60px; }
+.menu-card:has(.new-adventure-choice) .menu-actions { gap: 10px; margin-bottom: 10px; }
+@media (max-height: 700px) { .menu-card:has(.new-adventure-choice) { padding-block: 16px; } .menu-card:has(.new-adventure-choice) .adventure-choice .adventure-trio { --px: 1.2; } }
