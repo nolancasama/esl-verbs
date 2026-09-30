@@ -14,6 +14,9 @@ import {
   ADVENTURE_RECORDS_KEY, FINAL_BOSSES, completedHeroes, heroTitle, nextHeroTitle, parseRecords, recordCompletion,
 } from './records.js';
 import { createApMeter } from './ap-meter.js';
+import { CITY_STORIES, ENDING_STORY, INTRO_STORY, cardMs, rubyParts } from './story.js';
+import { CITIES, REGION_KEY, parseRegion, serializeRegion } from './region.js';
+import { cityPlayable, osakaMapView } from './osaka-map.js';
 import { createAudio } from './audio.js';
 
 const app = document.querySelector('#app');
@@ -39,6 +42,8 @@ function readMicFree() { try { return localStorage.getItem(MIC_FREE_KEY) === 'tr
 function saveMicFree(value) { try { localStorage.setItem(MIC_FREE_KEY, String(value)); } catch {} }
 function readRecords() { let raw = null; try { raw = localStorage.getItem(ADVENTURE_RECORDS_KEY); } catch {} return parseRecords(raw, ART_IDS.heroes); }
 function saveRecords(records) { try { localStorage.setItem(ADVENTURE_RECORDS_KEY, JSON.stringify(records)); } catch {} }
+function readRegion() { let raw = null; try { raw = localStorage.getItem(REGION_KEY); } catch {} return parseRegion(raw, ART_IDS.heroes); }
+function saveRegion(region) { try { localStorage.setItem(REGION_KEY, serializeRegion(region)); } catch {} }
 /** Speech questions become multiple choice: Study by the student's マイクなし choice, Adventure only when speech cannot work. */
 function answerByChoices() {
   return choiceFallback({ context: isAdventure() ? 'adventure' : 'study', micFree, speechAvailable: speechRecognitionAvailable(), speechDenied, speechFailed });
@@ -640,63 +645,143 @@ function campaignResults() {
   queueMicrotask(() => again.focus());
 }
 
+/* ------------------------------------------------------------- Osaka map */
+
+/** The city the map's big button leads to: a city in progress first, then the first one under attack. */
+function nextMapCity(region) {
+  if (region.checkpoint && CITIES[region.checkpoint.cityId]) return region.checkpoint.cityId;
+  return Object.keys(CITIES).find((id) => cityPlayable(region, id) && !region.savedCities.includes(id)) ?? null;
+}
+
+/**
+ * The regional map. `justSaved` plays that city's change to SAVED. Progress is
+ * already stored when this shows, so leaving needs no confirmation.
+ */
+function osakaMapScreen({ justSaved = null } = {}) {
+  clearScreen(); rpgScreen(); screen = 'osaka-map'; campaign = null; round = null; quizContext = null;
+  audio.play('title');
+  const region = readRegion();
+  const card = element('section', 'rpg-card px-panel map-card');
+  const { top } = rpgTopbar(mainMenu);
+  const heading = element('h1', 'rpg-title map-title', '大阪を まもれ！'); heading.append(element('small', '', 'SAVE OSAKA!'));
+  const status = element('div', 'map-status');
+  const count = element('span', 'map-count', `まもった町: ${region.savedCities.length - (justSaved && region.savedCities.includes(justSaved) ? 1 : 0)}`);
+  status.append(count);
+  if (region.heroId) {
+    const heroLine = element('span', 'map-hero'); const art = element('span', 'mini-art'); art.innerHTML = battleArt(region.heroId, 'idle'); art.firstElementChild?.setAttribute('aria-hidden', 'true');
+    heroLine.append(art, element('b', '', `${HEROES[region.heroId].name.toUpperCase()} LV ${region.level}`));
+    status.prepend(heroLine);
+  }
+  const view = osakaMapView({ region, justSaved, onSelect: startCityCampaign });
+  const target = nextMapCity(region);
+  const actions = element('div', 'map-actions');
+  if (target) {
+    const city = CITIES[target]; const resume = region.checkpoint?.cityId === target;
+    const go = element('button', 'px-button map-go');
+    go.append(element('span', '', resume ? `▶ ${city.jaName}の つづき！  STAGE ${region.checkpoint.stage}` : `▶ ${city.jaName}へ いく！`), element('small', '', resume ? `CONTINUE ${city.name.toUpperCase()}` : `GO TO ${city.name.toUpperCase()}`));
+    go.onclick = () => startCityCampaign(target); actions.append(go);
+    queueMicrotask(() => go.focus());
+  } else actions.append(element('p', 'map-soon', 'つぎの 町は じゅんびちゅう…  MORE CITIES COMING SOON'));
+  card.append(top, heading, status, view.node, actions); app.append(card);
+  if (justSaved) {
+    const reveal = () => { view.reveal(); count.textContent = `まもった町: ${region.savedCities.length}`; audio.sfx('levelup'); };
+    if (reducedMotion()) reveal(); else later(900, reveal);
+  }
+}
+
+/** Start (or resume) a regional city campaign from the map. Implemented in the flow pass. */
+function startCityCampaign(cityId) {
+  void cityId;
+}
+
 /* ------------------------------------------------------------- cinematics */
 
-// The whole story: a short intro after Hero Select and a short ending after the
-// final boss. Each is a few timed shots on one DOM scene, run on the screen
-// timers (so leaving the screen cancels them) and skippable at any moment.
-const INTRO_SHOTS = [
-  { at: 0, mood: 'calm', en: 'MATSUBARA CITY', ja: 'まつばら市' },
-  { at: 2800, mood: 'danger', monsters: 'near', en: 'MATSUBARA CITY IS IN DANGER!', ja: 'まつばら市が あぶない！', music: null, sfx: 'alarm' },
-  { at: 6000, hero: 'idle', en: 'PROTECT THE CITY!', ja: 'まつばら市を まもろう！', sfx: 'fanfare' },
-  { at: 8800, hero: 'victory', en: 'STAGE 1', ja: 'ステージ 1', big: true, sfx: 'select' },
-];
-const INTRO_MS = 10300;
-const ENDING_SHOTS = [
-  { at: 0, mood: 'danger', monsters: 'near', hero: 'idle', en: '', ja: '', music: null },
-  { at: 900, mood: 'safe', monsters: 'gone', en: 'THE DARKNESS IS GONE!', ja: 'やみが きえた！', sfx: 'barrier' },
-  { at: 3700, hero: 'victory', citizens: true, en: 'MATSUBARA CITY IS SAFE!', ja: 'まつばら市を まもった！', music: 'victory' },
-  { at: 6600, en: 'YOU PROTECTED THE CITY!', ja: 'まちを まもってくれて ありがとう！', big: true },
-];
-const ENDING_MS = 9400;
+// Story scenes (src/story.js): the Matsubara opening and ending, and a short
+// intro and ending per regional city. Beats run on the screen timers, so
+// leaving the screen cancels them; SKIP finishes exactly once, and a tap on
+// the scene moves a text card on for students who read quickly.
+function introCinematic(onDone) { playStory('intro', INTRO_STORY, onDone); }
+function endingCinematic(onDone) { playStory('ending', ENDING_STORY, onDone); }
+function cityIntroCinematic(cityId, onDone) { playStory(`${cityId}-intro`, CITY_STORIES[cityId]?.intro ?? [], onDone); }
+function cityEndingCinematic(cityId, onDone) { playStory(`${cityId}-ending`, CITY_STORIES[cityId]?.ending ?? [], onDone); }
 
-function introCinematic(onDone) { playCinematic('intro', INTRO_SHOTS, INTRO_MS, onDone); }
-function endingCinematic(onDone) { playCinematic('ending', ENDING_SHOTS, ENDING_MS, onDone); }
+/** One story line, with {漢字|かな} shown as furigana. */
+function storyLine(line, big) {
+  const node = element('p', `story__line${big ? ' story__line--big' : ''}`);
+  rubyParts(line).forEach((part) => {
+    if (!part.ruby) { node.append(part.text); return; }
+    const ruby = document.createElement('ruby');
+    ruby.append(part.text, element('rt', '', part.ruby));
+    node.append(ruby);
+  });
+  return node;
+}
 
-function playCinematic(kind, shots, totalMs, onDone) {
+function playStory(kind, beats, onDone) {
   clearScreen(); rpgScreen(); screen = 'cinematic';
   const heroId = campaign.heroId;
-  const root = element('section', `cinematic cinematic--${kind}`); root.setAttribute('aria-label', kind === 'intro' ? 'Story: Matsubara City' : 'Story: the city is safe');
+  const root = element('section', `cinematic story story--${kind}`); root.setAttribute('aria-label', 'Story / ものがたり');
   const scene = element('div', 'cinematic__scene');
-  // One layer per city mood; a shot fades the wanted one in over the others.
+  // One layer per city mood; a beat fades the wanted one in over the others.
   const layers = Object.fromEntries(['calm', 'danger', 'safe'].map((mood) => [mood, element('div', `cinematic__city ${cityClass(mood)}`)]));
   const monsters = element('div', `cinematic__monsters ${cityClass('monsters')}`);
   const citizens = element('div', 'cinematic__citizens'); for (let i = 0; i < 5; i += 1) citizens.append(element('span', 'cinematic__citizen'));
+  const core = element('div', 'story__core');
+  const allySlot = element('div', 'cinematic__hero cinematic__ally');
   const heroSlot = element('div', 'cinematic__hero');
-  const caption = element('div', 'cinematic__caption px-panel'); caption.setAttribute('aria-live', 'polite');
-  scene.append(...Object.values(layers), monsters, citizens, heroSlot);
-  const skip = element('button', 'cinematic__skip px-button secondary', 'SKIP ▶'); skip.setAttribute('aria-label', 'Skip / とばす');
-  root.append(scene, caption, skip); app.append(root);
+  const veil = element('div', 'story__veil');
+  const title = element('div', 'story__title px-panel'); title.hidden = true;
+  const crawl = element('div', 'story__crawl'); crawl.setAttribute('aria-live', 'polite');
+  const tapHint = element('span', 'story__tap', 'タップで つぎへ ▶'); tapHint.setAttribute('aria-hidden', 'true');
+  scene.append(...Object.values(layers), monsters, citizens, core, allySlot, heroSlot, veil, title, crawl, tapHint);
+  const skip = element('button', 'cinematic__skip px-button secondary', 'SKIP ▶ スキップ'); skip.setAttribute('aria-label', 'Skip / スキップ');
+  root.append(scene, skip); app.append(root);
 
-  let finished = false;
-  const finish = () => { if (finished) return; finished = true; clearTimers(); onDone(); };
-  const show = (shot) => {
-    if (shot.mood) Object.entries(layers).forEach(([mood, layer]) => layer.classList.toggle('is-on', mood === shot.mood));
-    if (shot.monsters) { monsters.classList.toggle('is-near', shot.monsters === 'near'); monsters.classList.toggle('is-gone', shot.monsters === 'gone'); }
-    if (shot.citizens) citizens.classList.add('is-on');
-    if (shot.hero) { heroSlot.innerHTML = battleArt(heroId, shot.hero); heroSlot.firstElementChild?.setAttribute('aria-hidden', 'true'); heroSlot.classList.add('is-on'); }
-    if (shot.en !== undefined) {
-      caption.classList.toggle('cinematic__caption--big', Boolean(shot.big)); caption.hidden = !shot.en;
-      caption.replaceChildren(element('strong', '', shot.en), element('span', '', shot.ja));
+  const actor = (slot, id, pose) => {
+    if (pose === 'gone') { slot.classList.remove('is-on'); return; }
+    slot.innerHTML = battleArt(id, pose); slot.firstElementChild?.setAttribute('aria-hidden', 'true'); slot.classList.add('is-on');
+  };
+  const apply = (beat) => {
+    if (beat.mood) Object.entries(layers).forEach(([mood, layer]) => layer.classList.toggle('is-on', mood === beat.mood));
+    if (beat.monsters) ['near', 'gone', 'spread'].forEach((state) => monsters.classList.toggle(`is-${state}`, beat.monsters === state));
+    if ('citizens' in beat) citizens.classList.toggle('is-on', Boolean(beat.citizens));
+    if ('core' in beat) core.classList.toggle('is-on', Boolean(beat.core));
+    if (beat.hero) actor(heroSlot, heroId, beat.hero);
+    if (beat.ally) actor(allySlot, 'osakaDefender', beat.ally);
+    // Music: a cut is instant silence (the Horde arrives), stop fades, play switches track.
+    if (beat.cut) audio.cut(); else if (beat.stop) audio.stop();
+    if (beat.music) audio.play(beat.music);
+    if (beat.sfx) audio.sfx(beat.sfx);
+    title.hidden = !beat.title;
+    if (beat.title) title.replaceChildren(element('strong', '', beat.title.ja), element('span', '', beat.title.en));
+    veil.classList.toggle('is-on', Boolean(beat.card));
+    tapHint.classList.toggle('is-on', Boolean(beat.card));
+    crawl.replaceChildren();
+    if (beat.card) {
+      const card = element('div', `story__card${beat.card.hold ? ' story__card--hold' : ''}`);
+      card.style.setProperty('--dur', `${beat.ms ?? cardMs(beat.card)}ms`);
+      beat.card.lines.forEach((line, index) => card.append(storyLine(line, index === beat.card.big)));
+      if (beat.card.en) card.append(element('p', 'story__en', beat.card.en));
+      crawl.append(card);
     }
-    if (shot.music === null) audio.stop(); else if (shot.music) audio.play(shot.music);
-    if (shot.sfx) audio.sfx(shot.sfx);
+  };
+
+  let finished = false, index = -1;
+  const finish = () => { if (finished) return; finished = true; clearTimers(); onDone(); };
+  const next = () => {
+    if (finished) return;
+    clearTimers();
+    index += 1;
+    if (index >= beats.length) { finish(); return; }
+    const beat = beats[index];
+    apply(beat);
+    later(beat.ms ?? cardMs(beat.card), next);
   };
   skip.onclick = finish;
-  // Reduced motion: the last shot's words, briefly, with no animation.
-  if (reducedMotion()) { root.classList.add('cinematic--still'); shots.forEach(show); later(2500, finish); queueMicrotask(() => skip.focus()); return; }
-  shots.forEach((shot) => (shot.at === 0 ? show(shot) : later(shot.at, () => show(shot))));
-  later(totalMs, finish);
+  scene.onclick = () => { if (beats[index]?.card) next(); };
+  root.addEventListener('keydown', (event) => { if (event.key === 'ArrowRight' && beats[index]?.card) { event.preventDefault(); next(); } });
+  if (reducedMotion()) root.classList.add('cinematic--still');
+  next();
   queueMicrotask(() => skip.focus());
 }
 function practiceModePicker(items) {
@@ -811,4 +896,16 @@ function debugQuiz(params) {
   startRound(stage, createRound(VOCABULARY), 'adventure');
 }
 
-if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'quiz') debugQuiz(new URLSearchParams(location.search)); else mainMenu();
+// ?debug=map&preset=fresh|matsubara|sakai[&hero=ninja][&justSaved=sakai]: write that
+// regional save (it replaces this browser's save) and open the Osaka map.
+const MAP_PRESETS = { fresh: [], matsubara: ['matsubara'], sakai: ['matsubara', 'sakai'] };
+function debugMap(params) {
+  const saved = MAP_PRESETS[params.get('preset')] ?? MAP_PRESETS.matsubara;
+  const heroId = HEROES[params.get('hero')] ? params.get('hero') : 'fighter';
+  saveRegion({ heroId: saved.length ? heroId : null, level: saved.length ? LEVELS.length : 1, xp: saved.length ? 300 : 0, savedCities: saved, checkpoint: null });
+  const justSaved = params.get('justSaved');
+  osakaMapScreen({ justSaved: saved.includes(justSaved) ? justSaved : null });
+}
+
+const debugParams = new URLSearchParams(location.search);
+if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'quiz') debugQuiz(debugParams); else if (debugMode === 'map') debugMap(debugParams); else mainMenu();

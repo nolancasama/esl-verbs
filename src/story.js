@@ -11,7 +11,7 @@
 /** Reading time for a card: a base plus time per character, clamped. */
 export function cardMs(card) {
   const chars = (card?.lines ?? []).join('').replace(/\{([^|}]+)\|[^}]+\}/g, '$1').replace(/\s/g, '').length;
-  return Math.round(Math.max(1800, Math.min(3800, 1300 + chars * 70)));
+  return Math.round(Math.max(1700, Math.min(3300, 1100 + chars * 55)));
 }
 
 /** Split `{漢字|かな}` markup into plain and ruby parts: [{ text }, { text, ruby }]. */
@@ -36,14 +36,14 @@ export const INTRO_STORY = Object.freeze([
   { monsters: 'near', mood: 'danger', cut: true, sfx: 'alarm', ms: 550 },
   { music: 'ominous', ...card(['{西暦|せいれき}2199年。'], { big: 0 }), ms: 2200 },
   card(['日本で もっとも', 'つよい 人々が くらす 町。', 'その名は…… まつばら市。']),
-  card(['まつばらの 人々は、', 'だれよりも つよく、だれよりも 元気だった。', '{科学者|かがくしゃ}たちは その なぞの力を', '「アクション・エネルギー」と よんだ。']),
+  card(['まつばらの 人々は だれよりも つよく、元気だった。', '{科学者|かがくしゃ}たちは その なぞの力を', '「アクション・エネルギー」と よんだ。']),
   card(['しかし ある夜――', '{巨大|きょだい}な いんせき「ブラック・スター」が', 'びわ{湖|こ}に おちた。']),
   card(['いんせきから あらわれたのは、', '{地球|ちきゅう}で もっとも きけんな まものの ぐんだん――', '「シャドウ・ホード」'], { big: 2 }),
-  card(['その数は かぞえきれない。', 'その力は すさまじい。', 'だれにも とめられなかった。']),
+  card(['その数は かぞえきれない。', 'だれにも とめられない！']),
   card(['シャドウ・ホードは かんじとった。', '日本で もっとも 大きな アクション・エネルギー。', 'その場所は…… まつばら市！']),
-  card(['まつばらの 力を うばって、', 'せかい さいきょうの ぐんだんに なるために！']),
+  card(['まつばらの 力を うばって、', 'せかい さいきょうに なるために！']),
   { music: 'awaken', ...card(['まつばらの {科学者|かがくしゃ}たちは、', 'さいごの きぼうを うごかした。', '「アクション・コア」'], { big: 2 }) },
-  { core: true, ...card(['うごきを あらわす ことば（どうし）を こたえると、', 'アクション・コアに エネルギーが たまり、', 'たたかう力に なる！'], { en: 'ACTION WORDS → ACTION ENERGY → BATTLE POWER' }) },
+  { core: true, ...card(['うごきを あらわす ことば（どうし）を', 'こたえると、アクション・コアに', 'エネルギーが たまり、たたかう力に なる！'], { en: 'ACTION WORDS → ACTION ENERGY → BATTLE POWER' }) },
   card(['これまで {何百万人|なんびゃくまんにん}もの 人が ためした。', 'しかし―― だれにも うごかせなかった。']),
   card(['そして 今。', 'アクション・コアが', 'ひとりの ヒーローを えらんだ。']),
   { stop: true, ...card(['それは――'], { big: 0, hold: true }), ms: 1500 },

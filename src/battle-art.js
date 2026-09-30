@@ -2,7 +2,7 @@
 // (a character in a state, an icon, a backdrop) and never see how pixels are
 // drawn, so the art can be replaced without touching battle logic.
 import { DURATION_MS, ENEMY_IDS, FRAMES, HERO_IDS, LOOPING, ROWS, hasSpriteSheet, spriteSheet } from './pixel-sprites.js';
-import { backdropImage, cityImage, effectSheet, groundImage, iconImage } from './pixel-effects.js';
+import { backdropImage, cityImage, effectSheet, groundImage, iconImage, osakaMapImage } from './pixel-effects.js';
 import { sheetClass } from './pixel-core.js';
 
 export { createEffectsPlayer } from './fx-player.js';
@@ -88,6 +88,11 @@ export function backdropClass(stage) {
 export function groundClass(stage) {
   const s = groundImage(stage);
   return s ? sheetClass('pxg', `ground${stage}`, s) : '';
+}
+
+/** Class name that paints the Osaka campaign map. */
+export function osakaMapClass() {
+  return sheetClass('pxm', 'osaka', osakaMapImage());
 }
 
 /** A one-shot effect sheet for screens outside the battle field: its class and frame count. */

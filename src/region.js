@@ -8,8 +8,8 @@ export const REGION_KEY = 'esl-verbs-region-v1';
 export const CITIES = Object.freeze({
   matsubara: { id: 'matsubara', name: 'Matsubara', jaName: 'まつばら', map: { x: 52, y: 60 }, campaignId: 'matsubara', unlocks: ['sakai'] },
   sakai: { id: 'sakai', name: 'Sakai', jaName: 'さかい', map: { x: 34, y: 64 }, campaignId: 'sakai', requires: ['matsubara'] },
-  yao: { id: 'yao', name: 'Yao', jaName: 'やお', map: { x: 62, y: 48 }, campaignId: null, requires: ['sakai'] },
-  higashiosaka: { id: 'higashiosaka', name: 'Higashiosaka', jaName: 'ひがしおおさか', map: { x: 58, y: 34 }, campaignId: null, requires: ['sakai'] },
+  yao: { id: 'yao', name: 'Yao', jaName: 'やお', map: { x: 64, y: 54 }, campaignId: null, requires: ['sakai'] },
+  higashiosaka: { id: 'higashiosaka', name: 'Higashiosaka', jaName: 'ひがしおおさか', map: { x: 57, y: 31 }, campaignId: null, requires: ['sakai'] },
   osakaCity: { id: 'osakaCity', name: 'Osaka City', jaName: 'おおさか市', map: { x: 40, y: 30 }, campaignId: null, requires: ['sakai'] },
 });
 
@@ -82,8 +82,12 @@ export function markCitySaved(region, cityId, campaign) {
 
 export function stageCheckpoint(region, campaign) {
   if (CITY_CAMPAIGNS[campaign.cityId]?.origin) return region;
+  // The hero's progression travels with the checkpoint so a resumed city keeps its XP.
   return {
     ...region,
+    heroId: campaign.heroId,
+    level: campaign.level,
+    xp: campaign.xp,
     checkpoint: {
       cityId: campaign.cityId,
       stage: campaign.stage,

@@ -648,6 +648,58 @@ export function cityImage(mood) {
   return image(`city-${mood}`, g, CITY[mood]);
 }
 
+/* ------------------------------------------------------- Osaka campaign map */
+
+// A stylised prefecture (a campaign map, not geography): the bay to the west,
+// muted neighbouring land, the eastern hills, and far off in the north-east a
+// dark Lake Biwa where the Black Star fell. Points are percent of the map box,
+// the same space the city markers use (src/region.js CITIES[].map).
+const MAP_W = 176, MAP_H = 112;
+const MAP_PAL = {
+  s: '#2f6fb8', w: '#8fc0ee', n: '#b3c197', N: '#a2b186', l: '#8acb6c', L: '#74b75a', b: '#27402a', c: '#e8d9a0',
+  r: '#5b9be0', m: '#8d9c7a', M: '#6b7a5c', k: '#2a1840', K: '#4a2a78', g: '#d6a8ff',
+};
+const COAST = [[22, 0], [29, 10], [30, 22], [34, 30], [36, 40], [32, 50], [30, 62], [34, 72], [32, 82], [24, 90], [18, 100]];
+const OSAKA = [[29, 12], [40, 6], [50, 1], [60, 4], [64, 12], [60, 22], [66, 30], [68, 44], [66, 56], [70, 66], [66, 78], [58, 86], [44, 94], [28, 100], [18, 100],
+  [24, 90], [32, 82], [34, 72], [30, 62], [32, 50], [36, 40], [34, 30], [30, 22]];
+const mapPt = ([x, y]) => [Math.round((x * MAP_W) / 100), Math.round((y * MAP_H) / 100)];
+
+function drawOsakaMap(g) {
+  for (let y = 0; y < MAP_H; y += 1) for (let x = 0; x < MAP_W; x += 1) px(g, x, y, ditherMask(x, y, 0.18) ? 'N' : 'n');
+  poly(g, [[0, 0], ...COAST.map(mapPt), [0, MAP_H]], 's');
+  poly(g, OSAKA.map(mapPt), 'l');
+  const at = (x, y) => g.d[y * MAP_W + x];
+  const land = (key) => key === 'l' || key === 'L';
+  // waves on the sea, texture on the land, then a dark border round the prefecture
+  for (let y = 0; y < MAP_H; y += 1) for (let x = 0; x < MAP_W; x += 1) {
+    if (at(x, y) === 's' && (x * 5 + y * 9) % 29 === 0) { px(g, x, y, 'w'); px(g, x + 1, y, 'w'); }
+    if (at(x, y) === 'l' && ditherMask(x, y, 0.22)) px(g, x, y, 'L');
+  }
+  const border = [];
+  for (let y = 0; y < MAP_H; y += 1) for (let x = 0; x < MAP_W; x += 1) {
+    if (!land(at(x, y))) continue;
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const k = at(x + dx, y + dy); return x + dx >= 0 && y + dy >= 0 && x + dx < MAP_W && y + dy < MAP_H && !land(k); })) border.push([x, y]);
+  }
+  border.forEach(([x, y]) => px(g, x, y, at(x - 1, y) === 's' || at(x, y + 1) === 's' ? 'c' : 'b'));
+  // the Yodo river, the airport island, the eastern hills
+  line(g, ...mapPt([62, 8]), ...mapPt([48, 20]), 'r'); line(g, ...mapPt([48, 20]), ...mapPt([35, 29]), 'r');
+  rect(g, ...mapPt([22, 73]), 6, 3, 'c'); rect(g, ...mapPt([27, 75]), 5, 1, 'M');
+  [[74, 36], [78, 48], [75, 60], [79, 70], [72, 82]].forEach(([x, y]) => {
+    const [cx, cy] = mapPt([x, y]);
+    poly(g, [[cx - 7, cy + 4], [cx, cy - 5], [cx + 7, cy + 4]], 'm'); poly(g, [[cx, cy - 5], [cx + 7, cy + 4], [cx + 2, cy + 4]], 'M');
+  });
+  // Lake Biwa, far away, with the Black Star's glow
+  const [lx, ly] = mapPt([90, 2]);
+  oval(g, lx - 3, ly, 12, 16, 'k'); oval(g, lx, ly + 3, 6, 9, 'K');
+  [[lx + 2, ly + 6], [lx + 9, ly - 1], [lx - 5, ly + 9], [lx + 3, ly + 17]].forEach(([x, y]) => px(g, x, y, 'g'));
+}
+
+export function osakaMapImage() {
+  const g = grid(MAP_W, MAP_H);
+  drawOsakaMap(g);
+  return image('osaka-map', g, MAP_PAL);
+}
+
 // The Adventure quiz field shows far more ground than a backdrop has: this
 // tile continues each stage's floor below the backdrop and repeats downward.
 // Rows continue the backdrop floor (which covers HORIZON..BG_H) and each tile
