@@ -100,7 +100,7 @@ async function answerTenTypedQuestions(page) {
   for (let index = 0; index < 10; index += 1) {
     const input = page.getByRole('textbox', { name: /Japanese answer/i });
     await input.waitFor({ state: 'visible' });
-    const prompt = (await page.locator('.prompt:visible, .rpg-quiz__prompt:visible').first().innerText()).trim().toLowerCase();
+    const prompt = (await page.locator('.prompt:visible, .rpg-field__word:visible').first().innerText()).trim().toLowerCase();
     const item = vocabularyByEnglish.get(prompt);
     if (!item) throw new Error(`Typed quiz prompt was not found in src/vocab.js: ${JSON.stringify(prompt)}`);
     await input.fill(item.ja);

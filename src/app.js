@@ -794,7 +794,7 @@ function storyLine(line, big) {
 function playStory(kind, beats, onDone) {
   clearScreen(); rpgScreen(); screen = 'cinematic';
   const heroId = campaign.heroId;
-  const root = element('section', `cinematic story story--${kind}`); root.setAttribute('aria-label', 'Story / ものがたり');
+  const root = element('section', `cinematic cinematic--${kind} story story--${kind}`); root.setAttribute('aria-label', 'Story / ものがたり');
   const scene = element('div', 'cinematic__scene');
   // One layer per city mood; a beat fades the wanted one in over the others.
   const layers = Object.fromEntries(['calm', 'danger', 'safe'].map((mood) => [mood, element('div', `cinematic__city ${cityClass(mood)}`)]));
