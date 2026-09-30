@@ -106,7 +106,8 @@ export function eventMessage(event) {
     case 'opening':
     case 'opening-hit': return 'OPENING!';
     case 'break': return 'BREAK!';
-    case 'ap': return event.reason === 'recover' ? `RECOVERING… +${event.amount} AP` : `+${event.amount} AP!`;
+    case 'ap': return event.reason === 'recover' ? `RECOVERING… +${event.amount} AP`
+      : event.reason === 'wave' ? `アクション・コア チャージ！ +${event.amount} AP` : `+${event.amount} AP!`;
     case 'recover': return 'RECOVERING… / ひとやすみ…';
     case 'barrierUp': return 'Barrier up!';
     case 'chain': return 'CHAIN!';

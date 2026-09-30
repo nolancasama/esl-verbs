@@ -6,7 +6,7 @@ import { speak } from './tts.js';
 import { BALANCE, CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
 import { battleXp, chooseEncounter, createBattle } from './battle-engine.js';
 import {
-  applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, chapterRest, createCampaign, recordDefeat, recordStage, resumeCampaign, xpProgress,
+  applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, chapterRest, createCampaign, recordDefeat, recordStage, resumeCampaign, retryHp, xpProgress,
 } from './campaign.js';
 import { createBattleView } from './battle-ui.js';
 import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, getIcon, groundClass, prewarmArt } from './battle-art.js';
@@ -591,7 +591,9 @@ function adventureDefeat() {
   card.append(title, heroPose('defeat', campaign.stageResults.length));
   const info = element('ul', 'rpg-rest');
   info.append(rewardLine('power', help > 0 ? `RETRY: ${stageResult.startingAp} AP + ${help} HELP = ${ap} AP` : `RETRY: ${ap} AP`));
-  info.append(rewardLine('heart', `HP ${campaign.heroHp}/${campaignMaxHp(campaign)} · ポーション ×${campaign.potions}  (もとどおり)`));
+  // A city retry can start with more HP than the battle began with (retryHp); say so.
+  const retryHeroHp = retryHp(campaign);
+  info.append(rewardLine('heart', `HP ${retryHeroHp}/${campaignMaxHp(campaign)} · ポーション ×${campaign.potions}  ${retryHeroHp > campaign.heroHp ? '(HP UP!)' : '(もとどおり)'}`));
   card.append(info);
   if (campaign.retries >= 2) card.append(element('p', 'rpg-tip', 'TIP: 🔥 BIG ATTACK → 2 (Guard / Barrier / Dodge)!  まもろう！'));
   const retry = element('button', 'px-button', `RETRY BATTLE (${ap} AP)`); retry.onclick = () => startAdventureBattle();

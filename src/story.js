@@ -76,7 +76,7 @@ export const CITY_STORIES = Object.freeze({
     ending: Object.freeze([
       { mood: 'danger', monsters: 'near', hero: 'idle', ally: 'idle', cut: true, ms: 800 },
       { mood: 'safe', monsters: 'gone', hero: 'victory', ally: 'victory', citizens: true, music: 'victory', title: { ja: 'さかいを まもった！', en: 'SAKAI IS SAFE!' }, ms: 3000 },
-      card(['「さかいは オレに まかせろ！」'], { big: 0 }),
+      card(['大阪の まもりびと：', '「さかいは オレに まかせろ！」']),
       card(['大阪の まもりびとは つよい。', 'でも、アクション・コアを', 'つかえるのは きみだけだ。']),
       { ally: 'gone', ...card(['まもりびとは さかいに のこった。', 'つぎの 町へ いこう！'], { en: 'ON TO THE NEXT CITY!' }) },
     ]),

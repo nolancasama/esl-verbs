@@ -1,99 +1,106 @@
 # Current State
 
-## Status (2026-09-29)
+## Status (2026-09-30)
 
-The Adventure RPG upgrade (AP economy, HP/potion/XP campaign, RPG quiz UI,
-persistent AP meter, late-16-bit art, tiered effects, synthesized music) is
-implemented. On 2026-09-29 the follow-up list from the 2026-09-28 handoff was
-worked through (screen-fit review, idle-time sprite building, audio tests,
-SPEC rewrite, in-play COMBO/OPENING/COUNTER explanations). Everything is
-committed and pushed to `origin/master` (github.com/nolancasama/esl-verbs),
-which GitHub Pages serves live at https://nolancasama.github.io/esl-verbs/
-(checked after the build: new code served, menu and a debug battle run with no
-console errors).
+The Osaka expansion is implemented on `master`: a Japanese story opening, the
+Adventure quiz redesigned as one training field, the Osaka campaign map,
+regional saves, and Sakai as the first full post-Matsubara city (40 questions,
+four battles with Horde waves and the Osaka Defender ally). Matsubara's
+campaign, battles and balance are unchanged. Pushing `master` deploys live
+(GitHub Pages, https://nolancasama.github.io/esl-verbs/).
 
-Verified 2026-09-29:
-- `npm test` — 55 unit tests passed at that point (64 after the pass below).
-  `test/audio.test.js` was shown to fail on three deliberately broken tracks.
+What a player sees now:
+- Hero select → Japanese story crawl (西暦2199年, the Black Star in Lake Biwa,
+  the Shadow Horde, Matsubara's Action Energy, the Action Core, 「きみだ。」 with
+  the chosen hero) → Matsubara stages 1–4 as before.
+- Adventure quiz: one training field (menu / AP / music strip on top; stage
+  and count, an Action Energy gauge mirroring AP, the word with a speaker
+  button, the hero and a training dummy, answer box, quiet HP/potion HUD). A
+  correct answer is a class strike on the dummy as the AP lands.
+- Matsubara ending adds the Osaka reveal → results with `つづける つぎの まちへ！`
+  → Osaka map (Matsubara ★, Sakai きけん！, Yao / Higashiosaka / Osaka City locked).
+- Sakai: short intro → quiz modes 1–4 (fresh random words) → battles
+  First Assault / Horde Battle (2 waves) / Defenders Overwhelmed (the Osaka
+  Defender joins at wave 2) / Final Sakai Defense (ally from the start, the
+  Shadow Commander last) → ending (the ally stays in Sakai) → city results →
+  map save animation. A checkpoint is saved at each Sakai stage start; the
+  map and menu offer つづき / CONTINUE ADVENTURE.
+
+Verified 2026-09-30:
+- `npm test` — 95 unit tests pass (Sakai balance measured like Matsubara:
+  competent play, HP carried, retry assist; the retry guarantee test was shown
+  to fail with the city retry-HP rule disabled).
 - `PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser`
-  passes with zero console errors.
-- Scripted screenshots with overflow / plate-spill / sprite-clip checks at
-  1366×768, 1366×742, 1366×700, 1366×635, 1280×800, 1280×650, 1536×730,
-  1100×620, 1024×600, 1920×1000: menu, quiz, stage clear, every victory variant,
-  defeat, campaign results (9 and 18 missed words), recovery turn, low-HP hint,
-  item menu (with and without potions), every tier-3/4 encounter — no page
-  scroll, no clipped sprites. (The scripts live in the session scratchpad, not
-  the repo.)
-- 4× CPU throttle: menu first paint 1640 ms → 404 ms; the stage's enemies are
-  built before BATTLE!; an enraged boss's first use costs 0 ms after prewarm.
-- Not heard: music/SFX were never listened to (no audio device).
+  passes, including the new regional run (map → Sakai → quiz → checkpoint);
+  that check was shown to fail with checkpoint saving disabled.
+- Scripted screenshots with page-scroll checks (scripts in the session
+  scratchpad, not the repo): quiz field stages 1–4 at 1366×768, 1366×635,
+  1024×600, 1920×1000; story cinematics; Osaka map at 1366×768, 1366×742,
+  1280×800, 1280×650, 1366×635, 1024×600, 1920×1000 (incl. save animation);
+  continue menu and reset dialog; Matsubara and Sakai results at six sizes;
+  Sakai battles 3 and 4 (wave hand-off, ally arrival) at 1366×768 and 1024×600.
+  No page scroll, no console errors.
+- A scripted full Sakai campaign in Chromium (choices fallback, TTS recorded,
+  8/10 per stage, clicking the highlighted hint button like a student) went
+  map → intro → 4 quizzes → 4 battles → ending → results → map with no
+  retries, no console errors and no page scroll; the save then held
+  Matsubara + Sakai and no checkpoint. An earlier run of that script exposed
+  students getting permanently stuck in Sakai battles 3–4; the retune (city
+  retry HP 60/80/100%, +2 AP per cleared wave, escalating waves) fixed it —
+  see DESIGN_DECISIONS.md. A bot that ignores the hints (never guards or
+  drinks) still loses the finale even at full HP and 10 AP — as it loses
+  Matsubara's Dragon.
+- Not heard: the new `ominous` / `awaken` tracks and `heroSting` / `allySting`
+  / `wave` sfx were never listened to (no audio device).
 
-### Classroom-feedback pass (2026-09-29, after students played Adventure)
+## Architecture notes
 
-Implemented, committed and pushed (details: DESIGN_DECISIONS.md, SPEC.md):
-`▶ START ADVENTURE` as the dominant menu button with `PRACTICE ONLY` secondary;
-no マイクなし in Adventure (choices only as a technical fallback, separate from
-the Study preference); wrong answers never touch HP (quiz-only `stumble`
-sprite, soft SFX); more exact Japanese aliases (catch つかむ/掴む/うけとめる, feed
-えさをあたえる/食べさせる, 〜をする forms, よじのぼる, しゃべる, うたをうたう);
-Fighter Guard/Counter shield on the real back arm; intro + ending cinematics
-(Matsubara City pixel art, skippable); hero titles from 40 answers; per-hero
-best/completion + boss discovery in `esl-verbs-adventure-records-v1`; replay
-CTAs; victory-screen click-loss bug fixed.
-
-Verified: `npm test` 64 pass (new `test/replay.test.js`, mutation-checked);
-browser playthrough passes; `npm run balance` unchanged (no battle files
-touched); a scripted full campaign in Chromium (speech stub, a mic denial at
-stage 3) reached the ending and results with no console errors, HP unchanged
-by a wrong answer, and the record saved; fit checks with no page scroll at
-1366×768, 1366×635, 1280×650, 1024×600 for menu, hero select, results (18
-missed), final victory and both cinematics. The fit scripts live in the
-session scratchpad, not the repo.
-
-## Architecture notes (details: SPEC.md Adventure section, DESIGN_DECISIONS.md)
-
-- Rules, numbers and contracts: `SPEC.md` (Adventure section rewritten
-  2026-09-29 for AP / items / XP / levels / HP carry-over / retry assist).
-  Every number lives in `src/battle-data.js`.
-- `src/battle-art.js` `prewarmArt(entries, onReady)` builds sprite sheets one
-  per idle callback; `src/app.js` uses it for the menu hero trio and in
-  `prepareEncounter()` (the encounter is drawn when a stage's quiz starts).
-- `src/battle-ui.js` `fit()` picks `--px` 4→1 by measuring field overflow.
-- COMBO / OPENING / COUNTER are explained in play: gold `+N` badges on skill
-  buttons (`skillBonus` in the engine), a payoff hint, and a kana `tip` per
-  unlocked skill on the victory screen. COMBO / OPENING stay hidden until
-  Power Slash / Double Strike unlock. Checked in real debug battles.
-- `?debug=art` has preview buttons for every victory screen, defeat, and
-  campaign results with 18 missed words.
+- Frozen contract for the expansion: `.ai/osaka-spec.md`.
+- `src/story.js` — story scripts (beats, `{漢字|かな}` furigana, `cardMs`).
+  `playStory()` in `src/app.js` plays them (finish-once, SKIP, tap to advance).
+- `src/region.js` — CITIES (map positions), CITY_CAMPAIGNS (stage modes and
+  encounters), city states, save parsing (`esl-verbs-region-v1`), checkpoints.
+  `src/campaign.js` — `createCampaign(heroId, { cityId, level, xp })`,
+  `chapterRest`, `resumeCampaign`.
+- `src/osaka-map.js` — map view (markers, save animation); art in
+  `pixel-effects.js` `osakaMapImage()`.
+- Battles: one engine with optional `waves` / `ally` on encounters
+  (`src/battle-data.js` ALLIES, sakai-1..4). `battle-ui.js` presents waves and
+  the ally from the display snapshot; `fx-player.js` has ally effects.
+- Art: Osaka Defender on the hero rig (`ALLY_IDS`), training dummy
+  (`PROP_ART`), Shadow Commander (recoloured Goblin Captain), ground tiles.
+- Debug: `?debug=quiz&stage=N&hero=X`, `?debug=map&preset=fresh|matsubara|sakai[&justSaved=id]`
+  (writes the regional save), `?debug=battle` (city encounters, start wave),
+  `?debug=art` (Sakai intro / ending / city results previews).
 
 ## Next Steps
 
-1. Classroom check of the feedback pass (below), then more play-test feedback.
-2. Skipped from the pass as optional: missed-word weighting on replay; a
-   cosmetic reward beyond the gold card frame / ★ badge.
-3. Optional polish: richer stage backdrops; the smart-vs-hint balance margin is
-   small (tactical rewards could be raised a little, then re-run
-   `npm run balance` and `npm test`).
-4. Pushing `master` deploys live (GitHub Pages, legacy build from `/`).
+1. Classroom check of the expansion (below), especially Sakai difficulty
+   (first-try 5 AP is easier than Matsubara's bar; "hard" shows up as ~2.5
+   lost battles per city) and the story length.
+2. More cities: add a CITIES/CITY_CAMPAIGNS entry, city encounters with
+   `city`, a `CITY_STORIES` entry; the flow, map and battle view need no changes.
+3. Optional: a Sakai-specific skyline for its intro/ending (it reuses the
+   Matsubara city art); hero titles for city campaigns; a level/XP presentation
+   beyond LV 5 MAX (deliberately not done in this pass).
 
 ## Manual Chromebook / classroom checks still needed
 
-- Music volume/mix and ducking under ja-JP/en-US TTS; mic silencing during STT.
-- Sprite-sheet build time and effect smoothness on a real school Chromebook
-  (4× throttle is only an estimate).
-- Real microphone grant/denial, IME Enter behaviour. Adventure stages 3–4 now
-  require speaking: check the automatic fallback on a real denied/broken mic,
-  and whether recognition is reliable enough in a noisy classroom that
-  students are not stuck (こたえを見る is always there).
-- Whether students now pick START ADVENTURE without help; whether the intro
-  and ending feel short enough (~10 s, SKIP) and the city art reads on a
-  projector; the soft wrong-answer cue and the alarm SFX by ear.
-- Whether 5/10 students find stage 3–4 "hard but possible", and whether the
-  RECOVERING turn and the keep-1-AP hint are understood without explanation.
+- Story: can students read the crawl at its pace; do they tap on or skip;
+  is ~47 s untouched too long in practice; is the furigana readable on a
+  projector.
+- The music cut when the Horde appears, the ominous/awaken tracks and the
+  stings, by ear, and with TTS ducking.
+- Training-field strike: does it feel rewarding without slowing the quiz
+  (~0.5 s to impact); is the in-field Action Energy gauge understood.
+- Sakai: is the 20-minute city too long for one lesson (checkpoints resume at
+  the current stage); do students find the Horde waves and the ally clear.
+- Earlier open items: real mic grant/denial, IME Enter, sprite build time and
+  effect smoothness on a real school Chromebook.
 
 ## Tools
 
-- `npm run art:png -- <outDir> [scale] [ids...]` writes sprite / effect /
-  backdrop sheets as PNGs (no browser) for art review.
+- `npm run art:png -- <outDir> [scale] [ids...]` (ids include `osakaDefender`,
+  `trainingDummy`, `hordeCommander`, `map`).
 - `npm run balance -- [seeds] [thresholds|detail]` prints win-rate tables.
-- Run locally: `npm run serve` → http://localhost:8010 (`?debug=battle`, `?debug=art`).
+- Run locally: `npm run serve` → http://localhost:8010.
