@@ -366,3 +366,12 @@ A useful rule:
 - Starting a chapter after the origin city is a chapter rest: the continuing hero keeps level and XP, returns to full HP and maximum potions, and clears retries.
 - Stage checkpoints are written only for non-origin city campaigns. Matsubara keeps its original no-resume campaign behavior.
 - The level cap remains unchanged at level 5; XP can continue accumulating after the cap.
+
+## 2026-09-30 — Osaka continuation and shared city campaign flow
+
+- **Regional progress changes the main-menu hierarchy.** After any city is saved, Continue Adventure becomes the dominant action and opens the Osaka map with the continuing hero; Start New Adventure is secondary and requires confirmation because it clears the regional save. The fresh-save menu remains unchanged, and Practice Only remains the quietest option.
+- **Campaign completion leads back to the region.** Matsubara results now make continuing to the Osaka map the primary action, and non-origin city results return to the map with that city's save animation. Replay and practice actions remain available as secondary choices.
+- **City campaigns share the existing Adventure stage flow.** Quiz mode, encounter, and final-stage detection come from regional campaign data rather than Matsubara literals, preserving Matsubara behavior while allowing Sakai's four stages to use the same screens and retry path.
+- **Each non-origin stage starts with a checkpoint.** Quitting preserves the current city's stage and carried campaign resources, while battle defeat retries the same battle without repeating the quiz or changing saved cities. Matsubara keeps its original no-resume behavior.
+- **City results do not use the Matsubara hero-title system.** They celebrate the saved city, summarize the 40-question campaign and missed words, then prioritize returning to the Osaka map.
+- **Saved Sakai remains replayable from the map.** A replay starts a rested Sakai chapter with the same regional hero and does not require choosing a new hero.
