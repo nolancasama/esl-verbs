@@ -373,3 +373,58 @@ A useful rule:
 - **The Osaka Defender has no HP and never touches AP.** It is a deterministic phase between the player and enemies: above the protection threshold it hits the weakest living enemy, while at or below 30% hero HP it halves post-defence enemy damage for that phase.
 - **Turn order is player → ally → enemy.** Clearing a wave by either the player or ally immediately replaces the enemy list, keeps campaign resources and persistent class setup, and gives the player the first move against the new wave. Temporary defence, exhaustion and Opening are cleared at the boundary.
 - **Sakai was tuned at level 5 without changing Matsubara numbers.** The final picks use escalating basic groups, Shield Goblin/Healer pressure, and a 34 HP / 4 attack / 12 heavy `hordeCommander`; the ally deals 3. Across 40 deterministic smart-policy campaign runs per hero, completion from a full-HP, two-potion start was 1% / 26% / 58% / 88% / 98% at 5 / 6 / 7 / 8 / 10 AP (naive was 0% throughout). This keeps 5 AP difficult, 6–7 viable, and 8+ strong while carrying HP and potions through all four battles.
+
+## 2026-09-30 — Osaka expansion: story, quiz training field, map, Horde presentation
+
+The Matsubara campaign stays as it was; this pass builds the world around it
+and proves the regional framework with one full city (Sakai).
+
+- **The lore is played straight and told in Japanese.** Year 2199; the Black
+  Star (ブラック・スター) fell into Lake Biwa and the Shadow Horde (シャドウ・ホード)
+  came out of it; Matsubara has Japan's strongest Action Energy, which the Horde
+  wants; the Action Core turns action words (verbs) into battle power and has
+  chosen the player — the only one who can use it. Action Energy is story
+  language only: AP stays the one resource. The Black Star's origin is left
+  unexplained on purpose (future hook, glimpsed on the Osaka map).
+- **Exposition is kana-heavy Japanese with furigana** (`{漢字|かな}` in
+  `src/story.js`) for 西暦, 科学者, 巨大, 地球, 何百万人, びわ湖; only very common
+  kanji stand alone. Game terms (ACTION ENERGY, BATTLE POWER) stay English.
+- **Readability beat the 20–35 s target.** The plan's script at a pace
+  elementary students can read runs ~47 s untouched; cutting it to 30 s would
+  have meant reading faster than they can. Instead every card can be tapped on
+  (a fast reader finishes in ~20 s), SKIP / スキップ is always there, and cards
+  are sized from their character count. Rejected: an auto-scroll fast enough
+  to hit 30 s; a tilted Star-Wars-style plane (hard to read Japanese on a
+  Chromebook) — cards drift up a little and fade at the top instead.
+- **Music tells the turn:** field music on the calm city, an instant `cut()`
+  (not a fade) the moment the Horde appears, ~0.5 s of silence, the `ominous`
+  drone, `awaken` from the Action Core card, a fade to silence on 「それは――」,
+  and `heroSting` on 「きみだ。」 as the chosen hero steps into the core's light.
+- **The Adventure quiz is one training field**, not a character panel beside a
+  form. Only menu / AP / music sit outside it. The stage backdrop is the sky and
+  a matching floor tile (drawn from the same palette, seam-free by construction)
+  fills the rest, so the hero stands on grass rather than on the screen edge.
+  The word floats in the sky with an outline instead of sitting in a dark box;
+  the speaker button sits beside it (or is the whole prompt in listening
+  modes). A quiet mini-HUD keeps HP / potions visible between battles.
+  The bottom row has a fixed height per input type so answering never moves
+  the hero or the dummy.
+- **A correct answer is a strike on a training dummy** (Fighter slash, Mage
+  bolt projectile, Ninja cross-cut) and the AP point lands when the hit does,
+  charging an in-field Action Energy gauge. That gauge mirrors the top AP meter
+  and never holds its own value. A wrong answer is still only a stumble; the
+  dummy never reacts to it.
+- **The Osaka map is stylised pixel art**, not geography: the bay, the
+  prefecture outline, the eastern hills, and a far-off purple Lake Biwa. City
+  markers come from `src/region.js` data; the map's big button always names the
+  next city (or つづき for a city in progress) so students need not discover
+  that markers are clickable. Future cities show as locked; the count reads
+  `まもった町: N`, never `N / 7`.
+- **Wave battles are presented from the display snapshot.** The engine's state
+  after a wave-clearing hit already holds the next wave (and maybe the ally),
+  so the view keeps showing the old wave until `waveStart` plays and adds the
+  ally only on `allyJoin`. Later waves stand as dark silhouettes on the horizon
+  (paused sprites, no extra art) and march in when their wave starts.
+- **The ally's hits have their own effect.** The effects player keyed damage
+  effects to the last hero skill, so without an `allyAttack` case the ally
+  would have shown the hero's Fireball.
