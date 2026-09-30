@@ -725,3 +725,14 @@
 @media (prefers-reduced-motion: reduce) {
   .adventure-cta__arrow, .cinematic__citizen { animation: none; }
 }
+
+/* ---------------------------------------- regional Adventure continuation */
+.new-adventure-choice { justify-self: center; display: grid; justify-items: center; gap: 2px; width: min(440px, 100%); min-height: 72px; padding: .55rem 1rem; font-size: clamp(13px, 2.4vw, 18px); }
+.new-adventure-choice small { font-family: var(--read-font); font-weight: 800; font-size: 1rem; }
+.results-card .results-actions > .results-map { grid-column: 1 / -1; min-height: 58px; display: grid; justify-items: center; gap: 2px; background: linear-gradient(180deg, #ffd35a, #f2a93a 55%, #d8812a); color: var(--ink); text-shadow: none; border-color: #fff4b0; font-size: 14px; }
+.results-map small { font-family: var(--read-font); font-weight: 800; font-size: .95rem; }
+.results-actions .results-again.secondary, .results-actions .results-new-hero.secondary { background: #20285d; color: #fff; border-color: var(--edge-dim); }
+.city-results .results-hero { justify-content: center; }
+.city-results .results-actions > .secondary { grid-column: span 3; }
+.city-results .results-actions:not(:has(> .results-practice)) > .secondary { grid-column: 1 / -1; }
+@media (max-height: 620px) { .menu-card:has(.new-adventure-choice) .menu-actions { gap: 8px; } .new-adventure-choice { min-height: 54px; padding-block: .3rem; } .menu-card:has(.new-adventure-choice) .practice-choice { min-height: 46px; } }

@@ -6,7 +6,7 @@ import { speak } from './tts.js';
 import { BALANCE, CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
 import { battleXp, chooseEncounter, createBattle } from './battle-engine.js';
 import {
-  applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, createCampaign, recordDefeat, recordStage, xpProgress,
+  applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, chapterRest, createCampaign, recordDefeat, recordStage, resumeCampaign, xpProgress,
 } from './campaign.js';
 import { createBattleView } from './battle-ui.js';
 import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, getIcon, groundClass, prewarmArt } from './battle-art.js';
@@ -15,7 +15,9 @@ import {
 } from './records.js';
 import { createApMeter } from './ap-meter.js';
 import { CITY_STORIES, ENDING_STORY, INTRO_STORY, cardMs, rubyParts } from './story.js';
-import { CITIES, REGION_KEY, parseRegion, serializeRegion } from './region.js';
+import {
+  CITIES, CITY_CAMPAIGNS, REGION_KEY, markCitySaved, parseRegion, serializeRegion, stageCheckpoint, stageCount, stageEncounterId, stageMode,
+} from './region.js';
 import { cityPlayable, osakaMapView } from './osaka-map.js';
 import { createAudio } from './audio.js';
 
@@ -89,18 +91,25 @@ function mainMenu() {
   audio.play('title');
   const card = element('section', 'card menu-card'); card.append(element('h1', 'game-title', 'ESL VERBS'));
   const actions = element('div', 'menu-actions');
-  // Adventure is the game: one big framed button with a play arrow. Practice is the quiet second choice.
-  const adventure = element('button', 'menu-choice adventure-choice px-button'); adventure.onclick = heroSelect;
-  adventure.setAttribute('aria-label', 'Start adventure / ぼうけんを はじめる');
+  const region = readRegion(); const continuing = region.savedCities.length > 0;
+  // Adventure is the game: one big framed button with a play arrow. Practice is the quiet last choice.
+  const adventure = element('button', 'menu-choice adventure-choice px-button'); adventure.onclick = continuing ? osakaMapScreen : heroSelect;
+  adventure.setAttribute('aria-label', continuing ? 'Continue adventure / 大阪を まもる' : 'Start adventure / ぼうけんを はじめる');
   // Hero sheets are slow to build on a Chromebook: paint the menu first, then add each hero as it is ready.
   const trio = element('span', 'adventure-trio'); trio.setAttribute('aria-hidden', 'true');
-  prewarmArt(ART_IDS.heroes.map((id) => [id]), (id) => trio.insertAdjacentHTML('beforeend', battleArt(id)));
-  const cta = element('span', 'adventure-cta'); cta.append(element('span', 'adventure-cta__arrow', '▶'), element('span', '', 'START ADVENTURE'));
-  adventure.append(trio, cta, element('small', '', 'ぼうけんを はじめる！'));
+  const menuHeroes = continuing && region.heroId ? [region.heroId] : ART_IDS.heroes;
+  prewarmArt(menuHeroes.map((id) => [id]), (id) => trio.insertAdjacentHTML('beforeend', battleArt(id)));
+  const cta = element('span', 'adventure-cta'); cta.append(element('span', 'adventure-cta__arrow', '▶'), element('span', '', continuing ? 'CONTINUE ADVENTURE' : 'START ADVENTURE'));
+  adventure.append(trio, cta, element('small', '', continuing ? '大阪を まもる' : 'ぼうけんを はじめる！'));
+  if (continuing) {
+    const restart = element('button', 'menu-choice new-adventure-choice px-button secondary'); restart.onclick = confirmNewAdventure;
+    restart.append(element('span', '', 'START NEW ADVENTURE'), element('small', '', 'あたらしく はじめる'));
+    actions.append(adventure, restart);
+  } else actions.append(adventure);
   const study = element('button', 'menu-choice practice-choice secondary'); study.onclick = levelSelect;
   study.append(element('span', '', 'PRACTICE ONLY'), element('small', '', 'れんしゅうだけ'));
   const toggles = element('div', 'menu-toggles'); toggles.append(musicToggle());
-  actions.append(adventure, study); card.append(actions, toggles); app.append(card);
+  actions.append(study); card.append(actions, toggles); app.append(card);
 }
 
 function levelSelect() {
@@ -151,26 +160,33 @@ function heroSelect() {
 
 function startCampaign(heroId) {
   campaign = createCampaign(heroId); campaignOutcome = null;
-  introCinematic(() => startRound(1, createRound(VOCABULARY), 'adventure'));
+  introCinematic(() => startRound(stageMode(campaign), createRound(VOCABULARY), 'adventure'));
 }
 function startRound(mode, items = createRound(VOCABULARY), context = 'study') {
   round = { mode, items, currentIndex: 0, correctCount: 0, currentStreak: 0, bestStreak: 0, missedIds: new Set(), allItems: VOCABULARY };
   quizContext = context; feedback = ''; audioError = false; recognitionErrors = 0; speechFailed = false;
   if (context === 'study' && mode >= 3 && !micFree && !speechRecognitionAvailable()) { micFree = true; saveMicFree(true); feedback = MIC_MESSAGE; }
-  if (context === 'adventure') { apMeter?.set(0, { animate: false }); audio.play('field'); prepareEncounter(); } else audio.stop();
+  if (context === 'adventure') {
+    if (!CITY_CAMPAIGNS[campaign.cityId]?.origin) saveRegion(stageCheckpoint(readRegion(), campaign));
+    apMeter?.set(0, { animate: false }); audio.play('field'); prepareEncounter();
+  } else audio.stop();
   renderQuestion();
 }
 
 /** Pick this stage's encounter now and build its art while the student answers, so the battle opens without a stall. */
 function prepareEncounter() {
-  upcomingEncounter = chooseEncounter(campaign.stage);
+  const encounterId = stageEncounterId(campaign);
+  upcomingEncounter = ENCOUNTERS[encounterId];
+  if (!upcomingEncounter) return;
   const art = [];
-  ENCOUNTERS[upcomingEncounter.id].enemyIds.forEach((id) => {
+  const waves = upcomingEncounter.waves ?? [{ enemyIds: upcomingEncounter.enemyIds }];
+  new Set(waves.flatMap((wave) => wave.enemyIds)).forEach((id) => {
     const enemy = ENEMIES[id];
     art.push([id]);
     if (enemy.summonId) art.push([enemy.summonId]);
     if (enemy.ai?.phase2) art.push([id, 'enraged']);
   });
+  if (upcomingEncounter.ally) art.push([upcomingEncounter.ally.id ?? 'osakaDefender']);
   prewarmArt(art);
 }
 
@@ -390,36 +406,41 @@ function rpgTopbar(menuAction = confirmQuit) {
 }
 
 function finishAdventureStage() {
-  stopMedia(); const stage = campaign.stage; const encounter = upcomingEncounter ?? chooseEncounter(stage); upcomingEncounter = null;
+  stopMedia(); const stage = campaign.stage; const encounter = upcomingEncounter ?? ENCOUNTERS[stageEncounterId(campaign)]; upcomingEncounter = null;
   campaign = recordStage(campaign, round, encounter.id); stageResult = campaign.stageResults.at(-1);
   screen = 'stage-complete'; app.replaceChildren(); rpgScreen(); clearTimers();
   const card = element('section', 'rpg-card px-panel stage-card'); const { top, slot } = rpgTopbar(); card.append(top);
   const scene = element('div', `rpg-stage-scene ${backdropClass(stage)}`); scene.innerHTML = battleArt(campaign.heroId, 'victory'); scene.firstElementChild?.setAttribute('aria-hidden', 'true');
-  const foes = element('div', 'rpg-foes'); ENCOUNTERS[encounter.id].enemyIds.forEach((id) => foes.append(element('span', 'rpg-foe', ENEMIES[id].name)));
+  const waves = encounter.waves ?? [{ enemyIds: encounter.enemyIds }];
+  const foes = element('div', 'rpg-foes'); new Set(waves.flatMap((wave) => wave.enemyIds)).forEach((id) => foes.append(element('span', 'rpg-foe', ENEMIES[id].name)));
   const earned = element('div', 'rpg-earned');
   earned.append(element('div', 'rpg-score', `${stageResult.correct} / ${stageResult.total}`), element('div', 'rpg-earned__ap', `= ${stageResult.startingAp} AP`));
   const party = element('div', 'rpg-party px-panel');
   party.append(element('strong', '', `LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), element('span', '', `ポーション ×${campaign.potions}`));
   const apNote = element('p', 'rpg-note', stageResult.startingAp > 0 ? 'Every action costs AP. / こうどうに AP をつかうよ！' : '0 AP… you will rest to recover AP. / AP 0 … やすんで かいふく！');
   const battle = element('button', 'battle-start px-button', 'BATTLE!'); battle.onclick = () => startAdventureBattle();
-  card.append(element('h1', 'rpg-title', `STAGE ${stage} CLEAR!`), scene, earned, party, element('p', 'rpg-foes-label', 'ENEMY / てき'), foes, apNote, battle);
+  const encounterLabel = encounter.name
+    ? element('p', 'rpg-foes-label', `${encounter.name.toUpperCase()} / ${encounter.jaName ?? ''}${waves.length > 1 ? ` · WAVES ×${waves.length}` : ''}`)
+    : element('p', 'rpg-foes-label', 'ENEMY / てき');
+  card.append(element('h1', 'rpg-title', `STAGE ${stage} CLEAR!`), scene, earned, party, encounterLabel, foes, apNote, battle);
   app.append(card); apMeter?.mount(slot); apMeter?.set(stageResult.startingAp, { quiet: true });
   audio.sfx('fanfare');
   queueMicrotask(() => battle.focus());
 }
 
 function startAdventureBattle() {
-  const stage = stageResult.mode;
+  const stage = campaign.stageResults.length;
   const state = createBattle(battleSetup(campaign, stageResult));
-  showBattle(state, { kind: 'adventure', stage });
+  showBattle(state, { kind: 'adventure', stage, cityId: campaign.cityId });
 }
 
 function showBattle(initialState, options) {
   clearScreen(); screen = options.kind === 'debug' ? 'debug-battle' : 'battle'; app.className = 'app battle-app'; const host = element('section', 'battle-host'); app.append(host);
+  const encounter = ENCOUNTERS[initialState.encounterId ?? options.config?.encounterId ?? stageResult?.encounterId];
   const boss = initialState.enemies.some((enemy) => ENEMIES[enemy.id].boss);
-  audio.play(boss ? 'boss' : 'battle');
+  audio.play(encounter?.music ?? (boss ? 'boss' : 'battle'));
   let defenceHintRound = null;
-  const onboardingHint = options.kind === 'adventure' && options.stage === 1 ? (state) => {
+  const onboardingHint = options.kind === 'adventure' && options.cityId === 'matsubara' && options.stage === 1 ? (state) => {
     if (state.round === 1) return { skill: 'basic', text: 'こうげきしてみよう！' };
     if (defenceHintRound === null && state.hero.hp < state.hero.maxHp / 2) defenceHintRound = state.round;
     return defenceHintRound === state.round ? { skill: 'defense', text: 'まもろう！' } : null;
@@ -436,7 +457,11 @@ function battleEnded(state, options) {
   if (state.turn === 'won') {
     const { campaign: next, rewards } = applyVictory(campaign, state);
     campaign = next;
-    if (options.stage === 4) saveCampaignOutcome();
+    const final = options.stage === stageCount(campaign.cityId);
+    if (final) {
+      saveRegion(markCitySaved(readRegion(), campaign.cityId, campaign));
+      if (campaign.cityId === 'matsubara') saveCampaignOutcome();
+    }
     adventureVictory(options.stage, rewards);
   } else {
     campaign = recordDefeat(campaign);
@@ -456,7 +481,7 @@ function rewardLine(icon, textValue, className = '') {
 
 function adventureVictory(stage, rewards) {
   clearScreen(); rpgScreen(); screen = 'battle-result';
-  const final = stage === 4;
+  const final = stage === stageCount(campaign.cityId);
   audio.play(final ? 'finale' : 'victory');
   const card = element('section', `rpg-card px-panel result-card victory-card${final ? ' victory-card--final' : ''}`);
   const title = element('h1', `rpg-title${final ? ' rpg-burst' : ''}`, 'VICTORY!'); card.append(title, heroPose('victory', stage));
@@ -481,7 +506,11 @@ function adventureVictory(stage, rewards) {
   }
 
   const next = element('button', 'px-button', final ? 'NEXT ▶  つぎへ' : 'NEXT STAGE');
-  next.onclick = final ? () => endingCinematic(campaignResults) : () => startRound(campaign.stage, createRound(VOCABULARY), 'adventure');
+  next.onclick = final
+    ? (campaign.cityId === 'matsubara'
+      ? () => endingCinematic(campaignResults)
+      : () => cityEndingCinematic(campaign.cityId, cityResults))
+    : () => startRound(stageMode(campaign), createRound(VOCABULARY), 'adventure');
   card.append(next); app.append(card); queueMicrotask(() => next.focus());
   playXpSequence(rewards, { fill, levelLabel, levelUps, rest, card });
 }
@@ -559,7 +588,7 @@ function adventureDefeat() {
   const title = element('h1', 'rpg-title', 'DEFEATED... '); title.append(element('span', 'rpg-ja', 'もういちど！'));
   const ap = battleAp(campaign, stageResult);
   const help = ap - stageResult.startingAp;
-  card.append(title, heroPose('defeat', stageResult.mode));
+  card.append(title, heroPose('defeat', campaign.stageResults.length));
   const info = element('ul', 'rpg-rest');
   info.append(rewardLine('power', help > 0 ? `RETRY: ${stageResult.startingAp} AP + ${help} HELP = ${ap} AP` : `RETRY: ${ap} AP`));
   info.append(rewardLine('heart', `HP ${campaign.heroHp}/${campaignMaxHp(campaign)} · ポーション ×${campaign.potions}  (もとどおり)`));
@@ -572,10 +601,12 @@ function adventureDefeat() {
   queueMicrotask(() => retry.focus());
 }
 
-/** The final boss of this campaign (stage 4's encounter), if any. */
+/** The final boss of this campaign, if any. */
 function campaignBoss(from = campaign) {
-  const encounterId = from.stageResults[3]?.encounterId;
-  return ENCOUNTERS[encounterId]?.enemyIds.find((id) => ENEMIES[id].boss) ?? null;
+  const encounterId = from.stageResults.at(-1)?.encounterId;
+  const encounter = ENCOUNTERS[encounterId];
+  const waves = encounter?.waves ?? (encounter ? [{ enemyIds: encounter.enemyIds }] : []);
+  return waves.flatMap((wave) => wave.enemyIds).find((id) => ENEMIES[id].boss) ?? null;
 }
 
 /** Store the finished campaign's result once, when the final boss falls. */
@@ -632,17 +663,47 @@ function campaignResults() {
 
   // Two replay paths: beat your own score, or protect the city as a hero who has not yet.
   const actions = element('div', 'actions results-actions');
-  const again = element('button', 'px-button results-again'); again.append(element('span', '', 'TRY AGAIN — BEAT YOUR SCORE'), element('small', '', 'もういちど！'));
+  const continueAdventure = element('button', 'px-button results-map');
+  continueAdventure.append(element('span', '', 'つづける つぎの まちへ！'), element('small', '', 'CONTINUE ADVENTURE'));
+  continueAdventure.onclick = () => osakaMapScreen({ justSaved: 'matsubara' }); actions.append(continueAdventure);
+  const again = element('button', 'secondary px-button results-again'); again.append(element('span', '', 'TRY AGAIN — BEAT YOUR SCORE'), element('small', '', 'もういちど！'));
   again.onclick = () => startCampaign(campaign.heroId); actions.append(again);
   const newHero = ART_IDS.heroes.find((id) => id !== hero.id && !done.includes(id));
   if (newHero) {
-    const other = element('button', 'px-button results-new-hero'); other.append(element('span', '', `NEW ADVENTURE: PLAY AS ${HEROES[newHero].name.toUpperCase()}`), element('small', '', `${HEROES[newHero].jaName}で ぼうけん！`));
+    const other = element('button', 'secondary px-button results-new-hero'); other.append(element('span', '', `NEW ADVENTURE: PLAY AS ${HEROES[newHero].name.toUpperCase()}`), element('small', '', `${HEROES[newHero].jaName}で ぼうけん！`));
     other.onclick = () => startCampaign(newHero); actions.append(other);
   }
   if (missed.length) { const practice = element('button', 'secondary px-button results-practice', 'Practice mistakes'); practice.onclick = () => practiceModePicker(missed); actions.append(practice); }
   const choose = element('button', 'secondary px-button', 'Choose Hero'); choose.onclick = heroSelect; const menu = element('button', 'secondary px-button', 'Main Menu'); menu.onclick = mainMenu;
   actions.append(choose, menu); card.append(actions); app.append(card);
-  queueMicrotask(() => again.focus());
+  queueMicrotask(() => continueAdventure.focus());
+}
+
+/** Results for a non-origin city: regional progress, without Matsubara's hero titles or records. */
+function cityResults() {
+  clearScreen(); rpgScreen(); screen = 'city-results'; audio.play('title');
+  const summary = campaignSummary(campaign); const hero = HEROES[campaign.heroId]; const city = CITIES[campaign.cityId];
+  const card = element('section', 'rpg-card px-panel results-card city-results');
+  const heading = element('h1', 'rpg-title', `${city.jaName}を まもった！`); heading.append(element('small', 'rpg-ja', `${city.name.toUpperCase()} IS SAFE!`)); card.append(heading);
+
+  const heroLine = element('div', 'results-hero'); const art = element('span', 'mini-art'); art.innerHTML = battleArt(hero.id, 'victory'); art.firstElementChild?.setAttribute('aria-hidden', 'true');
+  const heroText = element('div', 'results-hero__text'); heroText.append(element('strong', '', `${hero.name.toUpperCase()} / ${hero.jaName} · LV ${summary.level}`));
+  const score = element('div', 'rpg-score', `${summary.totalCorrect} / 40`); score.append(element('small', 'rpg-score__unit', ' TOTAL SCORE')); heroText.append(score, element('p', '', `Best streak: ${summary.bestStreak}`));
+  heroLine.append(art, heroText); card.append(heroLine);
+
+  const scores = element('div', 'stage-results'); campaign.stageResults.forEach((result, index) => scores.append(element('span', '', `Stage ${index + 1}: ${result.correct} / ${result.total}`))); card.append(scores);
+  const missed = practiceItems(VOCABULARY, summary.missedIds);
+  if (missed.length) {
+    const list = element('ul', 'missed'); list.setAttribute('aria-labelledby', 'city-missed-label'); missed.forEach((item) => list.append(element('li', '', `${item.en} — ${item.ja}`)));
+    const label = element('p', 'results-missed-label', `Review: ${missed.length} word${missed.length === 1 ? '' : 's'} / ふくしゅう：${missed.length}こ`); label.id = 'city-missed-label'; card.append(label, list);
+  } else card.append(element('p', 'correct', 'PERFECT!'));
+
+  const actions = element('div', 'actions results-actions');
+  const map = element('button', 'px-button results-map'); map.append(element('span', '', '大阪マップへ ▶'), element('small', '', 'BACK TO OSAKA MAP'));
+  map.onclick = () => osakaMapScreen({ justSaved: campaign.cityId }); actions.append(map);
+  if (missed.length) { const practice = element('button', 'secondary px-button results-practice', 'Practice mistakes'); practice.onclick = () => practiceModePicker(missed); actions.append(practice); }
+  const menu = element('button', 'secondary px-button', 'Main Menu'); menu.onclick = mainMenu; actions.append(menu);
+  card.append(actions); app.append(card); queueMicrotask(() => map.focus());
 }
 
 /* ------------------------------------------------------------- Osaka map */
@@ -689,9 +750,22 @@ function osakaMapScreen({ justSaved = null } = {}) {
   }
 }
 
-/** Start (or resume) a regional city campaign from the map. Implemented in the flow pass. */
 function startCityCampaign(cityId) {
-  void cityId;
+  const region = readRegion(); const cityCampaign = CITY_CAMPAIGNS[cityId];
+  if (!cityCampaign) return;
+  if (cityCampaign.origin) {
+    if (region.heroId) startCampaign(region.heroId); else heroSelect();
+    return;
+  }
+  if (!region.heroId) { heroSelect(); return; }
+  campaignOutcome = null;
+  if (region.checkpoint?.cityId === cityId) {
+    campaign = resumeCampaign(region);
+    startRound(stageMode(campaign), createRound(VOCABULARY), 'adventure');
+    return;
+  }
+  campaign = chapterRest(createCampaign(region.heroId, { cityId, level: region.level, xp: region.xp }));
+  cityIntroCinematic(cityId, () => startRound(stageMode(campaign), createRound(VOCABULARY), 'adventure'));
 }
 
 /* ------------------------------------------------------------- cinematics */
@@ -797,32 +871,54 @@ function confirmQuit() {
   actions.append(quit, keep); panel.append(title, actions); dialog.append(panel); document.body.append(dialog); queueMicrotask(() => keep.focus());
 }
 
+function confirmNewAdventure() {
+  if (document.querySelector('.modal-backdrop')) return;
+  const dialog = element('div', 'modal-backdrop'); const panel = element('section', 'quit-dialog'); panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-labelledby', 'new-adventure-title');
+  const title = element('h2', '', 'あたらしく はじめる？'); title.id = 'new-adventure-title';
+  const warning = element('p', '', '大阪の きろくは きえます。'); const actions = element('div', 'actions');
+  const reset = element('button', 'danger', 'START NEW ADVENTURE'); reset.onclick = () => { saveRegion(parseRegion(null, ART_IDS.heroes)); dialog.remove(); heroSelect(); };
+  const keep = element('button', 'secondary', 'もどる'); keep.onclick = () => dialog.remove();
+  actions.append(reset, keep); panel.append(title, warning, actions); dialog.append(panel); document.body.append(dialog); queueMicrotask(() => keep.focus());
+}
+
 /* ------------------------------------------------------------------ debug */
 
 function debugLauncher() {
   clearScreen(); screen = 'debug'; audio.stop(); const card = element('section', 'card wide-card'); card.append(element('h1', '', 'Battle Debug')); const form = element('form', 'debug-form');
   const hero = selectField('Hero', Object.values(HEROES).map((x) => [x.id, x.name])); const encounterWrap = element('label', '', 'Encounter'); const encounter = document.createElement('select');
-  for (let tier = 1; tier <= 4; tier += 1) { const group = document.createElement('optgroup'); group.label = `Tier ${tier}`; Object.values(ENCOUNTERS).filter((x) => x.tier === tier).forEach((x) => { const option = element('option', '', x.id); option.value = x.id; group.append(option); }); encounter.append(group); } encounterWrap.append(encounter);
+  for (let tier = 1; tier <= 4; tier += 1) { const group = document.createElement('optgroup'); group.label = `Tier ${tier}`; Object.values(ENCOUNTERS).filter((x) => !x.city && x.tier === tier).forEach((x) => { const option = element('option', '', x.id); option.value = x.id; group.append(option); }); encounter.append(group); }
+  const cityEncounters = Object.values(ENCOUNTERS).filter((x) => x.city);
+  if (cityEncounters.length) { const group = document.createElement('optgroup'); group.label = 'City campaigns'; cityEncounters.forEach((x) => { const option = element('option', '', `${x.id}${x.name ? ` · ${x.name}` : ''}`); option.value = x.id; group.append(option); }); encounter.append(group); }
+  encounterWrap.append(encounter);
   const ap = numberField('AP (starting)', 0, 10, 7);
   const presets = element('div', 'debug-presets'); [0, 5, 6, 7, 8, 10].forEach((value) => { const button = element('button', 'secondary', `${value} AP`); button.type = 'button'; button.onclick = () => { ap.input.value = value; }; presets.append(button); });
   const level = selectField('Level (HP, skills, passive)', LEVELS.map((row) => [row.level, `LV ${row.level} · tier ${row.skillTier} · +${row.maxHpBonus} HP`]));
   const skill = selectField('Skill tier', [['', 'auto (from level)'], [0, '0'], [1, '1'], [2, '2']]);
+  const startWave = selectField('Start wave', [[1, '1']]);
   const hp = numberField('Hero HP (blank = full)', 0, 99, ''); hp.input.value = '';
   const potions = numberField('Potions', 0, CAMPAIGN.maxPotions, CAMPAIGN.startingPotions);
-  const start = element('button', '', 'START BATTLE'); form.append(hero.label, encounterWrap, ap.label, presets, level.label, skill.label, hp.label, potions.label, start);
+  const start = element('button', '', 'START BATTLE'); form.append(hero.label, encounterWrap, ap.label, presets, level.label, skill.label, startWave.label, hp.label, potions.label, start);
   // Encounter tier suggests the campaign level; the level select stays editable.
-  encounter.onchange = () => { level.select.value = String(ENCOUNTERS[encounter.value].tier); };
+  const syncEncounter = (selectedWave = 1) => {
+    const data = ENCOUNTERS[encounter.value]; const waves = data.waves ?? [{ enemyIds: data.enemyIds }];
+    startWave.select.replaceChildren(...waves.map((_, index) => { const option = element('option', '', String(index + 1)); option.value = String(index + 1); return option; }));
+    startWave.select.value = String(Math.max(1, Math.min(waves.length, selectedWave)));
+    level.select.value = String(data.tier ?? LEVELS.length);
+  };
+  encounter.onchange = () => syncEncounter();
   level.select.value = '1';
   if (debugConfig) {
     hero.select.value = debugConfig.heroId; encounter.value = debugConfig.encounterId; ap.input.value = debugConfig.ap; level.select.value = String(debugConfig.level);
     skill.select.value = debugConfig.skillTier ?? ''; potions.input.value = debugConfig.potions; if (debugConfig.heroHp !== undefined) hp.input.value = debugConfig.heroHp;
   }
+  syncEncounter(debugConfig?.startWave ?? 1);
+  if (debugConfig) level.select.value = String(debugConfig.level);
   form.onsubmit = (event) => {
     event.preventDefault();
     debugConfig = {
       heroId: hero.select.value, encounterId: encounter.value, ap: Number(ap.input.value), level: Number(level.select.value),
       skillTier: skill.select.value === '' ? undefined : Number(skill.select.value), potions: Number(potions.input.value),
-      heroHp: hp.input.value === '' ? undefined : Number(hp.input.value),
+      heroHp: hp.input.value === '' ? undefined : Number(hp.input.value), startWave: Number(startWave.select.value),
     };
     startDebugBattle(debugConfig);
   };
@@ -831,14 +927,16 @@ function debugLauncher() {
 }
 
 /** A campaign played up to `stage` (earlier stages scored `earlierCorrect`/10, longest words missed first), for previews. */
-function previewRewards(heroId, stage, earlierCorrect = 7) {
-  let preview = createCampaign(heroId);
+function previewRewards(heroId, stage, earlierCorrect = 7, cityId = 'matsubara') {
+  let preview = cityId === 'matsubara'
+    ? createCampaign(heroId)
+    : chapterRest(createCampaign(heroId, { cityId, level: LEVELS.length, xp: LEVELS.at(-1).xp }));
   const longestFirst = [...VOCABULARY].sort((a, b) => (b.en + b.ja).length - (a.en + a.ja).length);
   for (let index = 1; index <= stage; index += 1) {
-    const encounterId = chooseEncounter(index, () => 0).id;
+    const encounterId = stageEncounterId(preview, () => 0);
     const correctCount = index === stage ? 10 : earlierCorrect;
     const missed = longestFirst.slice((index - 1) * (10 - earlierCorrect), index * (10 - earlierCorrect)).map((item) => item.id);
-    preview = recordStage(preview, { mode: index, items: new Array(10).fill({ id: 'x' }), correctCount, bestStreak: 7, missedIds: new Set(index === stage ? [] : missed) }, encounterId);
+    preview = recordStage(preview, { mode: stageMode(preview), items: new Array(10).fill({ id: 'x' }), correctCount, bestStreak: 7, missedIds: new Set(index === stage ? [] : missed) }, encounterId);
     const state = createBattle({ ...battleSetup(preview), ap: 0 });
     const won = { ...state, potions: 0, hero: { ...state.hero, hp: Math.ceil(state.hero.maxHp * 0.3) }, enemies: state.enemies.map((enemy) => ({ ...enemy, hp: 0 })) };
     const result = applyVictory(preview, won);
@@ -860,7 +958,11 @@ function artGallery() {
   const results = () => { campaign = previewRewards(heroFor(), 4, 4).campaign; campaignResults(); };
   const intro = () => { campaign = createCampaign(heroFor()); introCinematic(artGallery); };
   const ending = () => { campaign = previewRewards(heroFor(), 4, 4).campaign; endingCinematic(campaignResults); };
-  controls.append(state.label, who.label, variant.label, preview('Victory (level up)', victory(1)), preview('Victory (new skill)', victory(2)), preview('Victory (passive)', victory(3)), preview('Final victory', victory(4)), preview('Defeat', defeat), preview('Campaign results (18 missed)', results), preview('Intro story', intro), preview('Ending story', ending), back);
+  const sakaiCampaign = () => previewRewards(heroFor(), 4, 4, 'sakai').campaign;
+  const sakaiIntro = () => { campaign = chapterRest(createCampaign(heroFor(), { cityId: 'sakai', level: LEVELS.length, xp: LEVELS.at(-1).xp })); cityIntroCinematic('sakai', artGallery); };
+  const sakaiEnding = () => { campaign = sakaiCampaign(); cityEndingCinematic('sakai', cityResults); };
+  const sakaiResults = () => { campaign = sakaiCampaign(); cityResults(); };
+  controls.append(state.label, who.label, variant.label, preview('Victory (level up)', victory(1)), preview('Victory (new skill)', victory(2)), preview('Victory (passive)', victory(3)), preview('Final victory', victory(4)), preview('Defeat', defeat), preview('Campaign results (18 missed)', results), preview('Intro story', intro), preview('Ending story', ending), preview('Sakai intro', sakaiIntro), preview('Sakai ending', sakaiEnding), preview('City results (Sakai)', sakaiResults), back);
   const rows = element('div'); page.append(controls, rows);
   const cell = (id, row) => `<div class="art-cell">${battleArt(id, row, { variant: variant.select.value })}<span>${id} · ${row}</span></div>`;
   const draw = () => {
@@ -878,7 +980,7 @@ function startDebugBattle(config) { showBattle(createBattle(config), { kind: 'de
 function debugBattleEnd(state, options) {
   clearScreen(); screen = 'debug-result'; audio.play(state.turn === 'won' ? 'victory' : 'defeat'); const card = element('section', 'card centered'); card.append(element('h1', '', state.turn === 'won' ? 'VICTORY!' : 'DEFEATED'));
   card.append(element('p', '', `Turns: ${state.round} · HP left: ${state.hero.hp}/${state.hero.maxHp} · AP left: ${state.ap} · Potions left: ${state.potions}${state.turn === 'won' ? ` · XP: ${battleXp(state)}` : ''}`));
-  const retry = element('button', '', 'Retry'); retry.onclick = () => startDebugBattle(options.config); const random = element('button', '', 'Random encounter (same tier)'); random.onclick = () => { const config = { ...options.config, encounterId: chooseEncounter(options.tier).id }; debugConfig = config; startDebugBattle(config); };
+  const retry = element('button', '', 'Retry'); retry.onclick = () => startDebugBattle(options.config); const random = element('button', '', 'Random encounter (same tier)'); random.onclick = () => { const current = ENCOUNTERS[options.config.encounterId]; const config = current.city ? options.config : { ...options.config, encounterId: chooseEncounter(options.tier).id, startWave: 1 }; debugConfig = config; startDebugBattle(config); };
   const back = element('button', 'secondary', 'Back to debug'); back.onclick = debugLauncher; card.append(retry, random, back); app.append(card);
 }
 

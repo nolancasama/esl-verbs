@@ -177,6 +177,28 @@ async function adventureFlow(page, baseUrl) {
   await page.getByText(/STAGE\s*2/i).first().waitFor();
 }
 
+async function regionalFlow(page, baseUrl) {
+  await page.goto(baseUrl);
+  await page.evaluate(() => localStorage.setItem('esl-verbs-region-v1', JSON.stringify({
+    heroId: 'fighter', level: 5, xp: 300, savedCities: ['matsubara'], checkpoint: null,
+  })));
+  await page.reload();
+  const continueAdventure = page.getByRole('button', { name: /CONTINUE ADVENTURE/i });
+  await continueAdventure.waitFor();
+  await continueAdventure.click();
+  await page.getByRole('group', { name: /Osaka map/i }).waitFor();
+  await page.getByRole('button', { name: /GO TO SAKAI/i }).click();
+  await page.locator('.story--sakai-intro').waitFor();
+  await page.getByRole('button', { name: /^Skip/i }).click();
+  await page.locator('.rpg-quiz.stage-1').waitFor();
+  await page.getByRole('textbox', { name: /Japanese answer/i }).waitFor();
+  const region = await page.evaluate(() => JSON.parse(localStorage.getItem('esl-verbs-region-v1')));
+  if (region.checkpoint?.cityId !== 'sakai' || region.checkpoint.stage !== 1 || region.checkpoint.stageResults?.length !== 0) {
+    throw new Error(`Sakai stage 1 checkpoint was not stored: ${JSON.stringify(region.checkpoint)}`);
+  }
+  if (JSON.stringify(region.savedCities) !== JSON.stringify(['matsubara'])) throw new Error('Starting Sakai changed the saved cities');
+}
+
 async function debugBattleFlow(page, baseUrl) {
   await page.goto(`${baseUrl}/?debug=battle`);
   await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
@@ -241,12 +263,13 @@ try {
   await stubSpeech(page);
 
   await adventureFlow(page, baseUrl);
+  await regionalFlow(page, baseUrl);
   await debugBattleFlow(page, baseUrl);
   await musicToggle(page, baseUrl);
   await studyFlow(page, baseUrl);
 
   if (browserErrors.length) throw new Error(`Browser errors:\n${browserErrors.join('\n')}`);
-  console.log('Browser playthrough passed: Adventure (AP carry-over, battle, XP), 0-AP recovery battle, music toggle, and Study mode 1.');
+  console.log('Browser playthrough passed: Adventure, Osaka regional continuation/checkpoint, 0-AP recovery battle, music toggle, and Study mode 1.');
 } catch (error) {
   console.error(error?.stack || error);
   process.exitCode = 1;
