@@ -345,6 +345,33 @@
 .battle-floater--shield { color: #9ff3ee; }
 .battle-floater--power { color: var(--gold); }
 .battle-floater--status { color: var(--gold); font-size: 18px; }
+.battle-floater--ally { color: #9fd8ff; font-family: var(--read-font); font-weight: 900; font-size: 20px; }
+
+/* Horde waves and the guest ally. The next wave's enemies stay hidden until its
+   waveStart plays; the Horde in reserve stands as dark silhouettes on the horizon. */
+.battle-enemy--incoming { display: none; }
+.battle-enemy--enter { animation: horde-enter .6s steps(6) both; }
+@keyframes horde-enter { from { translate: 60% -6%; opacity: 0; filter: brightness(0); } 60% { opacity: 1; filter: brightness(.4); } to { translate: 0 0; filter: none; } }
+.battle-reserve { position: absolute; right: 2%; bottom: 34%; z-index: 1; display: flex; flex-direction: row-reverse; align-items: end; transform: scale(.5); transform-origin: right bottom; pointer-events: none; filter: brightness(0) drop-shadow(0 0 2px #7a3ad0); opacity: .55; }
+.battle-reserve__unit { margin-left: -14%; }
+.battle-reserve__unit:nth-child(2n) { translate: 0 8%; }
+.battle-reserve .px-sprite { animation-play-state: paused !important; }
+.battle-field--ally { grid-template-columns: minmax(250px, .85fr) minmax(300px, 1.6fr); }
+.battle-field--ally .battle-hero { justify-items: end; }
+.battle-ally { position: absolute; left: 12px; bottom: calc(var(--px) * 7px); z-index: 1; display: grid; justify-items: center; }
+.battle-ally--enter { animation: ally-enter .9s cubic-bezier(.2, .8, .3, 1) both; }
+@keyframes ally-enter { from { translate: -140% 0; } 70% { translate: 8% 0; } to { translate: 0 0; } }
+.battle-ally__tag { margin-top: -4px; padding: 1px 8px; font-family: var(--read-font); font-weight: 900; font-size: .8rem; color: #9fd8ff; }
+.battle-wave { color: var(--gold); }
+.battle-banner { position: absolute; left: 50%; top: 22%; z-index: 8; display: none; justify-items: center; gap: 4px; padding: 10px 28px; translate: -50% 0; pointer-events: none; background: #0e1024e6; border: var(--b) solid var(--edge); box-shadow: 0 0 0 var(--b) var(--ink); }
+.battle-banner--show { display: grid; animation: banner-pop 1.4s steps(12) forwards; }
+.battle-banner strong { font-family: var(--pixel-font); font-weight: 400; font-size: clamp(18px, 3vw, 30px); color: var(--gold); text-shadow: 3px 3px 0 var(--ink); }
+.battle-banner span { font-family: var(--read-font); font-weight: 900; font-size: clamp(1rem, 2vw, 1.5rem); color: #fff; }
+.battle-banner--final strong { color: #ff8a7a; }
+.battle-banner--ally { border-color: #9fd8ff; }
+.battle-banner--ally strong { color: #9fd8ff; font-family: var(--read-font); font-weight: 900; }
+.battle-banner--clear { top: 30%; }
+@keyframes banner-pop { 0% { scale: .6; opacity: 0; } 12% { scale: 1.08; opacity: 1; } 20% { scale: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
 .battle-floater--break { color: #9ff3ee; font-size: 26px; }
 @keyframes px-float { 0% { translate: -50% 10px; scale: 1.4; } 20% { translate: -50% -10px; scale: 1; } 40% { translate: -50% -16px; } 100% { translate: -50% -24px; } }
 

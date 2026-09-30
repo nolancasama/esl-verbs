@@ -21,8 +21,9 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
   let skill = null, hits = 0, enemyAction = null, enemyId = null, lastTarget = null;
 
   const field = () => root.querySelector('.battle-field');
-  const spriteOf = (target) => root.querySelector(target === 'hero' ? '[data-combatant="hero"] .battle-sprite' : `[data-enemy-uid="${target}"] .battle-sprite`);
-  const wrapOf = (target) => root.querySelector(target === 'hero' ? '[data-combatant="hero"] .battle-art-wrap' : `[data-enemy-uid="${target}"] .battle-art-wrap`);
+  const slotOf = (target) => (target === 'hero' || target === 'ally' ? `[data-combatant="${target}"]` : `[data-enemy-uid="${target}"]`);
+  const spriteOf = (target) => root.querySelector(`${slotOf(target)} .battle-sprite`);
+  const wrapOf = (target) => root.querySelector(`${slotOf(target)} .battle-art-wrap`);
   const sfx = (name) => sound?.sfx?.(name);
 
   function later(ms, fn) {
@@ -291,6 +292,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
         sfx('slash'); if (hits % 2 === 0) shake('s');
         return hits % 2 ? 230 : 320;
       case 'fireball': spawn('fireHit', at, { dur: 300 }); sfx('hit'); return 220;
+      case 'ally': spawn('quickA', at, { dur: 280 }); spawn('impact', at, { dur: 260, delay: 60 }); sfx('hit'); return 300;
       case 'shadowStrike':
         spawn('darkSlash', at, { dur: 380, scale: hits === 1 ? 1.4 : 1 }); spawn('impact', at, { dur: 260, delay: 100 });
         sfx('bigHit'); if (hits === 1) { shake('m'); punch(); }
@@ -318,6 +320,11 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
         spawn(enemyAction === 'drain' ? 'drainHeal' : 'potionFx', at, { dur: 420 }); sfx('heal');
         return 420;
       }
+      // The guest ally: its hits must not reuse the hero's last skill effects.
+      case 'allyAttack': skill = 'ally'; hits = 0; enemyAction = null; dash('ally', event.target, 0.3, 300); sfx('slash'); return 300;
+      case 'allyProtect': spawn('guardFx', centre('hero', 0.45), { dur: 420 }); sfx('guard'); return 520;
+      case 'allyJoin': sfx('allySting'); return undefined;
+      case 'waveStart': sfx('wave'); return undefined;
       case 'item': skill = 'potion'; spawn('potionFx', centre('hero', 0.4), { dur: 520 }); sfx('potion'); return 460;
       case 'defend':
         if (event.defense === 'barrier') { spawn('barrierForm', centre('hero', 0.55), { dur: 520 }); sfx('barrier'); return 520; }

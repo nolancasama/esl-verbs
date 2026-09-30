@@ -1,4 +1,4 @@
-import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
+import { ALLIES, BALANCE, ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
 import {
   availableItems, availableSkills, cycleTarget, getEnemyIntent, mustRecover, recover, resolveEnemyPhase, selectTarget, skillBonus,
   useItem, useSkill,
@@ -9,7 +9,7 @@ import {
 import { AP_SLOT } from './ap-meter.js';
 
 // Minimum on-screen time per event type; the effects player can ask for longer.
-const EVENT_MS = { default: 380, damage: 360, defeat: 620, ap: 320, recover: 760, item: 420, heal: 420, victory: 650, lost: 650, enrage: 700, summon: 480 };
+const EVENT_MS = { default: 380, damage: 360, defeat: 620, ap: 320, recover: 760, item: 420, heal: 420, victory: 650, lost: 650, enrage: 700, summon: 480, waveClear: 700, waveStart: 1500, allyJoin: 1900, allyAttack: 320, allyProtect: 560 };
 const REDUCED_EVENT_MS = 170;
 const END_PAUSE_MS = 900;
 const RECOVER_PAUSE_MS = 650;
@@ -115,6 +115,11 @@ export function eventMessage(event) {
     case 'victory': return 'VICTORY!';
     case 'lost': return 'DEFEATED...';
     case 'rejected': return REJECTED[event.reason] || 'That action is unavailable.';
+    case 'waveClear': return 'WAVE CLEAR!';
+    case 'waveStart': return `WAVE ${event.wave}! まだ くる！`;
+    case 'allyJoin': return 'なかまが きた！ 大阪の まもりびと！';
+    case 'allyAttack': return 'ALLY! なかまの こうげき！';
+    case 'allyProtect': return 'まもりびとが まもってくれる！';
     default: return 'Battle!';
   }
 }
@@ -171,7 +176,7 @@ export function createBattleView(container, {
   let fitPx = null; // integer pixel scale chosen so the tallest sprite and its plate fit the field
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const effects = createEffectsPlayer(container, { reducedMotion, sound });
-  const stage = ENCOUNTERS[state.encounterId]?.tier ?? 1;
+  const stage = ENCOUNTERS[state.encounterId]?.tier ?? ENCOUNTERS[state.encounterId]?.stage ?? 1;
   const boss = state.enemies.some((enemy) => ENEMIES[enemy.id].boss);
 
   const onboarding = () => (typeof hint === 'function' ? hint(currentState) : hint) || null;
@@ -182,9 +187,9 @@ export function createBattleView(container, {
     apMeter?.set(value, options);
   }
 
+  const slotSelector = (target) => (target === 'hero' || target === 'ally' ? `[data-combatant="${target}"]` : `[data-enemy-uid="${target}"]`);
   function sprite(target) {
-    const selector = target === 'hero' ? '[data-combatant="hero"]' : `[data-enemy-uid="${target}"]`;
-    return container.querySelector(`${selector} .battle-sprite`);
+    return container.querySelector(`${slotSelector(target)} .battle-sprite`);
   }
 
   function setSpriteState(target, value) {
@@ -232,18 +237,54 @@ export function createBattleView(container, {
     return buttons.join('');
   }
 
+  // The wave and ally are part of the snapshot: a turn that clears a wave already
+  // holds the next wave (and maybe the ally), but they appear only when their event plays.
   function snapshot(source) {
-    return { hero: { ...source.hero }, enemies: new Map(source.enemies.map((enemy) => [enemy.uid, { ...enemy }])) };
+    return {
+      hero: { ...source.hero }, enemies: new Map(source.enemies.map((enemy) => [enemy.uid, { ...enemy }])),
+      wave: source.wave ?? 1, ally: source.ally ? { ...source.ally } : null,
+    };
+  }
+
+  /** Enemies to draw: during playback the shown wave first, then the next wave's enemies (hidden until waveStart). */
+  function shownEnemies() {
+    if (!display) return currentState.enemies;
+    const earlier = [...display.enemies.values()].filter((enemy) => !currentState.enemies.some((current) => current.uid === enemy.uid));
+    return [...earlier, ...currentState.enemies];
+  }
+
+  /** Background silhouettes for the Horde: later waves' enemies plus the encounter's extra reserve. */
+  function reserveMarkup() {
+    const encounter = ENCOUNTERS[currentState.encounterId];
+    const waves = encounter?.waves;
+    if (!waves || waves.length < 2 && !encounter.reserve) return '';
+    const wave = display?.wave ?? currentState.wave ?? 1;
+    const later = waves.slice(wave).flatMap((next) => next.enemyIds);
+    const extra = wave < waves.length ? Array.from({ length: encounter.reserve ?? 0 }, (_, index) => waves[0].enemyIds[index % waves[0].enemyIds.length]) : [];
+    const ids = [...later, ...extra].slice(0, 9);
+    if (!ids.length) return '';
+    return `<div class="battle-reserve" aria-hidden="true">${ids.map((id, index) => `<span class="battle-reserve__unit" style="--i:${index}">${getBattleArt(id, 'idle')}</span>`).join('')}</div>`;
+  }
+
+  function allyMarkup(ally, entering = false) {
+    if (!ally) return '';
+    const data = ALLIES[ally.id];
+    const pose = currentState.turn === 'won' && !display ? 'victory' : 'idle';
+    return `<article class="battle-ally${entering ? ' battle-ally--enter' : ''}" data-combatant="ally" aria-label="${esc(data.name)} / ${esc(data.jaName)}">
+      <div class="battle-art-wrap">${getBattleArt(ally.id, pose)}</div>
+      <span class="battle-ally__tag px-panel">なかま</span>
+    </article>`;
   }
 
   function enemyMarkup(current) {
     const data = ENEMIES[current.id];
-    const pending = Boolean(display) && !display.enemies.has(current.uid);
+    const incoming = Boolean(display) && !display.enemies.has(current.uid) && (currentState.wave ?? 1) !== display.wave;
+    const pending = Boolean(display) && !display.enemies.has(current.uid) && !incoming;
     const enemy = display?.enemies.get(current.uid) ?? current;
     const gone = enemy.hp <= 0;
     const selected = !gone && !display && enemy.uid === currentState.selectedUid;
     const art = gone ? '' : getBattleArt(enemy.id, enemyRestState(enemy), { variant: enemy.phase === 2 ? 'enraged' : '' });
-    return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}${enemy.phase === 2 ? ' battle-enemy--enraged' : ''}${gone ? ' battle-enemy--gone' : ''}${pending ? ' battle-enemy--pending' : ''}"
+    return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}${enemy.phase === 2 ? ' battle-enemy--enraged' : ''}${gone ? ' battle-enemy--gone' : ''}${pending ? ' battle-enemy--pending' : ''}${incoming ? ' battle-enemy--incoming' : ''}"
       data-select-uid="${enemy.uid}" data-enemy-uid="${enemy.uid}" data-enemy-id="${enemy.id}" aria-pressed="${selected}" ${gone ? 'disabled aria-hidden="true" tabindex="-1"' : ''}>
       <span class="battle-target-marker" aria-hidden="true">${getIcon('cursor')}</span>
       <span class="battle-enemy__plate px-panel">
@@ -264,18 +305,24 @@ export function createBattleView(container, {
       : recovering ? 'RECOVERING… / ひとやすみ…' : currentState.turn === 'enemy' ? 'Enemy turn...' : itemMenu ? 'Use an item? / アイテムをつかう？' : 'Choose an action.';
     const heroShown = display?.hero ?? currentState.hero;
     const heroState = recovering ? 'tired' : display ? heroShown.defense || 'idle' : heroRestState(currentState);
+    const allyShown = display ? display.ally : currentState.ally;
+    const waveCount = currentState.waveCount ?? 1;
+    const waveShown = display?.wave ?? currentState.wave ?? 1;
     container.innerHTML = `<section class="battle-view stage-${stage}${boss ? ' battle-view--boss' : ''}${recovering ? ' battle-view--recovering' : ''}" aria-label="Battle">
       <div class="battle-topbar">
         <button type="button" class="secondary battle-exit px-button" data-battle-exit>← Menu</button>
         ${AP_SLOT}
-        <div class="battle-topbar__right"><div class="battle-round px-panel">TURN ${currentState.round}</div>${topRight}</div>
+        <div class="battle-topbar__right">${waveCount > 1 ? `<div class="battle-round battle-wave px-panel">WAVE ${waveShown} / ${waveCount}</div>` : ''}<div class="battle-round px-panel">TURN ${currentState.round}</div>${topRight}</div>
       </div>
-      <div class="battle-field ${backdropClass(stage)}">
+      <div class="battle-field ${backdropClass(stage)}${allyShown ? ' battle-field--ally' : ''}">
         <div class="battle-light" aria-hidden="true"></div>
+        ${reserveMarkup()}
+        ${allyMarkup(allyShown)}
         <article class="battle-hero" data-combatant="hero" aria-label="${esc(hero.name)}">
           <div class="battle-art-wrap">${getBattleArt(hero.id, heroState)}${heroShown.defense === 'barrier' ? getBarrierArt() : ''}</div>
         </article>
-        <div class="battle-enemies">${currentState.enemies.map(enemyMarkup).join('')}</div>
+        <div class="battle-enemies">${shownEnemies().map(enemyMarkup).join('')}</div>
+        <div class="battle-banner" aria-hidden="true"></div>
       </div>
       <div class="battle-lower">
         <div class="battle-message-box px-panel">
@@ -330,9 +377,43 @@ export function createBattleView(container, {
     });
   }
 
+  /** A big announcement across the field (WAVE 2 / なかまが きた！). */
+  function showBanner(title, subtitle, tone = '') {
+    const banner = container.querySelector('.battle-banner');
+    if (!banner) return;
+    banner.className = `battle-banner battle-banner--show${tone ? ` battle-banner--${tone}` : ''}`;
+    banner.innerHTML = `<strong>${esc(title)}</strong><span>${esc(subtitle)}</span>`;
+  }
+
+  /** The next wave replaces the cleared one: defeated enemies leave, the reserve steps forward. */
+  function beginWave(event) {
+    display.wave = event.wave;
+    display.enemies = new Map(currentState.enemies.filter((enemy) => event.targets.includes(enemy.uid)).map((enemy) => [enemy.uid, { ...enemy }]));
+    container.querySelectorAll('.battle-enemy').forEach((node) => {
+      if (!event.targets.includes(Number(node.dataset.enemyUid))) { node.remove(); return; }
+      node.classList.remove('battle-enemy--incoming');
+      node.classList.add('battle-enemy--enter');
+    });
+    const reserve = container.querySelector('.battle-reserve');
+    const fresh = document.createElement('div');
+    fresh.innerHTML = reserveMarkup();
+    if (reserve) reserve.replaceWith(...(fresh.firstElementChild ? [fresh.firstElementChild] : []));
+    const chip = container.querySelector('.battle-wave');
+    if (chip) chip.textContent = `WAVE ${event.wave} / ${event.waveCount}`;
+    fitPx = null; // the new wave may need a different scale; the settled render refits
+    showBanner(`WAVE ${event.wave} / ${event.waveCount}`, event.wave === event.waveCount ? 'さいごの なみ！' : 'まだ くる！', event.wave === event.waveCount ? 'final' : '');
+  }
+
+  function allyJoins(event) {
+    display.ally = { id: event.allyId };
+    const hero = container.querySelector('[data-combatant="hero"]');
+    hero?.insertAdjacentHTML('beforebegin', allyMarkup(display.ally, true));
+    container.querySelector('.battle-field')?.classList.add('battle-field--ally');
+    showBanner('なかまが きた！', `${ALLIES[event.allyId].jaName} / AN ALLY JOINS!`, 'ally');
+  }
+
   function addFloater(target, textValue, className) {
-    const selector = target === 'hero' ? '[data-combatant="hero"]' : `[data-enemy-uid="${target}"]`;
-    const parent = container.querySelector(`${selector} .battle-art-wrap`);
+    const parent = container.querySelector(`${slotSelector(target)} .battle-art-wrap`);
     if (!parent) return;
     const node = document.createElement('span');
     node.className = `battle-floater ${className}`;
@@ -381,6 +462,11 @@ export function createBattleView(container, {
       case 'barrierUp': addFloater('hero', 'BARRIER!', 'battle-floater--shield'); break;
       case 'chain': addFloater(event.target, 'CHAIN!', 'battle-floater--status'); break;
       case 'enrage': addFloater(event.target, 'ENRAGED!', 'battle-floater--status'); break;
+      case 'waveClear': showBanner('WAVE CLEAR!', 'やった！', 'clear'); break;
+      case 'waveStart': if (display) beginWave(event); break;
+      case 'allyJoin': if (display) allyJoins(event); break;
+      case 'allyAttack': setSpriteState('ally', 'attack'); addFloater('ally', 'なかま！', 'battle-floater--ally'); break;
+      case 'allyProtect': setSpriteState('ally', 'guard'); addFloater('hero', 'まもる！', 'battle-floater--shield'); break;
       case 'defeat': {
         const node = container.querySelector(`[data-enemy-uid="${event.target}"]`);
         node?.classList.add('battle-enemy--defeated');

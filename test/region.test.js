@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAMPAIGN, HEROES } from '../src/battle-data.js';
+import { CAMPAIGN, ENCOUNTERS, HEROES } from '../src/battle-data.js';
 import { chapterRest, createCampaign, resumeCampaign } from '../src/campaign.js';
 import {
-  CITIES, REGION_KEY, cityStatus, markCitySaved, parseRegion, serializeRegion,
+  CITIES, CITY_CAMPAIGNS, REGION_KEY, cityStatus, markCitySaved, parseRegion, serializeRegion,
   stageCheckpoint, stageCount, stageEncounterId, stageMode,
 } from '../src/region.js';
 
@@ -93,4 +93,15 @@ test('stage helpers expose modes 1 through 4 and fixed Sakai encounter ids', () 
   assert.equal(stageCount('sakai'), 4);
   assert.deepEqual([1, 2, 3, 4].map((stage) => stageMode({ cityId: 'sakai', stage })), [1, 2, 3, 4]);
   assert.deepEqual([1, 2, 3, 4].map((stage) => stageEncounterId({ cityId: 'sakai', stage }, () => 0)), ['sakai-1', 'sakai-2', 'sakai-3', 'sakai-4']);
+});
+
+test('every city stage points at a real encounter; city encounters never appear in the Matsubara tiers', () => {
+  for (const campaign of Object.values(CITY_CAMPAIGNS)) {
+    campaign.stages.forEach((stage, index) => {
+      const id = stageEncounterId({ cityId: campaign.cityId, stage: index + 1 }, () => 0);
+      assert.ok(ENCOUNTERS[id], `${campaign.id} stage ${index + 1} -> ${id}`);
+      if (!campaign.origin) assert.equal(ENCOUNTERS[id].city, campaign.cityId);
+      else assert.equal(ENCOUNTERS[id].city, undefined);
+    });
+  }
 });
