@@ -2,7 +2,9 @@
 // Usage: node test/balance-report.mjs [seeds=20]
 import { CAMPAIGN } from '../src/battle-data.js';
 import { heroMaxHp } from '../src/battle-engine.js';
-import { POLICIES, STAGE_LEVEL, encountersForTier, simulateBattle, simulateCampaign } from './balance-sim.js';
+import {
+  POLICIES, STAGE_LEVEL, encountersForTier, sakaiEncounters, simulateBattle, simulateCampaign, simulateSakaiCampaign,
+} from './balance-sim.js';
 
 const seeds = Number(process.argv[2] || 20);
 const heroes = ['fighter', 'mage', 'ninja'];
@@ -107,4 +109,31 @@ for (const name of Object.keys(POLICIES)) for (const ap of [0, 3, 5, 6, 7, 8, 10
     run.stages.forEach((stage, index) => { battles += 1; if (stage.attempts === 1 && stage.won) { firstTry += 1; byStage[index] += 1; } retries += stage.attempts - 1; });
   }
   console.log(`  ${name.padEnd(10)} AP${String(ap).padStart(2)}: first-try ${pct(firstTry / battles)}  by stage ${byStage.map((n) => pct(n / runs)).join(' ')}  completed ${pct(completed / runs)}  retries/run ${(retries / runs).toFixed(1)}`);
+}
+
+const sakaiAps = [5, 6, 7, 8, 10];
+console.log('\nSakai LV5 battle win rate (full HP, 2 potions)');
+console.log(`hero     encounter              policy     ${sakaiAps.map((ap) => `AP${ap}`.padStart(5)).join(' ')}`);
+for (const heroId of heroes) for (const encounter of sakaiEncounters()) for (const name of ['naive', 'smart']) {
+  const cells = sakaiAps.map((ap) => {
+    let wins = 0;
+    for (let seed = 1; seed <= seeds; seed += 1) {
+      wins += simulateBattle({ heroId, encounterId: encounter.id, ap, level: 5, potions: 2, policy: POLICIES[name], seed: seed * 65537 + 17 }).won ? 1 : 0;
+    }
+    return pct(wins / seeds).padStart(5);
+  });
+  console.log(`${heroId.padEnd(8)} ${encounter.id.padEnd(22)} ${name.padEnd(10)} ${cells.join(' ')}`);
+}
+
+console.log('\nSakai campaign completion (LV5 start, victory HP/potions carried, no retries)');
+console.log(`hero     policy     ${sakaiAps.map((ap) => `AP${ap}`.padStart(5)).join(' ')}`);
+for (const heroId of heroes) for (const name of ['naive', 'smart']) {
+  const cells = sakaiAps.map((ap) => {
+    let completed = 0;
+    for (let seed = 1; seed <= seeds; seed += 1) {
+      completed += simulateSakaiCampaign({ heroId, ap, policy: POLICIES[name], seed: seed * 8191 + 23 }).completed ? 1 : 0;
+    }
+    return pct(completed / seeds).padStart(5);
+  });
+  console.log(`${heroId.padEnd(8)} ${name.padEnd(10)} ${cells.join(' ')}`);
 }

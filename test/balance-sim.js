@@ -4,9 +4,9 @@
 //   competent - follows the on-screen hints: defends when a BIG ATTACK shows,
 //               drinks a Potion when HP is low, uses the biggest affordable skill.
 //   smart     - plays each class's mechanics and plans AP around shown intents.
-import { ENCOUNTERS, ENEMIES, SKILLS } from '../src/battle-data.js';
+import { ENCOUNTERS, ENEMIES, LEVELS, SKILLS } from '../src/battle-data.js';
 import {
-  availableItems, availableSkills, chooseEncounter, createBattle, mustRecover, recover,
+  availableItems, availableSkills, chooseEncounter, createBattle, heroMaxHp, mustRecover, recover,
   resolveEnemyPhase, useItem, useSkill,
 } from '../src/battle-engine.js';
 import { applyVictory, battleSetup, createCampaign, recordDefeat, recordStage } from '../src/campaign.js';
@@ -126,10 +126,10 @@ export function smart(state) {
 export const POLICIES = Object.freeze({ naive, competent, smart });
 
 /** Apply one policy decision. Returns the result of that player step. */
-export function step(state, choice) {
+export function step(state, choice, rng = Math.random) {
   if (choice.recover) return recover(state);
   if (choice.itemId) return useItem(state, choice.itemId);
-  return useSkill(state, choice.skillId, choice.target ?? state.selectedUid);
+  return useSkill(state, choice.skillId, choice.target ?? state.selectedUid, rng);
 }
 
 /** One battle to the end. Options mirror createBattle plus a policy and seed. */
@@ -140,7 +140,7 @@ export function simulateBattle({ policy = competent, seed = 1, rng = seeded(seed
   let potionsUsed = 0;
   while (state.turn === 'player' && turns < maxTurns) {
     const choice = policy(state);
-    const result = step(state, choice);
+    const result = step(state, choice, rng);
     if (result.events[0]?.type === 'rejected') throw new Error(`${options.heroId} ${options.encounterId}: rejected ${JSON.stringify(choice)} (${result.events[0].reason})`);
     if (choice.recover) recoveries += 1;
     if (choice.itemId) potionsUsed += 1;
@@ -181,9 +181,50 @@ export function simulateCampaign({ heroId, ap, policy = competent, seed = 1, max
   return { campaign, stages, completed: true };
 }
 
+export const SAKAI_ENCOUNTER_IDS = Object.freeze(['sakai-1', 'sakai-2', 'sakai-3', 'sakai-4']);
+
+export function sakaiEncounters() {
+  return SAKAI_ENCOUNTER_IDS.map((id) => ENCOUNTERS[id]);
+}
+
+/** Four fixed Sakai battles at level 5, carrying victory HP and potions with no retries. */
+export function simulateSakaiCampaign({ heroId, ap, policy = smart, seed = 1 }) {
+  const rng = seeded(seed);
+  let campaign = {
+    ...createCampaign(heroId),
+    level: 5,
+    xp: LEVELS.at(-1).xp,
+    heroHp: heroMaxHp(heroId, 5),
+    potions: 2,
+  };
+  const stages = [];
+  for (let index = 0; index < SAKAI_ENCOUNTER_IDS.length; index += 1) {
+    const encounterId = SAKAI_ENCOUNTER_IDS[index];
+    const correct = typeof ap === 'function' ? ap(index + 1) : Array.isArray(ap) ? ap[index] : ap;
+    const round = {
+      mode: index + 1,
+      items: Array.from({ length: 10 }, (_, question) => ({ id: `sakai-${index + 1}-q${question}` })),
+      correctCount: correct,
+      bestStreak: correct,
+      missedIds: new Set(),
+    };
+    campaign = recordStage(campaign, round, encounterId);
+    const entryHp = campaign.heroHp;
+    const entryPotions = campaign.potions;
+    const result = simulateBattle({ ...battleSetup(campaign), policy, rng });
+    stages.push({
+      stage: index + 1, encounterId, won: result.won, entryHp, entryPotions,
+      hpLeft: result.hp, potionsLeft: result.state.potions, turns: result.turns, recoveries: result.recoveries,
+    });
+    if (!result.won) return { campaign, stages, completed: false };
+    campaign = applyVictory(campaign, result.state).campaign;
+  }
+  return { campaign, stages, completed: true };
+}
+
 /** Level at which each stage is fought in a normal campaign. */
 export const STAGE_LEVEL = Object.freeze({ 1: 1, 2: 2, 3: 3, 4: 4 });
 
 export function encountersForTier(tier) {
-  return Object.values(ENCOUNTERS).filter((encounter) => encounter.tier === tier);
+  return Object.values(ENCOUNTERS).filter((encounter) => !encounter.city && encounter.tier === tier);
 }

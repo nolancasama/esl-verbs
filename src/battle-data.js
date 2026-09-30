@@ -76,6 +76,13 @@ export const HEROES = Object.freeze({
   },
 });
 
+export const ALLIES = Object.freeze({
+  osakaDefender: Object.freeze({
+    id: 'osakaDefender', name: 'Osaka Defender', jaName: '大阪の まもりびと',
+    damage: 3, protectBelow: 0.3, protectMultiplier: 0.5,
+  }),
+});
+
 // Heavy-attack cycles are odd lengths (e.g. attack, attack, charge, heavy, rest)
 // so that a low-AP rest/act rhythm does not always meet the big attack the same way.
 export const ENEMIES = Object.freeze({
@@ -89,7 +96,7 @@ export const ENEMIES = Object.freeze({
   healer: { id: 'healer', name: 'Healer', jaName: 'ヒーラー', maxHp: 14, attack: 4, heal: 4, xp: 18, ai: Object.freeze({ support: 'heal' }) },
   golem: { id: 'golem', name: 'Golem', jaName: 'ゴーレム', maxHp: 48, attack: 7, heavy: 16, heavyName: 'Rock Smash', xp: 40, ai: Object.freeze({ heavyEvery: 2, rests: true }) },
   goblinCaptain: { id: 'goblinCaptain', name: 'Goblin Captain', jaName: 'ゴブリンたいちょう', maxHp: 32, attack: 6, heavy: 15, heavyName: 'Captain Slash', xp: 28, ai: Object.freeze({ heavyEvery: 3, guardChance: 0.2 }) },
-  hordeCommander: { id: 'hordeCommander', name: 'Shadow Commander', jaName: 'シャドウたいちょう', maxHp: 40, attack: 5, heavy: 15, heavyName: 'Shadow Break', xp: 45, ai: Object.freeze({ heavyEvery: 3, guardChance: 0.2, phase2: Object.freeze({ at: 0.5, message: '⚔ SHADOW COMMANDER IS ANGRY!', heavyEvery: 2 }) }) },
+  hordeCommander: { id: 'hordeCommander', name: 'Shadow Commander', jaName: 'シャドウたいちょう', maxHp: 34, attack: 4, heavy: 12, heavyName: 'Shadow Break', xp: 45, ai: Object.freeze({ heavyEvery: 3, guardChance: 0.2, phase2: Object.freeze({ at: 0.5, message: '⚔ SHADOW COMMANDER IS ANGRY!', heavyEvery: 2 }) }) },
   necromancer: { id: 'necromancer', name: 'Necromancer', jaName: 'ネクロマンサー', maxHp: 23, attack: 5, heal: 3, summonId: 'skeleton', xp: 20, ai: Object.freeze({ support: 'summon', maxSummons: 1 }) },
   dragon: { id: 'dragon', name: 'Dragon', jaName: 'ドラゴン', maxHp: 44, attack: 6, heavy: 17, heavyName: 'Fire Breath', boss: true, xp: 70, ai: Object.freeze({ heavyEvery: 2, rests: true, phase2: Object.freeze({ at: 0.6, message: '🔥 DRAGON IS ANGRY!', heavyEvery: 1, rests: false }) }) },
   demonKing: { id: 'demonKing', name: 'Demon King', jaName: 'まおう', maxHp: 38, attack: 4, heavy: 15, heavyName: 'Dark Blast', summonId: 'bat', boss: true, xp: 70, ai: Object.freeze({ heavyEvery: 3, guardChance: 0.2, support: 'summon', maxSummons: 1, phase2: Object.freeze({ at: 0.6, message: '😈 DEMON KING IS ANGRY!', heavyEvery: 1, maxSummons: 2 }) }) },
@@ -113,4 +120,44 @@ export const ENCOUNTERS = Object.freeze({
   'demon-king': { id: 'demon-king', tier: 4, enemyIds: Object.freeze(['demonKing']) },
   'giant-golem': { id: 'giant-golem', tier: 4, enemyIds: Object.freeze(['giantGolem']) },
   'vampire-lord': { id: 'vampire-lord', tier: 4, enemyIds: Object.freeze(['vampireLord']) },
+  'sakai-1': Object.freeze({
+    id: 'sakai-1', city: 'sakai', stage: 1,
+    name: 'First Assault', jaName: 'さいしょの こうげき', music: 'battle',
+    enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'wolf']),
+    waves: Object.freeze([
+      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'wolf']) }),
+    ]),
+    ally: null, reserve: 0,
+  }),
+  'sakai-2': Object.freeze({
+    id: 'sakai-2', city: 'sakai', stage: 2,
+    name: 'Horde Battle', jaName: 'ホードの なみ', music: 'battle',
+    enemyIds: Object.freeze(['slime', 'goblin', 'bat']),
+    waves: Object.freeze([
+      Object.freeze({ enemyIds: Object.freeze(['slime', 'goblin', 'bat']) }),
+      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'bat']) }),
+    ]),
+    ally: null, reserve: 3,
+  }),
+  'sakai-3': Object.freeze({
+    id: 'sakai-3', city: 'sakai', stage: 3,
+    name: 'Defenders Overwhelmed', jaName: 'まもりびとの ピンチ', music: 'battle',
+    enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'bat']),
+    waves: Object.freeze([
+      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'goblin', 'bat']) }),
+      Object.freeze({ enemyIds: Object.freeze(['shieldGoblin', 'healer']) }),
+    ]),
+    ally: Object.freeze({ id: 'osakaDefender', joinsAtWave: 2 }), reserve: 2,
+  }),
+  'sakai-4': Object.freeze({
+    id: 'sakai-4', city: 'sakai', stage: 4,
+    name: 'Final Sakai Defense', jaName: 'さかい さいごの たたかい', music: 'boss',
+    enemyIds: Object.freeze(['goblin', 'wolf', 'bat']),
+    waves: Object.freeze([
+      Object.freeze({ enemyIds: Object.freeze(['goblin', 'wolf', 'bat']) }),
+      Object.freeze({ enemyIds: Object.freeze(['shieldGoblin', 'healer']) }),
+      Object.freeze({ enemyIds: Object.freeze(['hordeCommander']) }),
+    ]),
+    ally: Object.freeze({ id: 'osakaDefender', joinsAtWave: 1 }), reserve: 3,
+  }),
 });

@@ -358,3 +358,10 @@ showed, without touching battle rules or balance.
 A useful rule:
 
 > If a future developer or AI could reasonably ask, "Why is it designed this way?", record the answer here.
+
+## 2026-09-30 — Sakai Horde battles and the Osaka Defender
+
+- **Waves extend the existing battle engine.** A normal Matsubara encounter is still one wave with no ally; Sakai uses optional `waves` on the same encounter and state shapes rather than a second combat loop.
+- **The Osaka Defender has no HP and never touches AP.** It is a deterministic phase between the player and enemies: above the protection threshold it hits the weakest living enemy, while at or below 30% hero HP it halves post-defence enemy damage for that phase.
+- **Turn order is player → ally → enemy.** Clearing a wave by either the player or ally immediately replaces the enemy list, keeps campaign resources and persistent class setup, and gives the player the first move against the new wave. Temporary defence, exhaustion and Opening are cleared at the boundary.
+- **Sakai was tuned at level 5 without changing Matsubara numbers.** The final picks use escalating basic groups, Shield Goblin/Healer pressure, and a 34 HP / 4 attack / 12 heavy `hordeCommander`; the ally deals 3. Across 40 deterministic smart-policy campaign runs per hero, completion from a full-HP, two-potion start was 1% / 26% / 58% / 88% / 98% at 5 / 6 / 7 / 8 / 10 AP (naive was 0% throughout). This keeps 5 AP difficult, 6–7 viable, and 8+ strong while carrying HP and potions through all four battles.

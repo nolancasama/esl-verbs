@@ -1,4 +1,4 @@
-import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, ITEMS, LEVELS, SKILLS } from './battle-data.js';
+import { ALLIES, BALANCE, ENCOUNTERS, ENEMIES, HEROES, ITEMS, LEVELS, SKILLS } from './battle-data.js';
 
 const living = (enemy) => enemy.hp > 0;
 const clampAp = (ap) => Math.max(0, Math.min(BALANCE.maxAp, ap));
@@ -96,8 +96,43 @@ function selectedAfter(enemies, priorUid) {
   return alive[0].uid;
 }
 
-function finish(state, events) {
+const encounterWaves = (encounter) => encounter.waves ?? [{ enemyIds: encounter.enemyIds }];
+const defeatedXp = (enemies) => enemies
+  .filter((enemy) => !living(enemy) && !enemy.summoned)
+  .reduce((sum, enemy) => sum + (ENEMIES[enemy.id].xp ?? 0), 0);
+const waveXp = (wave) => wave.enemyIds.reduce((sum, id) => sum + (ENEMIES[id].xp ?? 0), 0);
+
+function beginNextWave(state, events, rng) {
+  const encounter = ENCOUNTERS[state.encounterId];
+  const waves = encounterWaves(encounter);
+  const wave = state.wave + 1;
+  const enemies = waves[wave - 1].enemyIds.map((id, index) => enemyState(id, state.nextUid + index));
+  let next = {
+    ...state,
+    wave,
+    clearedXp: state.clearedXp + defeatedXp(state.enemies),
+    enemies,
+    selectedUid: enemies[0]?.uid ?? null,
+    nextUid: state.nextUid + enemies.length,
+    turn: 'player',
+    round: state.round + 1,
+    hero: { ...state.hero, defense: null, exhausted: false, openingUid: null, protected: false },
+  };
+  next = { ...next, enemies: next.enemies.map((enemy) => ({ ...enemy, intent: chooseEnemyIntent(next, enemy, rng) })) };
+  events.push({ type: 'waveStart', wave, waveCount: state.waveCount, targets: enemies.map((enemy) => enemy.uid) });
+  if (!state.ally && encounter.ally?.joinsAtWave === wave) {
+    next = { ...next, ally: { id: encounter.ally.id } };
+    events.push({ type: 'allyJoin', allyId: encounter.ally.id });
+  }
+  return next;
+}
+
+function finish(state, events, rng = Math.random) {
   if (state.enemies.every((enemy) => !living(enemy))) {
+    if (state.wave < state.waveCount) {
+      events.push({ type: 'waveClear', wave: state.wave });
+      return { state: beginNextWave(state, events, rng), events };
+    }
     return { state: { ...state, turn: 'won', selectedUid: null }, events: [...events, { type: 'victory' }] };
   }
   if (state.hero.hp <= 0) return { state: { ...state, turn: 'lost' }, events: [...events, { type: 'lost' }] };
@@ -142,22 +177,28 @@ function damageEnemy(state, uid, amount, events) {
  * level drives max HP, the skill tier and the class passive; skillTier overrides the tier (debug).
  * heroHp defaults to full; potions defaults to 0.
  */
-export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier, heroHp, potions = 0, rng = Math.random }) {
+export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier, heroHp, potions = 0, startWave = 1, rng = Math.random }) {
   const heroData = HEROES[heroId];
   const encounter = ENCOUNTERS[encounterId];
   if (!heroData) throw new Error(`Unknown hero: ${heroId}`);
   if (!encounter) throw new Error(`Unknown encounter: ${encounterId}`);
   const safeLevel = levelData(level).level;
-  const enemies = encounter.enemyIds.map((id, index) => enemyState(id, index + 1));
+  const waves = encounterWaves(encounter);
+  const wave = Math.max(1, Math.min(waves.length, Math.floor(startWave) || 1));
+  const firstUid = waves.slice(0, wave - 1).reduce((sum, priorWave) => sum + priorWave.enemyIds.length, 0) + 1;
+  const enemies = waves[wave - 1].enemyIds.map((id, index) => enemyState(id, firstUid + index));
   const maxHp = heroMaxHp(heroId, safeLevel);
   let state = {
     heroId, encounterId, level: safeLevel, skillTier: skillTier ?? skillTierForLevel(safeLevel),
     ap: clampAp(Math.floor(ap) || 0), potions: Math.max(0, Math.floor(potions) || 0), turn: 'player', round: 1,
+    wave, waveCount: waves.length,
+    ally: encounter.ally?.joinsAtWave <= wave ? { id: encounter.ally.id } : null,
+    clearedXp: waves.slice(0, wave - 1).reduce((sum, priorWave) => sum + waveXp(priorWave), 0),
     hero: {
       hp: Math.max(0, Math.min(heroHp ?? maxHp, maxHp)), maxHp, defense: null,
-      combo: false, counter: false, openingUid: null, exhausted: false,
+      combo: false, counter: false, openingUid: null, exhausted: false, protected: false,
     },
-    enemies, selectedUid: enemies[0]?.uid ?? null, nextUid: enemies.length + 1,
+    enemies, selectedUid: enemies[0]?.uid ?? null, nextUid: firstUid + enemies.length,
   };
   state = { ...state, enemies: state.enemies.map((enemy) => ({ ...enemy, intent: chooseEnemyIntent(state, enemy, rng) })) };
   return state;
@@ -213,12 +254,21 @@ export function mustRecover(state) {
     && !availableItems(state).some((item) => item.usable);
 }
 
-export function isVictory(state) { return state.enemies.every((enemy) => !living(enemy)); }
+export function isVictory(state) { return state.wave >= state.waveCount && state.enemies.every((enemy) => !living(enemy)); }
 export function isDefeat(state) { return state.hero.hp <= 0; }
 
 /** XP for a battle: every non-summoned enemy that has been defeated. */
 export function battleXp(state) {
-  return state.enemies.filter((enemy) => !living(enemy) && !enemy.summoned).reduce((sum, enemy) => sum + (ENEMIES[enemy.id].xp ?? 0), 0);
+  return state.clearedXp + defeatedXp(state.enemies);
+}
+
+export function waveInfo(state) {
+  const waves = encounterWaves(ENCOUNTERS[state.encounterId]);
+  return {
+    wave: state.wave,
+    waveCount: state.waveCount,
+    reserveCount: waves.slice(state.wave).reduce((sum, wave) => sum + wave.enemyIds.length, 0),
+  };
 }
 
 export function selectTarget(state, uid) {
@@ -233,7 +283,7 @@ export function cycleTarget(state, direction) {
   return { ...state, selectedUid: alive[next].uid };
 }
 
-export function useSkill(state, skillId, targetUid = state.selectedUid) {
+export function useSkill(state, skillId, targetUid = state.selectedUid, rng = Math.random) {
   if (state.turn !== 'player') return rejected(state, 'not-player-turn');
   const skill = SKILLS[skillId];
   if (!skill || !HEROES[state.heroId].skills.includes(skillId)) return rejected(state, 'unknown-skill');
@@ -315,8 +365,10 @@ export function useSkill(state, skillId, targetUid = state.selectedUid) {
   }
 
   next.selectedUid = selectedAfter(next.enemies, state.selectedUid);
-  const outcome = finish(next, events);
-  return outcome.state.turn === 'won' ? outcome : { state: { ...outcome.state, turn: 'enemy' }, events: outcome.events };
+  const outcome = finish(next, events, rng);
+  return outcome.state.turn === 'won' || outcome.events.some((event) => event.type === 'waveStart')
+    ? outcome
+    : { state: { ...outcome.state, turn: 'enemy' }, events: outcome.events };
 }
 
 /** Use an item (Potion). Costs AP and ends the turn like a skill. */
@@ -353,17 +405,35 @@ export function resolveEnemyPhase(state, rng = Math.random) {
   let refunded = false;
   const events = [];
 
+  if (next.ally) {
+    const ally = ALLIES[next.ally.id];
+    if (next.hero.hp <= ally.protectBelow * next.hero.maxHp) {
+      next.hero = { ...next.hero, protected: true };
+      events.push({ type: 'allyProtect', allyId: ally.id });
+    } else {
+      const target = next.enemies.filter(living).sort((a, b) => a.hp - b.hp || a.uid - b.uid)[0];
+      if (target) {
+        events.push({ type: 'allyAttack', allyId: ally.id, target: target.uid });
+        next = damageEnemy(next, target.uid, ally.damage, events);
+        const outcome = finish(next, events, rng);
+        if (outcome.state.turn === 'won' || outcome.events.some((event) => event.type === 'waveStart')) return outcome;
+      }
+    }
+  }
+
   const defendedDamage = (amount, action) => {
-    if (next.hero.exhausted) return Math.ceil(amount * BALANCE.exhaustedMultiplier);
-    if (next.hero.defense === 'dodge') {
+    let defended;
+    if (next.hero.exhausted) defended = Math.ceil(amount * BALANCE.exhaustedMultiplier);
+    else if (next.hero.defense === 'dodge') {
       if (action === 'heavy') return 0;
       const result = dodgedNormal ? Math.ceil(amount * BALANCE.dodgeRestMultiplier) : 0;
       dodgedNormal = true;
-      return result;
+      defended = result;
     }
-    if (next.hero.defense === 'guard') return Math.ceil(amount * (passive.guardMultiplier ?? BALANCE.guardMultiplier));
-    if (next.hero.defense === 'barrier') return Math.ceil(amount * BALANCE.barrierMultiplier);
-    return amount;
+    else if (next.hero.defense === 'guard') defended = Math.ceil(amount * (passive.guardMultiplier ?? BALANCE.guardMultiplier));
+    else if (next.hero.defense === 'barrier') defended = Math.ceil(amount * BALANCE.barrierMultiplier);
+    else defended = amount;
+    return next.hero.protected ? Math.ceil(defended * ALLIES[next.ally.id].protectMultiplier) : defended;
   };
 
   // Only enemies present when the phase starts act; a summon waits until the next phase.
@@ -429,14 +499,15 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     }
   }
 
-  next.hero = { ...next.hero, defense: null, exhausted: false };
+  next.hero = { ...next.hero, defense: null, exhausted: false, protected: false };
   next.enemies = next.enemies.map((enemy) => living(enemy) ? { ...enemy, intent: chooseEnemyIntent(next, enemy, rng) } : { ...enemy, intent: null });
 
-  const outcome = finish(next, events);
-  return outcome.state.turn === 'lost' ? outcome : { state: { ...outcome.state, turn: 'player', round: outcome.state.round + 1 }, events: outcome.events };
+  const outcome = finish(next, events, rng);
+  if (['won', 'lost'].includes(outcome.state.turn) || outcome.events.some((event) => event.type === 'waveStart')) return outcome;
+  return { state: { ...outcome.state, turn: 'player', round: outcome.state.round + 1 }, events: outcome.events };
 }
 
 export function chooseEncounter(tier, rng = Math.random) {
-  const choices = Object.values(ENCOUNTERS).filter((encounter) => encounter.tier === tier);
+  const choices = Object.values(ENCOUNTERS).filter((encounter) => !encounter.city && encounter.tier === tier);
   return choices[Math.floor(rng() * choices.length)];
 }
