@@ -112,6 +112,14 @@ function shield(p, center, bright = false) {
   p.dot(cx - 3, cy - 5, 'white'); p.dot(cx - 2, cy - 6, 'white');
 }
 
+/** The same shield seen from behind: gold rim, wooden inside, two leather straps (the lower one is the grip). */
+function shieldBack(p, center) {
+  const [cx, cy] = center;
+  p.shape('gold', (id) => p.ellipse(id, cx, cy, 7.5, 9.5));
+  p.shape('wood', (id) => p.ellipse(id, cx - 0.3, cy + 0.2, 5.6, 7.6), { line: false, dark: 1, shadow: 2 });
+  p.shape('leather', (id) => { p.capsule(id, cx - 4, cy - 3.5, cx + 4, cy - 3.5, 0.9, 0.9); p.capsule(id, cx - 4, cy + 3, cx + 5, cy + 3, 0.9, 0.9); }, { line: false });
+}
+
 function staff(p, handAt, deg, orbKey = 'crystal', orbSize = 3.4) {
   const [dx, dy] = along(deg);
   const [hx, hy] = handAt;
@@ -171,15 +179,17 @@ function drawFighter(pose = {}) {
   boot(p, 'leather', s.backLeg.foot);
   // The shield is on the back arm. Raised (guard), only the upper arm is behind
   // the body; the forearm and shield are drawn in front of the torso below.
+  // Lowered, it hangs on the far side of the body facing away from us, so we
+  // see its inside, with the hand gripping its strap, behind the torso.
   limb(p, 'red', s.backArm.shoulder, s.backArm.elbow, 2.6, 2.2);
   if (!o.shieldUp) {
+    shieldBack(p, [s.backArm.hand[0] - 5, s.backArm.hand[1] - 3]);
     limb(p, 'leather', s.backArm.elbow, s.backArm.hand, 2.2, 2);
     hand(p, 'leather', s.backArm.hand, 2.1);
   }
 
   // torso: tunic with a flared skirt, breastplate, belt; the shield hangs behind
   const waist = pt(s.neck, s.hip, 0.72);
-  if (!o.shieldUp) shield(p, [s.backArm.hand[0] - 5, s.backArm.hand[1] - 3]);
   p.shape('red', (id) => p.poly(id, [[nx - 7.5, ny + 1], [nx + 6.5, ny + 1], [waist[0] + 6, waist[1]], [px + 8.5, py + 7], [px - 8.5, py + 7], [waist[0] - 6.5, waist[1]]]), { shadow: 2 });
   p.shape('steel', (id) => p.poly(id, [[nx - 6.5, ny + 1.5], [nx + 6.5, ny + 1.5], [waist[0] + 6.5, waist[1] - 2], [waist[0] + 1, waist[1] + 1], [waist[0] - 6.5, waist[1] - 2]]), { gloss: true, shadow: 2 });
   p.shape('leather', (id) => p.poly(id, [[px - 7.5, py - 1.5], [px + 7.5, py - 1.5], [px + 7.5, py + 1.5], [px - 7.5, py + 1.5]]));

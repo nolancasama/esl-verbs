@@ -548,3 +548,14 @@ and proves the regional framework with one full city (Sakai).
   grass above the lower-third title. At bottom 4% the centred title covered the
   lower half of every hero, and nearly all of the Ninja. It still slides in from
   off-screen left. The ending keeps the shared centred position (44%).
+
+## 2026-10-01 — Fighter's lowered shield shows its inside
+
+- The lowered shield hangs on the far arm, on the far side of a right-facing
+  body, so its front faces away from the viewer. It now draws as the shield's
+  back (`shieldBack`): gold rim, wooden inside and two leather straps, with the
+  lower strap running in to the hand. Before, the blue face and boss showed
+  behind his back, so the shield read as flipped. The arm and hand are drawn
+  over the inside, and the torso still covers the inner third. Same position
+  (hand −5 / −3) and same for every lowered pose. The raised Guard / Counter
+  shield keeps its front face: it swings round to face the enemy.
