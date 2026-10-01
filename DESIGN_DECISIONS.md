@@ -440,3 +440,53 @@ and proves the regional framework with one full city (Sakai).
 - **Each non-origin stage starts with a checkpoint.** Quitting preserves the current city's stage and carried campaign resources, while battle defeat retries the same battle without repeating the quiz or changing saved cities. Matsubara keeps its original no-resume behavior.
 - **City results do not use the Matsubara hero-title system.** They celebrate the saved city, summarize the 40-question campaign and missed words, then prioritize returning to the Osaka map.
 - **Saved Sakai remains replayable from the map.** A replay starts a rested Sakai chapter with the same regional hero and does not require choosing a new hero.
+
+## 2026-10-01 — Story pacing and the hero / word / dummy quiz scene
+
+- **The Matsubara opening is brief again and holds only the immediate threat.**
+  Four title beats, about 10 s untouched with nothing to read through:
+  まつばら市 → まつばら市が あぶない！ (the Horde arrives, music cuts) → the
+  chosen hero steps in, まつばら市を まもろう！ → STAGE 1. No dates,
+  scientists, Black Star or Action Core. Rejected: keeping the ~47 s lore
+  crawl before question 1. Students should play first.
+- **The former opening lore is a post-victory story reveal.** ENDING_STORY is
+  victory first (darkness clears, MATSUBARA CITY IS SAFE!, YOU PROTECTED THE
+  CITY!) with no sequel setup. Then six short cards look back on what the
+  student just played: Matsubara's Action Energy, the Black Star in Lake Biwa,
+  the Shadow Horde coming out of it, why it attacked Matsubara, the Action Core
+  (どうしに こたえると エネルギーが たまる, now understood from four stages of
+  doing it) and 「きみだ！」 as the hero steps back in. Only then come two
+  Osaka cards (the Horde has spread → 大阪を まもれ！), then the results and the
+  map. Rejected: copying the old opening text as-is (it was written as a
+  set-up, not a reveal); and putting the Osaka reveal after the results (the
+  existing ending → results chain already gives the order with no flow change).
+  The year 2199, "strongest city in Japan" and "millions failed" were cut or
+  folded in to keep the reveal short.
+- **Story lines are sized for the 1024×600 scene**: at most ~17 characters for
+  a normal line and ~8 for a large one, so nothing wraps or clips in the story
+  window.
+- **The Adventure quiz scene is HERO | WORD | DUMMY.** A 31 / 38 / 31 column grid
+  with one centre line at roughly 40–45% of the arena (spacer rows 1 : 1.35),
+  hero and dummy on a shared ground line, the word centred on their height and
+  the speaker under the word. The word fits its column on one line (`--ems` from
+  the text, container-query font size, 2.4rem floor; a Japanese phrase may break
+  only before を). Rejected: absolute positioning with the word in the sky and
+  the actors at the bottom, which read as a dashboard with characters in it.
+- **Hero and dummy are ~1.5–1.7× their former size** through their own scale
+  `--apx`, separate from the backdrop's `--px`: 3 at Chromebook height (≤700 px,
+  was 2), 5 at 1366×768 (was 3), 4 for 701–740 px or ≤1250 px wide, 6 at
+  ≥1500×940 (was 4). 7 was tried at 1920×1080 and outweighed the word. Strike
+  effects use `--apx` too, so they scale with the actors.
+- **Hero status stands under the hero** (name · LV, HP, potions) on a light
+  translucent gradient with a thin outline, replacing the bottom-left mini-HUD.
+  The answer box stays centred below the scene. Each input type has a fixed
+  answer-row height sized to its tallest state, so answering never moves the
+  scene.
+- **The quiz Action Energy gauge is removed.** It mirrored the top AP meter, so
+  the top meter is now the only AP display. A correct answer is still the class
+  strike on the dummy, and the AP point lands on the top meter with the hit. The
+  mage's bolt now crosses the word's line, so projectiles draw behind the word.
+- **A speech-synthesis failure (音が出ません) shows under the speaker**, not in the
+  answer box, where its extra row pushed the controls off a 600 px screen.
+- **Stage metadata is quieter**: a thin translucent strip, smaller type, same
+  information.

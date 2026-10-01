@@ -3,7 +3,7 @@ import { isJapaneseCorrect } from './normalize.js';
 import { MODES, answer, choiceFallback, createRound, makeChoices, practiceItems, viewModel } from './engine.js';
 import { TapToTalk } from './speech.js';
 import { speak } from './tts.js';
-import { BALANCE, CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
+import { CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
 import { battleXp, chooseEncounter, createBattle } from './battle-engine.js';
 import {
   applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, chapterRest, createCampaign, recordDefeat, recordStage, resumeCampaign, retryHp, xpProgress,
@@ -213,7 +213,7 @@ function heroQuizPose(strike = false) {
 }
 
 // A correct Adventure answer is a quick class strike on the training dummy; the
-// AP point lands when the hit does. Timings in ms from the answer.
+// AP point lands on the top meter when the hit does. Timings in ms from the answer.
 const TRAINING_STRIKE = {
   fighter: { pose: 'attack', hit: 'slash', impact: 230 },
   mage: { pose: 'cast', projectile: 'boltProj', launch: 160, hit: 'boltHit', impact: 420 },
@@ -221,19 +221,19 @@ const TRAINING_STRIKE = {
 };
 let quizStrike = false; // set by a correct Adventure answer; the next render plays it once
 
-/** The Action Energy gauge: a mirror of the same AP value as the top meter, never its own state. */
-function actionEnergy(value) {
-  const box = element('div', 'rpg-energy'); box.setAttribute('aria-hidden', 'true');
-  const label = element('span', 'rpg-energy__label'); label.append(element('b', '', 'ACTION ENERGY'), element('small', '', 'アクション・エネルギー'));
-  const cells = element('span', 'rpg-energy__cells');
-  for (let index = 0; index < BALANCE.maxAp; index += 1) cells.append(element('i', index < value ? 'is-on' : ''));
-  box.append(element('span', 'rpg-energy__core'), label, cells);
-  box.charge = (next) => {
-    const cell = cells.children[next - 1];
-    cell?.classList.add('is-on', 'is-new');
-    box.classList.remove('is-charged'); void box.offsetWidth; box.classList.add('is-charged');
-  };
-  return box;
+/**
+ * The prompt word, sized to fit the centre column on one line: `--ems` is its
+ * width in em (full-width kana/kanji 1, Latin ~0.6) for the CSS fit. A Japanese
+ * phrase may still break before を if it cannot fit even at the smallest size.
+ */
+function promptWord(text) {
+  const word = element('span', 'rpg-field__word');
+  const fullWidth = (code) => (code >= 0x3000 && code <= 0x9fff) || (code >= 0xff00 && code <= 0xffef);
+  const ems = [...text].reduce((sum, char) => sum + (fullWidth(char.codePointAt(0)) ? 1 : 0.6), 0);
+  word.style.setProperty('--ems', ems.toFixed(1));
+  const at = text.indexOf('を');
+  if (at > 0) word.append(text.slice(0, at), document.createElement('wbr'), text.slice(at)); else word.textContent = text;
+  return word;
 }
 
 /** A one-shot pixel effect inside the quiz field, centred on (x, y). */
@@ -249,10 +249,10 @@ function fieldEffect(field, name, x, y, { dur = 360, travel = null } = {}) {
   return node;
 }
 
-function trainingStrike({ field, heroNode, dummy, energy, value }) {
+function trainingStrike({ field, heroNode, dummy, value }) {
   const move = TRAINING_STRIKE[campaign.heroId] ?? TRAINING_STRIKE.fighter;
   const heroSprite = heroNode.querySelector('.battle-sprite'), dummySprite = dummy.querySelector('.battle-sprite');
-  const land = () => { apMeter?.set(value); energy.charge(value); };
+  const land = () => apMeter?.set(value);
   if (reducedMotion()) { land(); return; }
   const box = field.getBoundingClientRect(), from = heroNode.getBoundingClientRect(), to = dummy.getBoundingClientRect();
   const at = { x: to.left - box.left + to.width * 0.5, y: to.top - box.top + to.height * 0.45 };
@@ -274,8 +274,9 @@ function trainingStrike({ field, heroNode, dummy, energy, value }) {
 
 /**
  * Adventure quiz: one training field under a thin top strip (menu, AP, music).
- * The word, the answer, the hero and a training dummy share the scene; a
- * correct answer is a strike on the dummy that charges the Action Energy.
+ * The scene is HERO | WORD | DUMMY on one centre line, the hero's status under
+ * the hero, the answer centred below. A correct answer is a strike on the
+ * dummy, and the AP point lands on the top meter with the hit.
  */
 function renderAdventureQuestion(autoSpeak = true) {
   tap?.cancel(); tap = null; clearBattle(); clearTimers(); screen = 'adventure-quiz';
@@ -291,7 +292,6 @@ function renderAdventureQuestion(autoSpeak = true) {
 
   const hud = element('div', 'rpg-field__hud');
   hud.append(element('span', 'rpg-field__stage', `STAGE ${stage}`), element('span', 'rpg-field__mode', titles[round.mode][2]), element('span', 'rpg-field__count', `${round.currentIndex + 1} / ${round.items.length}`));
-  const energy = actionEnergy(round.correctCount - (strike ? 1 : 0));
 
   const arena = element('div', 'rpg-field__arena');
   const prompt = element('div', 'rpg-field__prompt');
@@ -301,29 +301,31 @@ function renderAdventureQuestion(autoSpeak = true) {
     // Listening modes have no word to show: the speaker itself is the prompt.
     prompt.classList.add('rpg-field__prompt--audio'); speaker.classList.add('rpg-speaker--big');
     prompt.append(speaker, element('span', 'rpg-field__listen', 'きいて こたえよう！'));
-  } else prompt.append(element('span', 'rpg-field__word', vm.promptText), speaker);
+  } else prompt.append(promptWord(vm.promptText), speaker);
+  // A speech-synthesis failure is said beside the speaker, so the answer box keeps its height.
+  if (audioError) prompt.append(element('div', 'audio-error', MODES[round.mode].showPrompt ? '音が出ません（表示のことばを読んでください）' : '音が出ません'));
   const heroNode = element('span', 'rpg-field__hero'); heroNode.innerHTML = battleArt(hero.id, heroQuizPose(strike));
   const dummy = element('span', 'rpg-field__dummy'); dummy.innerHTML = battleArt('trainingDummy');
   [heroNode, dummy].forEach((node) => node.firstElementChild?.setAttribute('aria-hidden', 'true'));
-  arena.append(prompt, heroNode, dummy);
+  // The hero's status stands under the hero: name and level, HP, potions.
+  const stats = element('div', 'rpg-field__stats');
+  const potions = element('span', 'rpg-field__potions'); potions.innerHTML = getIcon('potion'); potions.append(`×${campaign.potions}`);
+  potions.setAttribute('aria-label', `ポーション ×${campaign.potions}`);
+  stats.append(element('strong', '', `${hero.name.toUpperCase()} · LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), potions);
+  arena.append(heroNode, prompt, dummy, stats);
   if (round.currentStreak >= 2) arena.append(element('div', 'rpg-field__streak', `${round.currentStreak} in a row!`));
 
   const bottom = element('div', 'rpg-field__bottom');
-  const mini = element('div', 'rpg-field__mini');
-  const potions = element('span', 'rpg-field__potions'); potions.innerHTML = getIcon('potion'); potions.append(`×${campaign.potions}`);
-  potions.setAttribute('aria-label', `ポーション ×${campaign.potions}`);
-  mini.append(element('strong', '', `${hero.name.toUpperCase()} LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), potions);
   const answer = answerArea(vm, item, true); answer.classList.add('rpg-field__answer');
   answer.classList.toggle('is-answered', /^(Correct|Wrong|Answer)/.test(feedback));
   // Adventure speech stages have no マイクなし: choices appear only when the mic cannot work.
   if (round.mode >= 3 && vm.input === 'choices') answer.append(element('span', 'rpg-field__note', ADVENTURE_MIC_MESSAGE));
-  if (audioError) answer.append(element('div', 'audio-error', MODES[round.mode].showPrompt ? '音が出ません（表示のことばを読んでください）' : '音が出ません'));
-  bottom.append(mini, answer, element('span', 'rpg-field__balance'));
+  bottom.append(answer);
 
-  field.append(hud, energy, arena, bottom);
+  field.append(hud, arena, bottom);
   root.append(top, field); app.append(root);
   apMeter?.mount(slot);
-  if (strike) trainingStrike({ field, heroNode, dummy, energy, value: round.correctCount });
+  if (strike) trainingStrike({ field, heroNode, dummy, value: round.correctCount });
   else apMeter?.set(round.correctCount);
   if (autoSpeak) playPrompt(vm);
 }

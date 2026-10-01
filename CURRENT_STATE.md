@@ -1,23 +1,27 @@
 # Current State
 
-## Status (2026-09-30)
+## Status (2026-10-01)
 
-The Osaka expansion is implemented on `master`: a Japanese story opening, the
-Adventure quiz redesigned as one training field, the Osaka campaign map,
+The Osaka expansion is implemented on `master`: the Osaka campaign map,
 regional saves, and Sakai as the first full post-Matsubara city (40 questions,
-four battles with Horde waves and the Osaka Defender ally). Matsubara's
-campaign, battles and balance are unchanged. Pushing `master` deploys live
-(GitHub Pages, https://nolancasama.github.io/esl-verbs/).
+four battles with Horde waves and the Osaka Defender ally). The 2026-10-01 pass
+moved the story lore from the opening to the Matsubara ending and rebuilt the
+Adventure quiz as a hero / word / dummy scene. Battles, AP, XP and balance are
+unchanged. Pushing `master` deploys live (GitHub Pages,
+https://nolancasama.github.io/esl-verbs/).
 
 What a player sees now:
-- Hero select → Japanese story crawl (西暦2199年, the Black Star in Lake Biwa,
-  the Shadow Horde, Matsubara's Action Energy, the Action Core, 「きみだ。」 with
-  the chosen hero) → Matsubara stages 1–4 as before.
-- Adventure quiz: one training field (menu / AP / music strip on top; stage
-  and count, an Action Energy gauge mirroring AP, the word with a speaker
-  button, the hero and a training dummy, answer box, quiet HP/potion HUD). A
-  correct answer is a class strike on the dummy as the AP lands.
-- Matsubara ending adds the Osaka reveal → results with `つづける つぎの まちへ！`
+- Hero select → short intro (~10 s, four title beats: まつばら市 → あぶない！ with
+  the Horde → the chosen hero, まもろう！ → STAGE 1) → Matsubara stages 1–4.
+- Adventure quiz: menu / AP / music strip on top (the only AP display), a quiet
+  stage / mode / count strip, then one scene: hero | word (speaker beneath) |
+  training dummy, the hero's LV / HP / potions under the hero, the answer box
+  centred below. A correct answer is a class strike on the dummy and +1 on the
+  top meter as it hits; a wrong answer is a stumble.
+- Matsubara ending: victory (darkness clears, MATSUBARA CITY IS SAFE!, YOU
+  PROTECTED THE CITY!) → six lore cards (Action Energy, Black Star / Lake Biwa,
+  Shadow Horde, why it attacked, the Action Core, 「きみだ！」) → Osaka reveal
+  (the Horde has spread, 大阪を まもれ！) → results with `つづける つぎの まちへ！`
   → Osaka map (Matsubara ★, Sakai きけん！, Yao / Higashiosaka / Osaka City locked).
 - Sakai: short intro → quiz modes 1–4 (fresh random words) → battles
   First Assault / Horde Battle (2 waves) / Defenders Overwhelmed (the Osaka
@@ -25,6 +29,19 @@ What a player sees now:
   Shadow Commander last) → ending (the ally stays in Sakai) → city results →
   map save animation. A checkpoint is saved at each Sakai stage start; the
   map and menu offer つづき / CONTINUE ADVENTURE.
+
+Verified 2026-10-01 (story / quiz-scene pass):
+- `npm test` 95/95, browser playthrough passes unchanged, `npm run balance`
+  output byte-identical to the previous commit.
+- Scripted screenshots of the quiz scene (scripts in the session scratchpad, not
+  the repo): Fighter / Mage / Ninja, stages 1–4, speech and mic-fallback
+  choices, initial / strike / impact / correct / wrong / answer-reveal states, at
+  1024×600, 1280×720, 1366×635, 1366×768, 1920×1080 and 412×860. No page
+  scroll, no answer control past the field, no stats / answer overlap, no word
+  overflow, no console errors. Strike effects land on the dummy for all three
+  classes.
+- Intro (10.2 s untouched) and the ending tapped through card by card at
+  1024×600 and 1366×768: every card fits the story window without wrapping.
 
 Verified 2026-09-30:
 - `npm test` — 95 unit tests pass (Sakai balance measured like Matsubara:
@@ -58,6 +75,10 @@ Verified 2026-09-30:
 - Frozen contract for the expansion: `.ai/osaka-spec.md`.
 - `src/story.js` — story scripts (beats, `{漢字|かな}` furigana, `cardMs`).
   `playStory()` in `src/app.js` plays them (finish-once, SKIP, tap to advance).
+  At 1024×600 a normal line holds ~17 characters and a large one ~8.
+- Quiz scene: `renderAdventureQuestion()` / `trainingStrike()` in `src/app.js`;
+  `rpg.css` "RPG quiz" section (`--px` backdrop scale, `--apx` actor scale set
+  per viewport near the end of the file).
 - `src/region.js` — CITIES (map positions), CITY_CAMPAIGNS (stage modes and
   encounters), city states, save parsing (`esl-verbs-region-v1`), checkpoints.
   `src/campaign.js` — `createCampaign(heroId, { cityId, level, xp })`,
@@ -86,13 +107,14 @@ Verified 2026-09-30:
 
 ## Manual Chromebook / classroom checks still needed
 
-- Story: can students read the crawl at its pace; do they tap on or skip;
-  is ~47 s untouched too long in practice; is the furigana readable on a
-  projector.
+- Story: does the ~10 s intro give enough context before Stage 1; can students
+  read the ending's lore cards at their pace (they can tap on or skip); is the
+  furigana readable on a projector.
 - The music cut when the Horde appears, the ominous/awaken tracks and the
   stings, by ear, and with TTS ducking.
-- Training-field strike: does it feel rewarding without slowing the quiz
-  (~0.5 s to impact); is the in-field Action Energy gauge understood.
+- Quiz scene on a real Chromebook: sprite scale-up smoothness at 1024×600, the
+  strike (~0.5 s to impact) without slowing the quiz, and whether students
+  notice +1 on the top AP meter now that the in-field gauge is gone.
 - Sakai: is the 20-minute city too long for one lesson (checkpoints resume at
   the current stage); do students find the Horde waves and the ally clear.
 - Earlier open items: real mic grant/denial, IME Enter, sprite build time and

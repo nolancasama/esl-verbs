@@ -1,4 +1,4 @@
-// Adventure story scripts. The exposition is Japanese for elementary students:
+// Adventure story scripts. The story text is Japanese for elementary students:
 // short kana-heavy lines, common kanji only, harder words as {漢字|かな} (shown
 // as furigana). Game terms stay English. The tone is deliberately grand and
 // never winks at the player: Matsubara really is the strongest city in Japan.
@@ -29,40 +29,38 @@ export function rubyParts(line) {
 
 const card = (lines, extra = {}) => ({ card: { lines, ...extra } });
 
-// Matsubara opening: peaceful city → the Horde appears (happy music cuts) →
-// Japanese crawl over ominous music → the Action Core → the chosen hero.
+// Matsubara opening: only the immediate threat, about ten seconds with no text
+// to read through. The city, the danger, the chosen hero, then Stage 1. Why it
+// is all happening is told after the student has saved the city (ENDING_STORY).
 export const INTRO_STORY = Object.freeze([
-  { mood: 'calm', music: 'field', title: { ja: 'まつばら市', en: 'MATSUBARA CITY' }, ms: 2600 },
-  { monsters: 'near', mood: 'danger', cut: true, sfx: 'alarm', ms: 550 },
-  { music: 'ominous', ...card(['{西暦|せいれき}2199年。'], { big: 0 }), ms: 2200 },
-  card(['日本で もっとも', 'つよい 人々が くらす 町。', 'その名は…… まつばら市。']),
-  card(['まつばらの 人々は だれよりも つよく、元気だった。', '{科学者|かがくしゃ}たちは その なぞの力を', '「アクション・エネルギー」と よんだ。']),
-  card(['しかし ある夜――', '{巨大|きょだい}な いんせき「ブラック・スター」が', 'びわ{湖|こ}に おちた。']),
-  card(['いんせきから あらわれたのは、', '{地球|ちきゅう}で もっとも きけんな まものの ぐんだん――', '「シャドウ・ホード」'], { big: 2 }),
-  card(['その数は かぞえきれない。', 'だれにも とめられない！']),
-  card(['シャドウ・ホードは かんじとった。', '日本で もっとも 大きな アクション・エネルギー。', 'その場所は…… まつばら市！']),
-  card(['まつばらの 力を うばって、', 'せかい さいきょうに なるために！']),
-  { music: 'awaken', ...card(['まつばらの {科学者|かがくしゃ}たちは、', 'さいごの きぼうを うごかした。', '「アクション・コア」'], { big: 2 }) },
-  { core: true, ...card(['うごきを あらわす ことば（どうし）を', 'こたえると、アクション・コアに', 'エネルギーが たまり、たたかう力に なる！'], { en: 'ACTION WORDS → ACTION ENERGY → BATTLE POWER' }) },
-  card(['これまで {何百万人|なんびゃくまんにん}もの 人が ためした。', 'しかし―― だれにも うごかせなかった。']),
-  card(['そして 今。', 'アクション・コアが', 'ひとりの ヒーローを えらんだ。']),
-  { stop: true, ...card(['それは――'], { big: 0, hold: true }), ms: 1500 },
-  { hero: 'idle', core: true, sfx: 'heroSting', ...card(['きみだ。'], { big: 0, hold: true }), ms: 1900 },
-  { hero: 'victory', mood: 'calm', monsters: 'near', ...card(['日本で いちばん つよい 町には、', '日本で いちばん つよい ヒーローが ひつようだ。']) },
-  { sfx: 'fanfare', ...card(['まつばら市を まもれ！'], { big: 0, hold: true, en: 'PROTECT MATSUBARA!' }), ms: 2200 },
+  { mood: 'calm', music: 'field', title: { ja: 'まつばら市', en: 'MATSUBARA CITY' }, ms: 2400 },
+  { mood: 'danger', monsters: 'near', cut: true, sfx: 'alarm', title: { ja: 'まつばら市が あぶない！', en: 'MATSUBARA CITY IS IN DANGER!' }, ms: 3000 },
+  { hero: 'idle', sfx: 'fanfare', title: { ja: 'まつばら市を まもろう！', en: 'PROTECT THE CITY!' }, ms: 3000 },
+  { title: { ja: 'STAGE 1', en: 'ステージ 1' }, ms: 1300 },
 ]);
 
-// Matsubara ending: the Horde retreats, the city celebrates, then the wider
-// conflict is revealed and the Osaka campaign begins.
+// Matsubara ending, in three parts:
+//  1. the victory, on its own: the darkness clears, the city celebrates;
+//  2. the story reveal, looking back at what the student just played through:
+//     Matsubara's Action Energy, the Black Star in Lake Biwa, why the Shadow
+//     Horde attacked, the Action Core (which the student has been charging with
+//     every verb) and why it chose this hero;
+//  3. only then the sequel threat: the Horde has spread across Osaka.
 export const ENDING_STORY = Object.freeze([
   { mood: 'danger', monsters: 'near', hero: 'idle', cut: true, ms: 900 },
-  { mood: 'safe', monsters: 'gone', sfx: 'barrier', title: { ja: 'やみが きえた！', en: 'THE DARKNESS IS GONE!' }, ms: 2600 },
+  { mood: 'safe', monsters: 'gone', sfx: 'barrier', title: { ja: 'やみが きえた！', en: 'THE DARKNESS IS GONE!' }, ms: 2400 },
   { hero: 'victory', citizens: true, music: 'victory', title: { ja: 'まつばら市を まもった！', en: 'MATSUBARA CITY IS SAFE!' }, ms: 3000 },
-  card(['シャドウ・ホードは', 'まつばらから しりぞいた。']),
-  { cut: true, mood: 'danger', citizens: false, ...card(['しかし――', 'たたかいは まだ おわっていなかった。']) },
-  { music: 'ominous', monsters: 'spread', ...card(['シャドウ・ホードは、', '大阪の ほかの 町へ ひろがっていた。']) },
-  { stop: true, ...card(['まつばらは まもった。', 'つぎは――'], { hold: true }), ms: 2000 },
-  { mood: 'safe', monsters: 'gone', sfx: 'heroSting', ...card(['大阪を まもれ！'], { big: 0, hold: true, en: 'SAVE OSAKA!' }), ms: 2400 },
+  { title: { ja: 'きみが 町を まもった！', en: 'YOU PROTECTED THE CITY!' }, ms: 3000 },
+
+  { stop: true, hero: 'gone', citizens: false, ...card(['まつばらの 人々には、', 'ふしぎな力が あった。', 'その名は――', '「アクション・エネルギー」']) },
+  { mood: 'danger', music: 'ominous', ...card(['ある日、びわ{湖|こ}に', '{巨大|きょだい}な いんせきが おちた。', 'その名は「ブラック・スター」。']) },
+  { monsters: 'near', ...card(['ブラック・スターから', 'あらわれたのが――', 'シャドウ・ホード'], { big: 2 }) },
+  card(['シャドウ・ホードは、まつばらの', 'アクション・エネルギーを ねらって', 'この町を おそったのだ！']),
+  { mood: 'safe', monsters: 'gone', music: 'awaken', core: true, ...card(['{科学者|かがくしゃ}たちが つくった そうち', 'アクション・コア', 'どうしに こたえると', 'エネルギーが たまる！'], { big: 1, en: 'ACTION WORDS → ACTION ENERGY → BATTLE POWER' }) },
+  { stop: true, hero: 'idle', sfx: 'heroSting', ...card(['たくさんの 人が ためした。', 'でも アクション・コアが', 'えらんだのは――', 'きみだ！'], { big: 3, hold: true }), ms: 3600 },
+
+  { cut: true, mood: 'danger', core: false, music: 'ominous', monsters: 'spread', ...card(['まつばら市は まもった。', 'でも シャドウ・ホードは', '大阪の ほかの町へ ひろがっている！']) },
+  { stop: true, mood: 'safe', monsters: 'gone', hero: 'victory', sfx: 'heroSting', ...card(['つぎは――', '大阪を まもれ！'], { big: 1, hold: true, en: 'SAVE OSAKA!' }), ms: 2600 },
 ]);
 
 // Short intro and ending for each regional city campaign.
