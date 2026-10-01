@@ -6,22 +6,26 @@ The Osaka expansion is implemented on `master`: the Osaka campaign map,
 regional saves, and Sakai as the first full post-Matsubara city (40 questions,
 four battles with Horde waves and the Osaka Defender ally). The 2026-10-01 pass
 moved the story lore from the opening to the Matsubara ending and rebuilt the
-Adventure quiz as a hero / word / dummy scene. Battles, AP, XP and balance are
-unchanged. Pushing `master` deploys live (GitHub Pages,
+Adventure quiz as a hero / word / dummy scene; a follow-up polish pass the same
+day (lower-third intro titles, shorter lore, centred word, larger stage banner,
+Fighter shield layering). Battles, AP, XP and balance are unchanged. Pushing `master` deploys live (GitHub Pages,
 https://nolancasama.github.io/esl-verbs/).
 
 What a player sees now:
-- Hero select → short intro (~10 s, four title beats: まつばら市 → あぶない！ with
-  the Horde → the chosen hero, まもろう！ → STAGE 1) → Matsubara stages 1–4.
-- Adventure quiz: menu / AP / music strip on top (the only AP display), a quiet
-  stage / mode / count strip, then one scene: hero | word (speaker beneath) |
-  training dummy, the hero's LV / HP / potions under the hero, the answer box
-  centred below. A correct answer is a class strike on the dummy and +1 on the
+- Hero select → short intro (~10 s, four lower-third title beats over the city:
+  まつばら市 → あぶない！ with the Horde → the chosen hero, まもろう！ → STAGE 1)
+  → Matsubara stages 1–4.
+- Adventure quiz: menu / AP / music strip on top (the only AP display), a
+  readable stage / instruction / count banner, then one scene: hero | word
+  (speaker beneath) | training dummy, the hero's LV / HP / potions under the
+  hero, the word centred between the banner and the answer box, which sits a
+  short way below the scene. A correct answer is a class strike on the dummy and +1 on the
   top meter as it hits; a wrong answer is a stumble.
-- Matsubara ending: victory (darkness clears, MATSUBARA CITY IS SAFE!, YOU
-  PROTECTED THE CITY!) → six lore cards (Action Energy, Black Star / Lake Biwa,
-  Shadow Horde, why it attacked, the Action Core, 「きみだ！」) → Osaka reveal
-  (the Horde has spread, 大阪を まもれ！) → results with `つづける つぎの まちへ！`
+- Matsubara ending (~26 s auto-play, every card tap-to-advance): victory
+  (darkness clears with MATSUBARA CITY IS SAFE!, YOU PROTECTED THE CITY!) →
+  five lore cards (Action Energy; Black Star in Lake Biwa + Shadow Horde; why
+  it attacked; the Action Core, then the short 「きみだ！」 beat) → Osaka reveal
+  (the Horde has spread, then 大阪を まもれ！ / SAVE OSAKA!) → results with `つづける つぎの まちへ！`
   → Osaka map (Matsubara ★, Sakai きけん！, Yao / Higashiosaka / Osaka City locked).
 - Sakai: short intro → quiz modes 1–4 (fresh random words) → battles
   First Assault / Horde Battle (2 waves) / Defenders Overwhelmed (the Osaka
@@ -29,6 +33,19 @@ What a player sees now:
   Shadow Commander last) → ending (the ally stays in Sakai) → city results →
   map save animation. A checkpoint is saved at each Sakai stage start; the
   map and menu offer つづき / CONTINUE ADVENTURE.
+
+Verified 2026-10-01 (polish pass):
+- `npm test` 95/95, browser playthrough passes, `npm run balance` byte-identical
+  to the previous commit.
+- Scripted screenshots + geometry (scratchpad scripts): quiz stages 1–4 at
+  1024×600, 1366×768, 1920×1080 (typed, listening, speech with a stubbed
+  SpeechRecognition, mic-fallback), Mage / Ninja, wrong-answer state, 412×860.
+  No page scroll, banner on one line with the count inside, word centre within
+  1 px of the banner–answer midpoint, answer position unchanged after answering.
+- Intro beats at 1024×600 and 1366×768 (skyline clear of the title); ending
+  tapped card by card at 1024×600 (every line on one line, ends on results).
+- Fighter guard and counter rows rendered before / after (shield behind the
+  breastplate, forearm and hand in front).
 
 Verified 2026-10-01 (story / quiz-scene pass):
 - `npm test` 95/95, browser playthrough passes unchanged, `npm run balance`
@@ -77,7 +94,9 @@ Verified 2026-09-30:
   `playStory()` in `src/app.js` plays them (finish-once, SKIP, tap to advance).
   At 1024×600 a normal line holds ~17 characters and a large one ~8.
 - Quiz scene: `renderAdventureQuestion()` / `trainingStrike()` in `src/app.js`;
-  `rpg.css` "RPG quiz" section (`--px` backdrop scale, `--apx` actor scale set
+  `rpg.css` "RPG quiz" section (field rows banner | 1fr | scene | 1fr | answer |
+  1.3fr; the prompt column centres the word, `.rpg-field__under` holds the
+  speaker / audio error) (`--px` backdrop scale, `--apx` actor scale set
   per viewport near the end of the file).
 - `src/region.js` — CITIES (map positions), CITY_CAMPAIGNS (stage modes and
   encounters), city states, save parsing (`esl-verbs-region-v1`), checkpoints.
@@ -107,7 +126,9 @@ Verified 2026-09-30:
 
 ## Manual Chromebook / classroom checks still needed
 
-- Story: does the ~10 s intro give enough context before Stage 1; can students
+- Story: does the lower-third title read on a projector, and is it acceptable
+  that it covers the hero's legs in the まもろう！ beat; does the ~10 s intro
+  give enough context before Stage 1; can students
   read the ending's lore cards at their pace (they can tap on or skip); is the
   furigana readable on a projector.
 - The music cut when the Horde appears, the ominous/awaken tracks and the

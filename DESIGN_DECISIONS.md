@@ -490,3 +490,42 @@ and proves the regional framework with one full city (Sakai).
   answer box, where its extra row pushed the controls off a 600 px screen.
 - **Stage metadata is quieter**: a thin translucent strip, smaller type, same
   information.
+
+## 2026-10-01 — Story / quiz polish: lower-third titles, shorter lore, centred word, shield layering
+
+- **Intro title beats are a lower third.** The title sits bottom-centre (6% up)
+  on a light horizontal gradient band with no panel frame, in slightly smaller
+  type, so the skyline and the Horde stay the picture. Rejected: the old
+  top-of-scene panel, which covered the skyline. The story hero stands
+  bottom-centre, so in 「まつばら市を まもろう！」 the band covers the hero's
+  legs; head, torso and sword stay visible.
+- **The Matsubara ending is shorter (34.1 s → 26.4 s of auto-play).** 「やみが
+  きえた！」 is folded into the SAFE beat (the darkness still visibly clears).
+  The lore is five cards: Action Energy; Black Star in Lake Biwa + the Shadow
+  Horde it released; why the Horde attacked; the Action Core (verbs charge it);
+  then a short second beat 「コアが えらんだ ヒーローは―― きみだ！」. That beat is
+  kept separate for the reveal and because one card of eight lines would not
+  fit the 1024×600 window. The Osaka card is followed by a one-line
+  「大阪を まもれ！ / SAVE OSAKA!」. "Many people tried" is gone.
+- **The quiz word is centred between the banner and the answer box, not the
+  viewport.** The field is banner | 1fr | scene (its own height) | 1fr | answer
+  | 1.3fr, so the scene centres in the space between the banner and the answer.
+  The word column spans the hero and status rows and centres the word itself
+  (prompt grid `1fr auto 1fr`); the speaker and audio error hang below it. The
+  word's centre is within 1 px of that midpoint at 1024×600, 1366×768 and
+  1920×1080. Rejected: a fixed .3fr spacer under an arena with internal fr
+  spacers. That squeezed the arena below the scene's height at 1366×768, and
+  with the speaker counted, the word sat ~70 px high.
+- **The answer box moved up** by taking free space from below it (the 1.3fr
+  row). It moves 45–76 px depending on viewport and still has a fixed height
+  per input type.
+- **The stage banner is about twice as large**: STAGE 17–22 px, count 14–18 px,
+  instruction 1.25–1.6rem (weight 900), 6 px padding, on the same translucent
+  gradient. All four instructions fit on one line at 1024×600, and the word
+  stays far larger.
+- **Fighter raised shield is layered behind the torso.** Raised-shield order is
+  back upper arm → shield → torso / breastplate → head → back forearm and hand
+  → front arm. The breastplate covers the shield's inner edge, and the forearm
+  and hand show in front holding the grip. The shield moved only 1 px outward.
+  The lowered-shield order is unchanged. The Osaka Defender's small round
+  shield was left as is.

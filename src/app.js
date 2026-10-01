@@ -297,13 +297,17 @@ function renderAdventureQuestion(autoSpeak = true) {
   const prompt = element('div', 'rpg-field__prompt');
   const speaker = element('button', 'rpg-speaker px-button secondary', '🔊'); speaker.type = 'button';
   speaker.setAttribute('aria-label', 'Listen again / もういちど きく'); speaker.onclick = () => playPrompt(vm);
+  // The word (or, in listening modes, the big speaker) is centred in the scene;
+  // everything under it hangs below that centre.
+  const under = element('div', 'rpg-field__under');
   if (vm.promptText === null) {
     // Listening modes have no word to show: the speaker itself is the prompt.
     prompt.classList.add('rpg-field__prompt--audio'); speaker.classList.add('rpg-speaker--big');
-    prompt.append(speaker, element('span', 'rpg-field__listen', 'きいて こたえよう！'));
-  } else prompt.append(promptWord(vm.promptText), speaker);
+    prompt.append(speaker); under.append(element('span', 'rpg-field__listen', 'きいて こたえよう！'));
+  } else { prompt.append(promptWord(vm.promptText)); under.append(speaker); }
   // A speech-synthesis failure is said beside the speaker, so the answer box keeps its height.
-  if (audioError) prompt.append(element('div', 'audio-error', MODES[round.mode].showPrompt ? '音が出ません（表示のことばを読んでください）' : '音が出ません'));
+  if (audioError) under.append(element('div', 'audio-error', MODES[round.mode].showPrompt ? '音が出ません（表示のことばを読んでください）' : '音が出ません'));
+  prompt.append(under);
   const heroNode = element('span', 'rpg-field__hero'); heroNode.innerHTML = battleArt(hero.id, heroQuizPose(strike));
   const dummy = element('span', 'rpg-field__dummy'); dummy.innerHTML = battleArt('trainingDummy');
   [heroNode, dummy].forEach((node) => node.firstElementChild?.setAttribute('aria-hidden', 'true'));
@@ -808,7 +812,7 @@ function playStory(kind, beats, onDone) {
   const allySlot = element('div', 'cinematic__hero cinematic__ally');
   const heroSlot = element('div', 'cinematic__hero');
   const veil = element('div', 'story__veil');
-  const title = element('div', 'story__title px-panel'); title.hidden = true;
+  const title = element('div', 'story__title'); title.hidden = true;
   const crawl = element('div', 'story__crawl'); crawl.setAttribute('aria-live', 'polite');
   const tapHint = element('span', 'story__tap', 'タップで つぎへ ▶'); tapHint.setAttribute('aria-hidden', 'true');
   scene.append(...Object.values(layers), monsters, citizens, core, allySlot, heroSlot, veil, title, crawl, tapHint);

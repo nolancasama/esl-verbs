@@ -169,17 +169,20 @@ function drawFighter(pose = {}) {
   limb(p, 'indigo', s.backLeg.start, s.backLeg.knee, 3.6, 2.8);
   limb(p, 'indigo', s.backLeg.knee, s.backLeg.foot, 3, 2.2);
   boot(p, 'leather', s.backLeg.foot);
-  // The shield is on the back arm. Raised (guard), only the upper arm is behind
-  // the body; the forearm and shield are drawn in front of the torso below.
+  // The shield is on the back arm and always behind the torso. Lowered, it hangs
+  // from the hand behind the body. Raised (guard), it stands out in front, but
+  // where its inner edge meets the body the torso covers it; the forearm and
+  // the hand holding it are drawn in front of the torso below.
   limb(p, 'red', s.backArm.shoulder, s.backArm.elbow, 2.6, 2.2);
-  if (!o.shieldUp) {
+  if (o.shieldUp) shield(p, [s.backArm.hand[0] + 2.5, s.backArm.hand[1]], o.flashShield);
+  else {
     limb(p, 'leather', s.backArm.elbow, s.backArm.hand, 2.2, 2);
     hand(p, 'leather', s.backArm.hand, 2.1);
+    shield(p, [s.backArm.hand[0] - 1, s.backArm.hand[1] - 3]);
   }
 
-  // torso: tunic with a flared skirt, breastplate, belt; the shield hangs behind
+  // torso: tunic with a flared skirt, breastplate, belt
   const waist = pt(s.neck, s.hip, 0.72);
-  if (!o.shieldUp) shield(p, [s.backArm.hand[0] - 1, s.backArm.hand[1] - 3]);
   p.shape('red', (id) => p.poly(id, [[nx - 7.5, ny + 1], [nx + 6.5, ny + 1], [waist[0] + 6, waist[1]], [px + 8.5, py + 7], [px - 8.5, py + 7], [waist[0] - 6.5, waist[1]]]), { shadow: 2 });
   p.shape('steel', (id) => p.poly(id, [[nx - 6.5, ny + 1.5], [nx + 6.5, ny + 1.5], [waist[0] + 6.5, waist[1] - 2], [waist[0] + 1, waist[1] + 1], [waist[0] - 6.5, waist[1] - 2]]), { gloss: true, shadow: 2 });
   p.shape('leather', (id) => p.poly(id, [[px - 7.5, py - 1.5], [px + 7.5, py - 1.5], [px + 7.5, py + 1.5], [px - 7.5, py + 1.5]]));
@@ -199,10 +202,9 @@ function drawFighter(pose = {}) {
   face(p, hx, hy, { eyes: o.eyes, mouth: o.mouth });
 
   if (o.shieldUp) {
-    // Guarding: the back forearm comes forward across the body and holds the shield out front.
+    // Guarding: the back forearm comes forward across the body to the shield's grip.
     limb(p, 'leather', s.backArm.elbow, s.backArm.hand, 2.2, 2);
     hand(p, 'leather', s.backArm.hand, 2.1);
-    shield(p, [s.backArm.hand[0] + 1.5, s.backArm.hand[1]], o.flashShield);
   }
 
   // front arm: sword behind the fist, pauldron on the shoulder

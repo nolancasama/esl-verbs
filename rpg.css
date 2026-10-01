@@ -118,16 +118,21 @@
 /* ------------------------------------------------------------ RPG quiz */
 /* A training scene under a thin top strip: the stage backdrop is the sky and
    horizon, a matching floor tile fills everything below it. The scene is one
-   line, HERO | WORD | DUMMY on roughly 31 / 38 / 31 columns sharing an optical
-   centre a little above the middle; the hero's status stands under the hero
-   and the answer is centred below the scene. --px scales the backdrop tiles,
+   line, HERO | WORD | DUMMY on roughly 31 / 38 / 31 columns, centred between
+   the banner and the answer; the hero's status stands under the hero and the
+   answer is centred a short way below the scene. --px scales the backdrop tiles,
    --apx the hero, the dummy and the strike effects. */
 .app.rpg-quiz-app { width: 100%; max-width: none; min-height: 100vh; padding: 8px 12px 10px; align-content: start; background: var(--night); }
 .rpg-quiz { width: min(1680px, 100%); height: calc(100vh - 18px); min-height: 560px; margin: 0 auto; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
 .rpg-quiz .rpg-topbar .ap-meter { padding-block: 3px 5px; }
 .rpg-field {
   --px: 3; --apx: 5; --word-max: clamp(3rem, 7vw, 6.5rem); --field-sky: #8fd0f2;
-  position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; overflow: hidden; isolation: isolate;
+  position: relative; display: grid; min-height: 0; overflow: hidden; isolation: isolate;
+  /* banner | space | scene | space | answer | space: the scene takes its own
+     height and the three spaces share what is left 1 : 1 : 1.3, so the scene is
+     centred between the banner and the answer and the answer sits closer to the
+     scene than to the bottom edge. */
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, max-content) minmax(0, 1fr) auto minmax(0, 1.3fr);
   background: var(--field-sky); border: var(--b) solid var(--edge); box-shadow: 0 0 0 var(--b) var(--ink);
 }
 .rpg-quiz.stage-2 .rpg-field { --field-sky: #f2b88a; }
@@ -137,30 +142,38 @@
 .rpg-field__sky { top: 0; height: calc(112px * var(--px)); background-repeat: repeat-x; background-size: calc(192px * var(--px)) calc(112px * var(--px)); }
 .rpg-field__ground { top: calc(112px * var(--px)); bottom: 0; background-repeat: repeat; background-size: calc(var(--sw) * var(--px) * 1px) calc(var(--sh) * var(--px) * 1px); }
 
-/* stage / mode / count: quiet metadata, readable but never the first thing seen */
+/* stage / mode / count: readable from the back of a classroom (the mode most of
+   all), but plain and translucent so the word stays the first thing seen */
 .rpg-field__hud {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 6px 10px 0; padding: 2px 10px;
-  background: linear-gradient(90deg, #0e102480, #0e102440 50%, #0e102480); color: #fff;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; margin: 6px 10px 0; padding: 6px 14px;
+  background: linear-gradient(90deg, #0e102499, #0e102466 50%, #0e102499); color: #fff;
 }
-.rpg-field__stage, .rpg-field__count { font-family: var(--pixel-font); font-size: 11px; color: var(--gold); white-space: nowrap; text-shadow: 2px 2px 0 var(--ink); }
-.rpg-field__count { color: #fff; }
-.rpg-field__mode { font-family: var(--read-font); font-weight: 800; font-size: .9rem; text-align: center; text-shadow: 2px 2px 0 var(--ink); }
+.rpg-field__stage, .rpg-field__count { font-family: var(--pixel-font); color: var(--gold); white-space: nowrap; text-shadow: 2px 2px 0 var(--ink); }
+.rpg-field__stage { font-size: clamp(17px, 1.6vw, 22px); }
+.rpg-field__count { font-size: clamp(14px, 1.3vw, 18px); color: #fff; }
+.rpg-field__mode { min-width: 0; font-family: var(--read-font); font-weight: 900; font-size: clamp(1.25rem, 1.9vw, 1.6rem); line-height: 1.25; text-align: center; overflow-wrap: anywhere; text-shadow: 2px 2px 0 var(--ink); }
 
-/* The scene. The empty first and last rows are spacers (1 : 1.35), so the
-   hero / word / dummy line sits at roughly 40–45% of the arena. The hero and
-   the dummy share a ground line; the word is centred on their height. */
+.rpg-field__hud { grid-row: 1; }
+.rpg-field__arena { grid-row: 3; }
+.rpg-field__bottom { grid-row: 5; }
+
+/* The scene: the hero and the dummy share a ground line, the hero's status
+   under the hero. The word column spans both rows and centres the word itself
+   on them; the speaker and any audio error hang below it. */
 .rpg-field__arena {
   position: relative; min-height: 0; display: grid; column-gap: 1%; padding-inline: 1%;
   grid-template-columns: minmax(0, 31fr) minmax(0, 38fr) minmax(0, 31fr);
-  grid-template-rows: minmax(0, 1fr) auto auto minmax(0, 1.35fr);
-  grid-template-areas: ". . ." "hero prompt dummy" "stats . ." ". . .";
+  grid-template-rows: auto auto;
+  grid-template-areas: "hero prompt dummy" "stats prompt .";
 }
 .rpg-field__hero, .rpg-field__dummy { --px: var(--apx); z-index: 2; display: flex; justify-self: center; align-self: end; }
 .rpg-field__hero { grid-area: hero; }
 .rpg-field__dummy { grid-area: dummy; }
 .rpg-field__dummy.is-hit { animation: dummy-shake .42s steps(6); }
 @keyframes dummy-shake { 20% { translate: 7px 0; rotate: 4deg; } 45% { translate: -4px 0; rotate: -3deg; } 70% { translate: 3px 0; rotate: 1deg; } 100% { translate: 0; rotate: 0deg; } }
-.rpg-field__prompt { grid-area: prompt; align-self: center; z-index: 3; container-type: inline-size; display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; }
+.rpg-field__prompt { grid-area: prompt; z-index: 3; container-type: inline-size; display: grid; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); justify-items: center; row-gap: 10px; min-width: 0; }
+.rpg-field__prompt > :first-child { grid-row: 2; }
+.rpg-field__under { grid-row: 3; align-self: start; display: grid; justify-items: center; gap: 8px; }
 /* The word fills the column on one line (see promptWord) up to --word-max, never below 2.4rem. */
 .rpg-field__word {
   max-width: 100%; font-family: var(--read-font); font-weight: 900; line-height: 1.05; text-align: center; color: #fff; word-break: keep-all; overflow-wrap: normal;
@@ -718,9 +731,13 @@
 .story__line rt { font-size: .42em; font-weight: 800; color: #ffe9a8; letter-spacing: 0; }
 .story__line--big { font-size: clamp(2rem, 5.6vw, 4.4rem); line-height: 1.35; color: var(--gold); text-shadow: 3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 3px 0 var(--ink), 0 -3px 0 var(--ink), 5px 5px 0 var(--ink); }
 .story__en { margin: .5em 0 0; font-family: var(--pixel-font); font-size: clamp(10px, 1.3vw, 15px); color: #cfd6ff; letter-spacing: 1px; text-shadow: 2px 2px 0 var(--ink); }
-.story__title { position: absolute; left: 50%; top: 7%; z-index: 5; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; padding: 10px 24px; white-space: nowrap; animation: story-in .5s ease-out; }
+/* Title beats are a lower third: the city stays the picture, the title a subtitle under it. */
+.story__title {
+  position: absolute; left: 50%; bottom: 6%; z-index: 5; translate: -50% 0; display: grid; justify-items: center; gap: 2px; padding: 4px 28px 6px; white-space: nowrap; animation: story-in .5s ease-out;
+  background: linear-gradient(90deg, transparent, #0e1024a6 18% 82%, transparent); color: #fff;
+}
 .story__title[hidden] { display: none; }
-.story__title strong { font-family: var(--read-font); font-weight: 900; font-size: clamp(1.6rem, 4vw, 3rem); color: #fff; text-shadow: 3px 3px 0 var(--ink); }
+.story__title strong { font-family: var(--read-font); font-weight: 900; font-size: clamp(1.4rem, 3.3vw, 2.6rem); line-height: 1.3; color: #fff; text-shadow: 3px 3px 0 var(--ink); }
 .story__title span { font-family: var(--pixel-font); font-size: clamp(10px, 1.3vw, 14px); color: var(--gold); }
 .story__core { position: absolute; left: 50%; bottom: -8%; z-index: 2; width: 46%; aspect-ratio: 1; translate: -50% 0; pointer-events: none; opacity: 0; transition: opacity .8s ease; background: radial-gradient(circle, #fff6c2dd 0 7%, #ffd35a99 8% 20%, #f28a2e55 21% 38%, transparent 58%); }
 .story__core.is-on { opacity: 1; animation: core-pulse 1.2s steps(3) infinite; }
