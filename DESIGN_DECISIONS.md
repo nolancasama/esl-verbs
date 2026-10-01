@@ -543,7 +543,7 @@ and proves the regional framework with one full city (Sakai).
   shield does not jump. Changed for every lowered pose, not just idle, so it
   does not jump 4 px when idle switches to attack, hit or stumble. Rejected:
   −6, which looked detached from the hand.
-- **The intro hero stands on the left** (`.story--intro`: `left: 15%`,
+- **The intro hero stands on the left** (`.story--intro`: `left: 8%` — was 15% —,
   `bottom: 25%`), the Horde on the right. It is raised so the hero stands on the
   grass above the lower-third title. At bottom 4% the centred title covered the
   lower half of every hero, and nearly all of the Ninja. It still slides in from
