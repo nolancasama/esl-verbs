@@ -13,7 +13,8 @@ https://nolancasama.github.io/esl-verbs/).
 
 What a player sees now:
 - Hero select → short intro (~10 s, four lower-third title beats over the city:
-  まつばら市 → あぶない！ with the Horde → the chosen hero, まもろう！ → STAGE 1)
+  まつばら市 → あぶない！ with the Horde → the chosen hero on the left, facing
+  the Horde on the right, まもろう！ → STAGE 1)
   → Matsubara stages 1–4.
 - Adventure quiz: menu / AP / music strip on top (the only AP display), a
   readable stage / instruction / count banner, then one scene: hero | word
@@ -44,8 +45,11 @@ Verified 2026-10-01 (polish pass):
   1 px of the banner–answer midpoint, answer position unchanged after answering.
 - Intro beats at 1024×600 and 1366×768 (skyline clear of the title); ending
   tapped card by card at 1024×600 (every line on one line, ends on results).
-- Fighter guard and counter rows rendered before / after (shield behind the
-  breastplate, forearm and hand in front).
+- Correction pass: the raised-shield change was reverted (the issue was Fighter
+  idle); the lowered shield now sits at hand −5 so only its inner edge is behind
+  the torso (all four idle frames, the lowered poses, and guard / counter
+  rendered). The intro hero stands on the left above the title (Fighter, Mage,
+  Ninja at 1024×600 and 1366×768); the ending hero position is unchanged.
 
 Verified 2026-10-01 (story / quiz-scene pass):
 - `npm test` 95/95, browser playthrough passes unchanged, `npm run balance`
@@ -126,8 +130,7 @@ Verified 2026-09-30:
 
 ## Manual Chromebook / classroom checks still needed
 
-- Story: does the lower-third title read on a projector, and is it acceptable
-  that it covers the hero's legs in the まもろう！ beat; does the ~10 s intro
+- Story: does the lower-third title read on a projector; does the ~10 s intro
   give enough context before Stage 1; can students
   read the ending's lore cards at their pace (they can tap on or skip); is the
   furigana readable on a projector.

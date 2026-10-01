@@ -716,6 +716,9 @@
 .story .cinematic__hero { left: 44%; z-index: 3; opacity: 0; transition: transform 1.1s cubic-bezier(.2, .8, .3, 1), opacity .5s ease; }
 .story .cinematic__hero.is-on { opacity: 1; }
 .story .cinematic__ally { left: 24%; z-index: 2; }
+/* The opening is a stand-off: the hero defends from the left, the Horde comes from
+   the right. The hero stands on the grass above the lower-third title, not behind it. */
+.story--intro .cinematic__hero { left: 15%; bottom: 25%; }
 .cinematic__monsters.is-spread { opacity: .9; transform: translateX(-55%) scale(-.75, .75); transition: transform 3.2s ease-in, opacity 1s ease; }
 .story__veil { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .6s ease; background: radial-gradient(ellipse 75% 70% at 50% 50%, #07061acc 0 55%, #07061a88 80%, #07061a44); }
 .story__veil.is-on { opacity: 1; }

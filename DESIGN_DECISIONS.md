@@ -529,3 +529,22 @@ and proves the regional framework with one full city (Sakai).
   and hand show in front holding the grip. The shield moved only 1 px outward.
   The lowered-shield order is unchanged. The Osaka Defender's small round
   shield was left as is.
+
+## 2026-10-01 — Correction: the shield problem was Fighter idle; intro hero on the left
+
+- **The raised-shield layering change was reverted.** The reported problem was
+  Fighter idle, not Guard / Counter. Raised shield is back to its original
+  order and position (upper arm → torso → forearm → hand → shield, at hand
+  +1.5).
+- **The lowered shield sits further out**: centre at hand −5 / −3 (was −1 / −3),
+  still drawn behind the torso. Before, the torso covered over half of it, so it
+  looked embedded. Now only its inner third is covered, and the boss and rim
+  show beside the body. The hand barely moves in the idle loop (0.3 px), so the
+  shield does not jump. Changed for every lowered pose, not just idle, so it
+  does not jump 4 px when idle switches to attack, hit or stumble. Rejected:
+  −6, which looked detached from the hand.
+- **The intro hero stands on the left** (`.story--intro`: `left: 15%`,
+  `bottom: 25%`), the Horde on the right. It is raised so the hero stands on the
+  grass above the lower-third title. At bottom 4% the centred title covered the
+  lower half of every hero, and nearly all of the Ninja. It still slides in from
+  off-screen left. The ending keeps the shared centred position (44%).
