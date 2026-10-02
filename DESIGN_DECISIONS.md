@@ -559,3 +559,40 @@ and proves the regional framework with one full city (Sakai).
   over the inside, and the torso still covers the inner third. Same position
   (hand −5 / −3) and same for every lowered pose. The raised Guard / Counter
   shield keeps its front face: it swings round to face the enemy.
+
+## 2026-10-02 — Quiz UI polish: word plate, answer slot, status nameplate, Ninja text
+
+- **Ninja hero text matches how it plays**: チャンスを ねらえ！ / "Create
+  openings and strike hard." (was タイミングが だいじ！ / "Fast and elusive.").
+  The Ninja sets up an OPENING and then exploits it. The old line suggested a
+  reflex-timing mechanic that does not exist. The hero card stays two short
+  lines with no rules text. Mechanics are unchanged.
+- **Visible vocabulary words sit on a quiet backing plate**
+  (`.rpg-field__word-plate`): dark navy gradient at ~65–70% opacity, a 2px
+  hairline outline, square corners. It gives steady contrast on every stage
+  backdrop and makes the word the clear focus. The plate sizes to the word
+  (min ~46% of the centre column, max the full column). The word's one-line
+  fit now subtracts the plate's padding, from 98% of the column (was 94%), so
+  long words lose at most ~7% size. Listening modes have no word and so no
+  plate; the big speaker stays the prompt. The Mage's bolt still passes behind
+  the word, so it is dimmed behind the plate. Rejected: a heavy framed window
+  around the word, which would compete with the scene.
+- **Typed Adventure answers use a labelled answer slot**, not a search bar: a
+  dark recessed field (cream centred text, gold caret, thin light outline,
+  gold when focused) about 430–470px wide beside Check. A こたえ / ANSWER tab
+  sits on its top edge, like a legend, so the label adds no height at
+  1024×600. Speech and fallback-choice answers keep their own layouts in the
+  same dark panel. Study mode's plain input is unchanged.
+- **The hero's status is a flat nameplate** under the hero: NAME · LV on one
+  line, HP bar + numbers + potions on the next. It sits on a horizontal strip
+  that fades at both ends (like the stage banner), not a boxed card. Same
+  information, less weight than the hero.
+- **Quiz actors draw at 90%** (`--px: calc(var(--apx) * .9)` on the hero, the
+  dummy and the quiz strike effects). That leaves more room for the plate and
+  the nameplate. The next integer `--apx` step would be −25–33%. The
+  fractional scale stays hard-edged because the sprites are `pixelated`
+  backgrounds. Battle and cinematic sizes are unchanged.
+- **Intro hero a little further left**: `.story--intro` `left: 5%` (was 8%),
+  ~17px at 1024×600. The sprite frame's transparent margin keeps the Fighter's
+  shield, the Mage's hat and the Ninja well inside the scene. The ending
+  position is unchanged.

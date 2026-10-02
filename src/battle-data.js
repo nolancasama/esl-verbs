@@ -73,7 +73,7 @@ export const HEROES = Object.freeze({
     passive: Object.freeze({ level: 4, name: 'Great Heal', jaName: 'だいかいふく', text: 'Heal +4 HP!', kanaText: 'かいふくが もっと つよい！', effect: Object.freeze({ healBonus: 4 }) }),
   },
   ninja: {
-    id: 'ninja', name: 'Ninja', jaName: 'にんじゃ', summary: 'Fast and elusive.', kanaSummary: 'タイミングが だいじ！', maxHp: 28,
+    id: 'ninja', name: 'Ninja', jaName: 'にんじゃ', summary: 'Create openings and strike hard.', kanaSummary: 'チャンスを ねらえ！', maxHp: 28,
     skills: Object.freeze(['strike', 'dodge', 'doubleStrike', 'shadowStrike']),
     passive: Object.freeze({ level: 4, name: 'Keen Eye', jaName: 'みきり', text: 'OPENING hits harder!', kanaText: 'オープニングが もっと つよい！', effect: Object.freeze({ openingBonus: 2 }) }),
   },

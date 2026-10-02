@@ -166,35 +166,47 @@
   grid-template-rows: auto auto;
   grid-template-areas: "hero prompt dummy" "stats prompt .";
 }
-.rpg-field__hero, .rpg-field__dummy { --px: var(--apx); z-index: 2; display: flex; justify-self: center; align-self: end; }
+/* The actors (and their strike effects) draw at 90% of --apx, a little smaller
+   than the integer steps allow, so the word and its plate lead the scene.
+   The sprites are pixelated backgrounds, so they stay hard-edged. */
+.rpg-field__hero, .rpg-field__dummy { --px: calc(var(--apx) * .9); z-index: 2; display: flex; justify-self: center; align-self: end; }
 .rpg-field__hero { grid-area: hero; }
 .rpg-field__dummy { grid-area: dummy; }
 .rpg-field__dummy.is-hit { animation: dummy-shake .42s steps(6); }
 @keyframes dummy-shake { 20% { translate: 7px 0; rotate: 4deg; } 45% { translate: -4px 0; rotate: -3deg; } 70% { translate: 3px 0; rotate: 1deg; } 100% { translate: 0; rotate: 0deg; } }
-.rpg-field__prompt { grid-area: prompt; z-index: 3; container-type: inline-size; display: grid; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); justify-items: center; row-gap: 10px; min-width: 0; }
+.rpg-field__prompt { --plate-x: clamp(14px, 5cqi, 34px); grid-area: prompt; z-index: 3; container-type: inline-size; display: grid; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); justify-items: center; row-gap: 10px; min-width: 0; }
 .rpg-field__prompt > :first-child { grid-row: 2; }
 .rpg-field__under { grid-row: 3; align-self: start; display: grid; justify-items: center; gap: 8px; }
-/* The word fills the column on one line (see promptWord) up to --word-max, never below 2.4rem. */
+/* A quiet translucent plate behind a visible word: steady contrast on every
+   stage backdrop. It sizes to the word, from about half the column to all of it. */
+.rpg-field__word-plate {
+  box-sizing: border-box; min-width: min(100%, 46cqi); max-width: 100%; display: grid; justify-items: center;
+  padding: clamp(4px, 1.2cqi, 10px) var(--plate-x) clamp(7px, 1.8cqi, 14px);
+  background: linear-gradient(180deg, #1a1e44b0, #0e1024a8); border: 2px solid #ffffff24; box-shadow: inset 0 2px 0 #ffffff14, 0 0 0 2px #0e102440;
+}
+/* The word fills the plate on one line (see promptWord) up to --word-max, never below 2.4rem. */
 .rpg-field__word {
   max-width: 100%; font-family: var(--read-font); font-weight: 900; line-height: 1.05; text-align: center; color: #fff; word-break: keep-all; overflow-wrap: normal;
-  font-size: clamp(2.4rem, calc(94cqi / var(--ems, 4)), var(--word-max));
-  text-shadow: 3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 3px 0 var(--ink), 0 -3px 0 var(--ink), 3px 3px 0 var(--ink), -3px 3px 0 var(--ink), 3px -3px 0 var(--ink), -3px -3px 0 var(--ink), 6px 7px 0 #0e102488;
+  font-size: clamp(2.4rem, calc((98cqi - 2 * var(--plate-x) - 4px) / var(--ems, 4)), var(--word-max));
+  text-shadow: 3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 3px 0 var(--ink), 0 -3px 0 var(--ink), 3px 3px 0 var(--ink), -3px 3px 0 var(--ink), 3px -3px 0 var(--ink), -3px -3px 0 var(--ink), 5px 6px 0 #0e102488;
 }
 .rpg-speaker { flex: none; min-width: 52px; min-height: 48px; padding: 0 .4rem; font-size: 1.6rem; line-height: 1; }
 .rpg-speaker--big { min-width: 112px; min-height: 92px; font-size: 3.2rem; }
 .rpg-field__listen { font-family: var(--read-font); font-weight: 900; font-size: 1.5rem; color: #fff; text-shadow: 2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 2px 0 var(--ink), 0 -2px 0 var(--ink), 3px 3px 0 var(--ink); }
 .rpg-field__streak { position: absolute; right: 12px; top: 6px; z-index: 3; padding: 4px 10px; background: var(--gold); color: var(--ink); border: 3px solid var(--ink); font-family: var(--pixel-font); font-size: 11px; animation: px-bob .6s steps(2) infinite; }
-.rpg-field .px-fx { --px: var(--apx); z-index: 4; }
+.rpg-field .px-fx { --px: calc(var(--apx) * .9); z-index: 4; }
 /* The mage's bolt crosses the word's line: it passes behind the word, never over it. */
 .rpg-field .px-proj { z-index: 2; }
 
-/* The hero's status, attached to the hero: light, so the scene stays in front. */
+/* The hero's status is a flat nameplate under the hero, not a card: name and
+   level, then HP and potions on one line, on a strip that fades out at the ends. */
 .rpg-field__stats {
-  grid-area: stats; justify-self: center; z-index: 2; display: grid; justify-items: center; gap: 2px; width: min(210px, 100%); margin-top: 4px; padding: 3px 10px 4px;
-  background: linear-gradient(180deg, #0e102466, #0e1024b3); outline: 1px solid #ffffff2e; color: #fff; text-shadow: 2px 2px 0 var(--ink);
+  grid-area: stats; justify-self: center; align-self: start; z-index: 2; display: grid; grid-template-columns: auto auto; align-items: center; justify-items: center; gap: 2px 10px; max-width: 100%; margin-top: 4px; padding: 2px 24px 3px;
+  background: linear-gradient(90deg, transparent, #0e10249c 18% 82%, transparent); border-block: 1px solid; border-image: linear-gradient(90deg, transparent, #ffffff2e 22% 78%, transparent) 1;
+  color: #fff; text-shadow: 2px 2px 0 var(--ink);
 }
-.rpg-field__stats strong { font-family: var(--pixel-font); font-weight: 400; font-size: 10px; color: var(--gold); white-space: nowrap; }
-.rpg-field__stats .rpg-hp { width: 100%; font-size: 9px; }
+.rpg-field__stats strong { grid-column: 1 / -1; font-family: var(--pixel-font); font-weight: 400; font-size: 10px; color: var(--gold); white-space: nowrap; }
+.rpg-field__stats .rpg-hp { width: clamp(132px, 12vw, 180px); font-size: 9px; }
 .rpg-field__potions { display: flex; align-items: center; gap: 4px; font-family: var(--pixel-font); font-size: 9px; --icon: 1.5; }
 
 /* The answer, centred under the scene. A fixed height per input type, so
@@ -206,7 +218,8 @@
 .rpg-field--choices .rpg-field__answer .choices { grid-template-columns: 1fr 1fr; gap: 8px; }
 .rpg-field__answer:not(.is-answered) > .feedback:empty { display: none; }
 .rpg-field__answer { width: min(680px, 100%); margin: 0; gap: 8px; padding: 10px 12px; background: #0e1024cc; border: var(--b) solid var(--edge); box-shadow: 0 0 0 var(--b) var(--ink); }
-.rpg-field__answer:has(> input) { grid-template-columns: minmax(0, 1fr) auto; }
+/* Typed answers: a labelled answer slot about 430–470px wide beside its button. */
+.rpg-field__answer:has(> .rpg-answer__slot) { width: auto; max-width: 100%; grid-template-columns: minmax(0, clamp(240px, 42vw, 470px)) auto; padding-top: 14px; }
 .rpg-field__answer > .feedback { order: 3; grid-column: 1 / -1; text-align: center; }
 .rpg-field__answer > .choices, .rpg-field__answer > .mic { order: 1; }
 .rpg-field__answer > .secondary { order: 2; }
@@ -218,7 +231,18 @@
 .rpg-answer .feedback { min-height: 1.5rem; font-family: var(--read-font); font-size: 1.25rem; font-weight: 900; color: #e6e9ff; }
 .rpg-answer .feedback.correct { color: var(--ok); }
 .rpg-answer .feedback.wrong { color: var(--bad); }
-.rpg-answer input { min-height: 60px; font-family: var(--read-font); font-size: 1.9rem; background: #fffbe8; color: var(--ink); border: var(--b) solid var(--ink); border-radius: 0; box-shadow: 0 0 0 2px var(--edge); }
+/* The answer slot: a dark recessed field with a thin pixel outline, the typed
+   answer centred in cream, and a こたえ / ANSWER tab set into its top edge. */
+.rpg-answer__slot { position: relative; display: grid; min-width: 0; }
+.rpg-answer__label {
+  position: absolute; left: 50%; top: 0; z-index: 1; translate: -50% -55%; padding: 0 10px 1px; white-space: nowrap; pointer-events: none;
+  background: var(--ink); border: 2px solid #ffd35a8c; font-family: var(--read-font); font-weight: 900; font-size: .9rem; line-height: 1.35; letter-spacing: .04em; color: var(--gold);
+}
+.rpg-answer input {
+  min-height: 66px; padding: 10px 16px 6px; font-family: var(--read-font); font-weight: 700; font-size: 1.9rem; text-align: center; color: #fff6dc; caret-color: var(--gold);
+  background: linear-gradient(180deg, #070818, #1a1f48); border: 2px solid #c9cdf0b3; border-radius: 0; box-shadow: inset 0 4px 0 #00000080, 0 0 0 2px var(--ink);
+}
+.rpg-answer input:focus-visible { outline: none; border-color: var(--gold); box-shadow: inset 0 4px 0 #00000080, 0 0 0 2px var(--ink), 0 0 12px 2px #ffd35a59; }
 .rpg-answer .px-button { min-height: 56px; font-size: 14px; }
 .rpg-answer .choices .px-button { font-family: var(--read-font); font-weight: 900; font-size: 1.5rem; text-align: left; padding: .4rem 1rem; min-height: 52px; }
 .rpg-answer .mic { font-family: var(--read-font); font-weight: 900; font-size: 1.4rem; }
@@ -505,7 +529,7 @@
    31% side columns and the arena height allow. */
 @media (min-height: 940px) and (min-width: 1500px) {
   .rpg-field { --px: 4; --apx: 6; }
-  .rpg-field__stats { width: 250px; }
+  .rpg-field__stats .rpg-hp { width: 200px; }
   .rpg-field__stats strong { font-size: 12px; }
   .rpg-field__stats .rpg-hp, .rpg-field__potions { font-size: 11px; }
 }
@@ -518,7 +542,8 @@
   .rpg-field__bottom { height: 102px; }
   .rpg-field--enSpeech .rpg-field__bottom { height: 134px; }
   .rpg-field--choices .rpg-field__bottom { height: 176px; }
-  .rpg-answer input, .rpg-answer .px-button { min-height: 52px; }
+  .rpg-answer input { min-height: 56px; }
+  .rpg-answer .px-button { min-height: 52px; }
   .rpg-answer .choices .px-button { min-height: 46px; font-size: 1.35rem; }
   .rpg-speaker--big { min-width: 96px; min-height: 76px; font-size: 2.6rem; }
 }
@@ -718,7 +743,7 @@
 .story .cinematic__ally { left: 24%; z-index: 2; }
 /* The opening is a stand-off: the hero defends from the left, the Horde comes from
    the right. The hero stands on the grass above the lower-third title, not behind it. */
-.story--intro .cinematic__hero { left: 8%; bottom: 25%; }
+.story--intro .cinematic__hero { left: 5%; bottom: 25%; }
 .cinematic__monsters.is-spread { opacity: .9; transform: translateX(-55%) scale(-.75, .75); transition: transform 3.2s ease-in, opacity 1s ease; }
 .story__veil { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .6s ease; background: radial-gradient(ellipse 75% 70% at 50% 50%, #07061acc 0 55%, #07061a88 80%, #07061a44); }
 .story__veil.is-on { opacity: 1; }

@@ -225,15 +225,18 @@ let quizStrike = false; // set by a correct Adventure answer; the next render pl
  * The prompt word, sized to fit the centre column on one line: `--ems` is its
  * width in em (full-width kana/kanji 1, Latin ~0.6) for the CSS fit. A Japanese
  * phrase may still break before を if it cannot fit even at the smallest size.
+ * The word sits on a translucent plate that sizes to it.
  */
 function promptWord(text) {
+  const plate = element('div', 'rpg-field__word-plate');
   const word = element('span', 'rpg-field__word');
   const fullWidth = (code) => (code >= 0x3000 && code <= 0x9fff) || (code >= 0xff00 && code <= 0xffef);
   const ems = [...text].reduce((sum, char) => sum + (fullWidth(char.codePointAt(0)) ? 1 : 0.6), 0);
   word.style.setProperty('--ems', ems.toFixed(1));
   const at = text.indexOf('を');
   if (at > 0) word.append(text.slice(0, at), document.createElement('wbr'), text.slice(at)); else word.textContent = text;
-  return word;
+  plate.append(word);
+  return plate;
 }
 
 /** A one-shot pixel effect inside the quiz field, centred on (x, y). */
@@ -311,7 +314,7 @@ function renderAdventureQuestion(autoSpeak = true) {
   const heroNode = element('span', 'rpg-field__hero'); heroNode.innerHTML = battleArt(hero.id, heroQuizPose(strike));
   const dummy = element('span', 'rpg-field__dummy'); dummy.innerHTML = battleArt('trainingDummy');
   [heroNode, dummy].forEach((node) => node.firstElementChild?.setAttribute('aria-hidden', 'true'));
-  // The hero's status stands under the hero: name and level, HP, potions.
+  // The hero's status is a flat nameplate under the hero: name and level, then HP and potions on one line.
   const stats = element('div', 'rpg-field__stats');
   const potions = element('span', 'rpg-field__potions'); potions.innerHTML = getIcon('potion'); potions.append(`×${campaign.potions}`);
   potions.setAttribute('aria-label', `ポーション ×${campaign.potions}`);
@@ -352,7 +355,12 @@ function answerArea(vm, item, rpg = false) {
     const input = document.createElement('input'); input.lang = 'ja'; input.autofocus = true; input.setAttribute('aria-label', 'Japanese answer');
     const check = btn('', 'Check'); const submit = () => { if (input.value.trim()) mark(isJapaneseCorrect(input.value, item.jaAccepted), item); };
     check.onclick = submit; input.onkeydown = (event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); submit(); } };
-    area.append(input, check); queueMicrotask(() => input.focus());
+    if (rpg) {
+      // Adventure: a labelled answer slot, not a search bar.
+      const slot = element('label', 'rpg-answer__slot'); slot.append(element('span', 'rpg-answer__label', 'こたえ / ANSWER'), input);
+      area.append(slot, check);
+    } else area.append(input, check);
+    queueMicrotask(() => input.focus());
   } else if (vm.input === 'choices') {
     const choices = element('div', 'choices'); makeChoices(item, VOCABULARY).forEach((choice, index) => {
       const button = btn('', `${index + 1}. ${choice.en}`); button.onclick = () => mark(choice.id === item.id, item); choices.append(button);

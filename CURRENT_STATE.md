@@ -1,6 +1,6 @@
 # Current State
 
-## Status (2026-10-01)
+## Status (2026-10-02)
 
 The Osaka expansion is implemented on `master`: the Osaka campaign map,
 regional saves, and Sakai as the first full post-Matsubara city (40 questions,
@@ -8,7 +8,10 @@ four battles with Horde waves and the Osaka Defender ally). The 2026-10-01 pass
 moved the story lore from the opening to the Matsubara ending and rebuilt the
 Adventure quiz as a hero / word / dummy scene; a follow-up polish pass the same
 day (lower-third intro titles, shorter lore, centred word, larger stage banner,
-Fighter shield layering). Battles, AP, XP and balance are unchanged. Pushing `master` deploys live (GitHub Pages,
+Fighter shield layering). A 2026-10-02 UI polish pass followed: Ninja hero text,
+a backing plate behind the quiz word, a labelled answer slot, a flat status
+nameplate, quiz actors at 90%, and the intro hero a little further left.
+Battles, AP, XP and balance are unchanged. Pushing `master` deploys live (GitHub Pages,
 https://nolancasama.github.io/esl-verbs/).
 
 What a player sees now:
@@ -17,10 +20,11 @@ What a player sees now:
   the Horde on the right, まもろう！ → STAGE 1)
   → Matsubara stages 1–4.
 - Adventure quiz: menu / AP / music strip on top (the only AP display), a
-  readable stage / instruction / count banner, then one scene: hero | word
-  (speaker beneath) | training dummy, the hero's LV / HP / potions under the
-  hero, the word centred between the banner and the answer box, which sits a
-  short way below the scene. A correct answer is a class strike on the dummy and +1 on the
+  readable stage / instruction / count banner, then one scene: hero | word on
+  a translucent plate (speaker beneath) | training dummy, a flat nameplate
+  (NAME · LV, then HP + potions) under the hero, the word centred between the
+  banner and the answer box, which sits a short way below the scene. Typed
+  stages answer in a dark こたえ / ANSWER slot. A correct answer is a class strike on the dummy and +1 on the
   top meter as it hits; a wrong answer is a stumble.
 - Matsubara ending (~26 s auto-play, every card tap-to-advance): victory
   (darkness clears with MATSUBARA CITY IS SAFE!, YOU PROTECTED THE CITY!) →
@@ -34,6 +38,17 @@ What a player sees now:
   Shadow Commander last) → ending (the ally stays in Sakai) → city results →
   map save animation. A checkpoint is saved at each Sakai stage start; the
   map and menu offer つづき / CONTINUE ADVENTURE.
+
+Verified 2026-10-02 (UI polish pass):
+- `npm test` 95/95, browser playthrough passes, `npm run balance` byte-identical
+  to the previous commit.
+- Scripted screenshots + geometry (scratchpad scripts): quiz stages 1–4 at
+  1024×600, 1366×768, 1920×1080, 412×860; forced words "skateboard",
+  "practice", "go" and スケートボードをする; typed text, wrong and correct
+  states; Mage / Ninja / Fighter strikes mid-hit; hero select; intro hero beat
+  for all three heroes at 1024×600 and 1366×768. No page scroll, each word inside
+  its plate, no plate / actor overlap, no console errors. Known and unchanged:
+  at 412×860 a two-line Japanese word pushes the nameplate onto the answer box.
 
 Verified 2026-10-01 (polish pass):
 - `npm test` 95/95, browser playthrough passes, `npm run balance` byte-identical
