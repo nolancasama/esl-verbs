@@ -314,13 +314,11 @@ function renderAdventureQuestion(autoSpeak = true) {
   const heroNode = element('span', 'rpg-field__hero'); heroNode.innerHTML = battleArt(hero.id, heroQuizPose(strike));
   const dummy = element('span', 'rpg-field__dummy'); dummy.innerHTML = battleArt('trainingDummy');
   [heroNode, dummy].forEach((node) => node.firstElementChild?.setAttribute('aria-hidden', 'true'));
-  // The hero's status is a flat nameplate under the hero: name and level, then HP and potions on one line.
-  const stats = element('div', 'rpg-field__stats');
-  const potions = element('span', 'rpg-field__potions'); potions.innerHTML = getIcon('potion'); potions.append(`×${campaign.potions}`);
-  potions.setAttribute('aria-label', `ポーション ×${campaign.potions}`);
-  stats.append(element('strong', '', `${hero.name.toUpperCase()} · LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), potions);
-  arena.append(heroNode, prompt, dummy, stats);
-  if (round.currentStreak >= 2) arena.append(element('div', 'rpg-field__streak', `${round.currentStreak} in a row!`));
+  const stats = heroNameplate('rpg-field__stats');
+  // The streak badge sits centred above the dummy in the dummy's own column, outside the node that shakes on a hit.
+  const dummyColumn = element('div', 'rpg-field__dummy-wrap'); dummyColumn.append(dummy);
+  if (round.currentStreak >= 2) dummyColumn.prepend(element('div', 'rpg-field__streak', `${round.currentStreak} in a row!`));
+  arena.append(heroNode, prompt, dummyColumn, stats);
 
   const bottom = element('div', 'rpg-field__bottom');
   const answer = answerArea(vm, item, true); answer.classList.add('rpg-field__answer');
@@ -335,6 +333,15 @@ function renderAdventureQuestion(autoSpeak = true) {
   if (strike) trainingStrike({ field, heroNode, dummy, value: round.correctCount });
   else apMeter?.set(round.correctCount);
   if (autoSpeak) playPrompt(vm);
+}
+
+/** The hero's flat nameplate (quiz and Stage Clear): name and level, then HP and potions on one line. */
+function heroNameplate(className) {
+  const plate = element('div', `rpg-nameplate ${className}`);
+  const potions = element('span', 'rpg-field__potions'); potions.innerHTML = getIcon('potion'); potions.append(`×${campaign.potions}`);
+  potions.setAttribute('aria-label', `ポーション ×${campaign.potions}`);
+  plate.append(element('strong', '', `${HEROES[campaign.heroId].name.toUpperCase()} · LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), potions);
+  return plate;
 }
 
 function hpLine(hp, maxHp) {
@@ -423,21 +430,19 @@ function finishAdventureStage() {
   stopMedia(); const stage = campaign.stage; const encounter = upcomingEncounter ?? ENCOUNTERS[stageEncounterId(campaign)]; upcomingEncounter = null;
   campaign = recordStage(campaign, round, encounter.id); stageResult = campaign.stageResults.at(-1);
   screen = 'stage-complete'; app.replaceChildren(); rpgScreen(); clearTimers();
-  const card = element('section', 'rpg-card px-panel stage-card'); const { top, slot } = rpgTopbar(); card.append(top);
-  const scene = element('div', `rpg-stage-scene ${backdropClass(stage)}`); scene.innerHTML = battleArt(campaign.heroId, 'victory'); scene.firstElementChild?.setAttribute('aria-hidden', 'true');
-  const waves = encounter.waves ?? [{ enemyIds: encounter.enemyIds }];
-  const foes = element('div', 'rpg-foes'); new Set(waves.flatMap((wave) => wave.enemyIds)).forEach((id) => foes.append(element('span', 'rpg-foe', ENEMIES[id].name)));
-  const earned = element('div', 'rpg-earned');
-  earned.append(element('div', 'rpg-score', `${stageResult.correct} / ${stageResult.total}`), element('div', 'rpg-earned__ap', `= ${stageResult.startingAp} AP`));
-  const party = element('div', 'rpg-party px-panel');
-  party.append(element('strong', '', `LV ${campaign.level}`), hpLine(campaign.heroHp, campaignMaxHp(campaign)), element('span', '', `ポーション ×${campaign.potions}`));
-  const apNote = element('p', 'rpg-note', stageResult.startingAp > 0 ? 'Every action costs AP. / こうどうに AP をつかうよ！' : '0 AP… you will rest to recover AP. / AP 0 … やすんで かいふく！');
+  // SUCCESS → the hero (status on the ground under them) → the AP earned → BATTLE!
+  // No menu / music strip here; the battle itself introduces the enemies.
+  const card = element('section', 'rpg-card px-panel stage-card');
+  const scene = element('div', `rpg-stage-scene rpg-stage-scene--clear ${backdropClass(stage)}`);
+  const heroArt = element('div', 'stage-clear__hero'); heroArt.innerHTML = battleArt(campaign.heroId, 'victory'); heroArt.firstElementChild?.setAttribute('aria-hidden', 'true');
+  const ground = element('div', `stage-clear__ground ${groundClass(stage)}`); ground.append(heroNameplate('stage-clear__status'));
+  scene.append(heroArt, ground);
+  const apSlot = element('div', 'ap-slot'); // the shared meter replaces this, under the scene
+  const [noteEn, noteJa] = stageResult.startingAp > 0 ? ['Every action costs AP.', 'こうどうに AP をつかうよ！'] : ['0 AP… you will rest to recover AP.', 'AP 0 … やすんで かいふく！'];
+  const apNote = element('p', 'rpg-note stage-clear__note'); apNote.append(element('span', '', noteEn), element('span', '', noteJa));
   const battle = element('button', 'battle-start px-button', 'BATTLE!'); battle.onclick = () => startAdventureBattle();
-  const encounterLabel = encounter.name
-    ? element('p', 'rpg-foes-label', `${encounter.name.toUpperCase()} / ${encounter.jaName ?? ''}${waves.length > 1 ? ` · WAVES ×${waves.length}` : ''}`)
-    : element('p', 'rpg-foes-label', 'ENEMY / てき');
-  card.append(element('h1', 'rpg-title', `STAGE ${stage} CLEAR!`), scene, earned, party, encounterLabel, foes, apNote, battle);
-  app.append(card); apMeter?.mount(slot); apMeter?.set(stageResult.startingAp, { quiet: true });
+  card.append(element('h1', 'rpg-title', `STAGE ${stage} CLEAR!`), scene, apSlot, apNote, battle);
+  app.append(card); apMeter?.mount(apSlot); apMeter?.set(stageResult.startingAp, { quiet: true });
   audio.sfx('fanfare');
   queueMicrotask(() => battle.focus());
 }

@@ -596,3 +596,28 @@ and proves the regional framework with one full city (Sakai).
   ~17px at 1024×600. The sprite frame's transparent margin keeps the Fighter's
   shield, the Mage's hat and the Ninja well inside the scene. The ending
   position is unchanged.
+
+## 2026-10-05 — Streak badge over the dummy; leaner Stage Clear
+
+- **The "N in a row!" badge is centred above the training dummy**, not pinned to
+  the arena's top-right. The dummy sits in a `.rpg-field__dummy-wrap` column
+  (the grid's `dummy` area); the badge is absolutely positioned on that wrap,
+  so it follows the dummy at every actor scale. The badge is a sibling of the
+  dummy, so the hit shake moves only the dummy. Centring uses `transform`
+  because `px-bob` animates `translate`. Rejected: a `right:` percentage, which
+  drifts from the dummy as the columns and `--apx` change.
+- **Stage Clear reads SUCCESS → hero → AP → BATTLE.** It has no Menu / Music /
+  AP topbar, no score → AP line (the meter says it), and no enemy names (the
+  battle introduces them). The shared AP meter is mounted under the hero scene,
+  then the AP note (English and Japanese on separate lines), then BATTLE!.
+  Other screens keep their topbars. Rejected: keeping the enemy preview; it
+  duplicated the battle's own introduction and cost a lot of height at
+  1024×600.
+- **The hero's nameplate stands on the floor under the hero.** The Stage Clear
+  scene (`.rpg-stage-scene--clear`) raises the backdrop by a strip of the
+  stage's floor tile (as the quiz field does), and the quiz's flat nameplate
+  (now the shared `.rpg-nameplate`, built by `heroNameplate()`) sits on it,
+  just under the feet. Scene height 236 → 284px (162 → 234px in the compact
+  ≤740px-tall layout); the hero's scale is unchanged. Rejected: putting the
+  nameplate under the hero on the backdrop itself, which lifts the hero off
+  the horizon.

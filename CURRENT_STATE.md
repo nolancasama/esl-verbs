@@ -1,6 +1,6 @@
 # Current State
 
-## Status (2026-10-02)
+## Status (2026-10-05)
 
 The Osaka expansion is implemented on `master`: the Osaka campaign map,
 regional saves, and Sakai as the first full post-Matsubara city (40 questions,
@@ -11,6 +11,8 @@ day (lower-third intro titles, shorter lore, centred word, larger stage banner,
 Fighter shield layering). A 2026-10-02 UI polish pass followed: Ninja hero text,
 a backing plate behind the quiz word, a labelled answer slot, a flat status
 nameplate, quiz actors at 90%, and the intro hero a little further left.
+On 2026-10-05 the streak badge moved over the dummy and Stage Clear was cut
+down to title → hero + nameplate → AP meter → note → BATTLE!.
 Battles, AP, XP and balance are unchanged. Pushing `master` deploys live (GitHub Pages,
 https://nolancasama.github.io/esl-verbs/).
 
@@ -25,7 +27,12 @@ What a player sees now:
   (NAME · LV, then HP + potions) under the hero, the word centred between the
   banner and the answer box, which sits a short way below the scene. Typed
   stages answer in a dark こたえ / ANSWER slot. A correct answer is a class strike on the dummy and +1 on the
-  top meter as it hits; a wrong answer is a stumble.
+  top meter as it hits; a wrong answer is a stumble. From 2 in a row, an
+  "N in a row!" badge bobs centred above the dummy.
+- Stage Clear (between quiz and battle): STAGE N CLEAR! → the hero on the
+  stage backdrop with the nameplate on the floor under them → the AP meter
+  (the only AP display here; no topbar, no score line, no enemy list) → the
+  AP note (EN / JA lines; the rest text at 0 AP) → BATTLE!.
 - Matsubara ending (~26 s auto-play, every card tap-to-advance): victory
   (darkness clears with MATSUBARA CITY IS SAFE!, YOU PROTECTED THE CITY!) →
   five lore cards (Action Energy; Black Star in Lake Biwa + Shadow Horde; why
@@ -38,6 +45,18 @@ What a player sees now:
   Shadow Commander last) → ending (the ally stays in Sakai) → city results →
   map save animation. A checkpoint is saved at each Sakai stage start; the
   map and menu offer つづき / CONTINUE ADVENTURE.
+
+Verified 2026-10-05 (streak badge + Stage Clear):
+- `npm test` 95/95, browser playthrough passes (its Stage Clear check now
+  asserts the meter under the scene and no topbar instead of the removed
+  "= 10 AP" text), `npm run balance` byte-identical to the previous commit.
+- Scripted screenshots + geometry against a HEAD baseline: streak badge centre
+  = dummy centre (to 0.1 px) at 1024×600, 1366×768, 1920×1080, and unchanged
+  during the hit shake; hero, word and dummy positions identical to baseline.
+  Stage Clear for Fighter / Mage / Ninja at 1024×600 (and Fighter at 1366×768,
+  1920×1080), full and 0 AP: no page scroll (the old screen scrolled 11 px at
+  1024×600), no console errors; BATTLE! starts the battle with its own topbar.
+  Not checked: phone widths for Stage Clear.
 
 Verified 2026-10-02 (UI polish pass):
 - `npm test` 95/95, browser playthrough passes, `npm run balance` byte-identical

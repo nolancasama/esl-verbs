@@ -160,7 +160,9 @@ async function adventureFlow(page, baseUrl) {
   await answerTenTypedQuestions(page);
 
   await page.getByText(/STAGE\s*1\s*CLEAR/i).waitFor();
-  await page.getByText(/=\s*10\s*AP/i).waitFor();
+  // Stage Clear shows the earned AP on the meter under the hero, with no topbar.
+  await page.locator('.stage-card > .rpg-stage-scene--clear + .ap-meter').waitFor();
+  if (await page.locator('.stage-card .rpg-topbar').count()) throw new Error('Stage Clear should not show the menu / music topbar');
   if (await apMeterValue(page) !== 10) throw new Error('The AP meter should show the 10 AP earned in the quiz');
   await page.getByRole('button', { name: /BATTLE!/i }).click();
   await page.locator('.battle-view').waitFor();
