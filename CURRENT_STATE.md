@@ -2,6 +2,16 @@
 
 ## Status (2026-10-17)
 
+2026-10-17 (branch `feature/pronunciation-coach`): Japanese pronunciation hints
+after missed spoken answers in modes 3–4 (see DESIGN_DECISIONS). Verified:
+`npm test` 99/99; `npm run test:coach` (Study at 360/1280: ranked order, no
+advance on silence or another verb, Listen in English, reset on correct;
+`?coach=off` inert). Adventure placement checked by screenshot at 1024×600;
+the Adventure part of the check is opt-in (`COACH_ADVENTURE=1`) because headless
+Chromium's renderer crashes after scripted mic input in a resumed spoken stage —
+with the coach off too, idle memory flat — needs its own diagnosis. Each page
+now gets a fresh browser (several pages in one browser crashed).
+
 2026-10-17: Adventure Stage 4 now uses the same learning format as Stage 3 —
 visible Japanese prompt (spoken with ja-JP TTS) → spoken English answer. There
 is no Japanese-listening-only quiz phase any more (Japanese listening is not the

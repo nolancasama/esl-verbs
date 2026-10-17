@@ -640,3 +640,28 @@ and proves the regional framework with one full city (Sakai).
   format as Level 3. Study's マイクなし behaviour is unchanged.
 - Rejected: hiding the prompt or adding a Stage-4-only flag; mapping Adventure
   stage 4 to mode 3 (would blur the stage/mode link used by titles and saves).
+
+## 2026-10-17 — Pronunciation hints after a missed spoken answer
+
+- **What:** modes 3–4 (Study and Adventure) show a Japanese pronunciation hint
+  from the shared `esl-pronunciation-coach` v1.1.0 (vendored in
+  `vendor/esl-pronunciation-coach/`, loaded by `index.html`, glue in
+  `src/pronunciation-hints.js`) when a listening session heard speech that did
+  not match. Hints come in the coach's Japanese-learner ranking; the Nth near
+  miss on a verb shows the Nth hint, then listening support.
+- **Only near misses advance:** silence, recognition errors and cancelled
+  sessions never call the coach (`TapToTalk.onMiss` fires only for heard,
+  unmatched speech); another verb from `VOCABULARY` is a content mistake
+  (`answerSet`), not pronunciation. A correct answer resets that verb's hints;
+  a revisited verb keeps its progression for the session.
+- **Coach the verb, not its homophones:** the target is `item.en`; `enAccepted`
+  only lists recogniser homophones.
+- **Placement:** Study shows the card under the mic. Adventure shows one compact
+  row (word · hint · きく) inside the fixed-height answer box (`rpg.css`) so the
+  hero, word and dummy never move — the full card overflowed the 1024×600 box.
+  The card has no Try again button; the note/mic stay the way to retry.
+- **Never coached:** typed Japanese (modes 1–2), choices, マイクなし and the
+  speech-failed fallback.
+- **Disable:** `PRONUNCIATION_COACH_ENABLED` in the glue, or `?coach=off`.
+- Rejected: an overlay card in Adventure (would cover the scene); coaching
+  every enAccepted form (would coach "right" for "write").
