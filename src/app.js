@@ -2,6 +2,7 @@ import { VOCABULARY } from './vocab.js';
 import { isJapaneseCorrect } from './normalize.js';
 import { MODES, answer, choiceFallback, createRound, makeChoices, practiceItems, viewModel } from './engine.js';
 import { TapToTalk } from './speech.js';
+import { createPronunciationHints } from './pronunciation-hints.js';
 import { speak } from './tts.js';
 import { CAMPAIGN, ENCOUNTERS, ENEMIES, HEROES, LEVELS, SKILLS } from './battle-data.js';
 import { battleXp, chooseEncounter, createBattle } from './battle-engine.js';
@@ -39,6 +40,8 @@ let micFree = readMicFree(), round = null, quizContext = null, feedback = '', au
 let recognitionErrors = 0, speechDenied = false, speechFailed = false, tap = null, lastHeard = '';
 let campaign = null, stageResult = null, battleView = null, screen = 'menu', debugConfig = null, screenTimers = [], upcomingEncounter = null;
 let campaignOutcome = null; // the finished campaign's saved record, for the results screen
+// Japanese pronunciation hints after a missed spoken answer (modes 3-4 only).
+const hints = createPronunciationHints({ answerSet: VOCABULARY.map((item) => item.en), pauseListening: () => tap?.cancel() });
 
 function readMicFree() { try { return localStorage.getItem(MIC_FREE_KEY) === 'true'; } catch { return false; } }
 function saveMicFree(value) { try { localStorage.setItem(MIC_FREE_KEY, String(value)); } catch {} }
@@ -54,7 +57,7 @@ function currentItem() { return round?.items[round.currentIndex]; }
 function setMicFree(value) { micFree = value; saveMicFree(value); if (round) renderQuestion(false); }
 function element(tag, className = '', text = '') { const node = document.createElement(tag); node.className = className; node.textContent = text; return node; }
 function speechRecognitionAvailable() { return Boolean(globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition); }
-function stopMedia() { tap?.cancel(); tap = null; globalThis.speechSynthesis?.cancel?.(); }
+function stopMedia() { tap?.cancel(); tap = null; hints.clear(); globalThis.speechSynthesis?.cancel?.(); }
 function clearBattle() { battleView?.destroy?.(); battleView = null; }
 function clearTimers() { screenTimers.forEach((id) => clearTimeout(id)); screenTimers = []; }
 function later(ms, fn) { screenTimers.push(setTimeout(fn, ms)); }
@@ -192,7 +195,7 @@ function prepareEncounter() {
 
 function renderQuestion(autoSpeak = true) {
   if (isAdventure()) { renderAdventureQuestion(autoSpeak); return; }
-  tap?.cancel(); tap = null; clearBattle(); screen = 'study-quiz';
+  tap?.cancel(); tap = null; hints.clear(); clearBattle(); screen = 'study-quiz';
   const item = currentItem(); const vm = viewModel(round.mode, item, { micFree: answerByChoices() }); app.replaceChildren(); app.className = 'app';
   const card = element('section', 'card'); const top = element('div', 'topline');
   const back = element('button', 'secondary', '← Level select'); back.onclick = levelSelect;
@@ -282,7 +285,7 @@ function trainingStrike({ field, heroNode, dummy, value }) {
  * dummy, and the AP point lands on the top meter with the hit.
  */
 function renderAdventureQuestion(autoSpeak = true) {
-  tap?.cancel(); tap = null; clearBattle(); clearTimers(); screen = 'adventure-quiz';
+  tap?.cancel(); tap = null; hints.clear(); clearBattle(); clearTimers(); screen = 'adventure-quiz';
   const item = currentItem(); const vm = viewModel(round.mode, item, { micFree: answerByChoices() });
   const stage = campaign.stage; const hero = HEROES[campaign.heroId];
   const strike = quizStrike; quizStrike = false;
@@ -375,11 +378,11 @@ function answerArea(vm, item, rpg = false) {
     const showAnswer = btn('secondary', 'こたえを見る'); showAnswer.onclick = () => mark(false, item, true); area.append(choices, showAnswer);
   } else {
     const mic = btn('mic', '🎤 Tap to talk'); const showAnswer = btn('secondary', 'こたえを見る'); showAnswer.onclick = () => mark(false, item, true);
-    tap = new TapToTalk({ onCorrect: () => mark(true, item), onHeard: (heard) => { recognitionErrors = 0; lastHeard = heard; status.textContent = `Heard: ${heard}`; },
+    tap = new TapToTalk({ onCorrect: () => { hints.hit(item); mark(true, item); }, onHeard: (heard) => { recognitionErrors = 0; lastHeard = heard; status.textContent = `Heard: ${heard}`; },
       onStatus: (message) => { if (message === 'Listening...') lastHeard = ''; status.textContent = message === 'Try again' && lastHeard ? `Heard: ${lastHeard} — Try again` : message; },
-      onListenChange: (listening) => audio.duck('stt', listening),
+      onListenChange: (listening) => audio.duck('stt', listening), onMiss: (heard) => hints.miss(item, heard),
       onUnavailable: (reason) => fallback(reason), onError: () => { recognitionErrors += 1; if (recognitionErrors >= 3) fallback(); } });
-    mic.onclick = () => tap.start(item.enAccepted); area.append(mic, showAnswer);
+    mic.onclick = () => tap.start(item.enAccepted); area.append(mic, showAnswer); hints.mount(area);
   } return area;
 }
 

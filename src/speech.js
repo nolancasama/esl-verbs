@@ -11,17 +11,17 @@ export function findMatch(results, accepted) {
 }
 
 export class TapToTalk {
-  constructor({ SpeechRecognition, onCorrect = () => {}, onHeard = () => {}, onStatus = () => {}, onUnavailable = () => {}, onError = () => {}, onListenChange = () => {}, timeoutMs = 6000 } = {}) {
+  constructor({ SpeechRecognition, onCorrect = () => {}, onHeard = () => {}, onStatus = () => {}, onUnavailable = () => {}, onError = () => {}, onListenChange = () => {}, onMiss = () => {}, timeoutMs = 6000 } = {}) {
     this.Recognition = SpeechRecognition || globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
     this.onCorrect = onCorrect; this.onHeard = onHeard; this.onStatus = onStatus; this.onListenChange = onListenChange;
-    this.onUnavailable = onUnavailable; this.onError = onError; this.timeoutMs = timeoutMs;
+    this.onUnavailable = onUnavailable; this.onError = onError; this.onMiss = onMiss; this.timeoutMs = timeoutMs;
     this.recognition = null; this.listening = false; this.matched = false; this.timer = null; this.accepted = [];
   }
 
   start(accepted) {
     if (this.listening) return this.stop();
     if (!this.Recognition) return this.onUnavailable('unsupported');
-    this.accepted = accepted; this.matched = false;
+    this.accepted = accepted; this.matched = false; this.heard = null;
     const recognition = this.recognition = new this.Recognition();
     recognition.lang = 'en-US'; recognition.interimResults = true; recognition.continuous = false; recognition.maxAlternatives = 5;
     recognition.onresult = (event) => {
@@ -29,7 +29,7 @@ export class TapToTalk {
       if (matched) { this.matched = true; this.onCorrect(matched); this.stop(); return; }
       const last = event.results?.[event.results.length - 1];
       const transcript = last?.[0]?.transcript;
-      if (transcript) this.onHeard(transcript);
+      if (transcript) { this.heard = { transcript, alternatives: Array.from(last, (alternative) => alternative?.transcript).filter(Boolean) }; this.onHeard(transcript); }
     };
     recognition.onerror = (event) => {
       const reason = event?.error || 'other';
@@ -53,6 +53,8 @@ export class TapToTalk {
     this.listening = false; clearTimeout(this.timer); this.timer = null; this.onListenChange(false);
     this.recognition = null;
     if (!this.matched) this.onStatus('Try again');
+    // A finished session that heard speech but matched nothing is one missed attempt.
+    if (!this.matched && this.heard) this.onMiss(this.heard);
   }
 
   cancel() {
