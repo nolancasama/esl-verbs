@@ -621,3 +621,22 @@ and proves the regional framework with one full city (Sakai).
   ≤740px-tall layout); the hero's scale is unchanged. Rejected: putting the
   nameplate under the hero on the backdrop itself, which lifts the hero off
   the horizon.
+
+## 2026-10-17 — Stage 4 uses the Stage 3 format (see Japanese → speak English)
+
+- **Mode 4 now shares Mode 3's configuration** (`SEE_JA_SPEAK_EN` in
+  `src/engine.js`): the Japanese word is shown and stays on screen, it is
+  spoken with ja-JP TTS, and the student says the English verb with the same
+  tap-to-talk flow and the same fallback (choices only when recognition is
+  unsupported, denied, or keeps failing). Title: "Japanese → Speak English /
+  See and hear Japanese. Say the English word. / 日本語を見て聞いて、えいごで言おう".
+- **Why:** the learning target is the English verb, not Japanese listening
+  comprehension. The old Mode 4 (hear Japanese only → speak English) made the
+  last stage a Japanese-listening test.
+- **Stage 4 stays its own stage:** its own 10-question round, AP, battle and
+  campaign result. Difficulty, AP, battles, vocabulary and campaign structure
+  are unchanged; later-stage difficulty comes from the battles.
+- **Study mode** reads the same `MODES`, so Study Level 4 is now the same
+  format as Level 3. Study's マイクなし behaviour is unchanged.
+- Rejected: hiding the prompt or adding a Stage-4-only flag; mapping Adventure
+  stage 4 to mode 3 (would blur the stage/mode link used by titles and saves).

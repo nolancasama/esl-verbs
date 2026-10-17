@@ -14,6 +14,8 @@ test('all four mode view models use the frozen configuration', () => {
     assert.deepEqual(model.speak, { text: climb[config.prompt], lang: config.speakLang });
     assert.equal(model.input, config.answer);
   }
+  assert.deepEqual(viewModel(4, climb), viewModel(3, climb), 'mode 4 uses the same see-Japanese → speak-English format as mode 3');
+  assert.equal(viewModel(4, climb).promptText, climb.ja, 'mode 4 keeps the Japanese prompt visible');
   assert.equal(viewModel(3, climb, { micFree: true }).input, 'choices');
   assert.equal(viewModel(4, climb, { micFree: true }).input, 'choices');
 });

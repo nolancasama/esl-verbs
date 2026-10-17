@@ -17,7 +17,7 @@ const MODES = {
   1: { prompt: 'en', showPrompt: true,  speakLang: 'en-US', answer: 'jaText'   },
   2: { prompt: 'en', showPrompt: false, speakLang: 'en-US', answer: 'jaText'   },
   3: { prompt: 'ja', showPrompt: true,  speakLang: 'ja-JP', answer: 'enSpeech' },
-  4: { prompt: 'ja', showPrompt: false, speakLang: 'ja-JP', answer: 'enSpeech' },
+  4: { prompt: 'ja', showPrompt: true, speakLang: 'ja-JP', answer: 'enSpeech' }, // same format as 3 (2026-10-17)
 };
 ```
 
@@ -25,7 +25,7 @@ Level select titles (all unlocked, no progression):
 1. English → Japanese — See and hear English. Type Japanese. (えいごを見て聞いて、日本語を書こう)
 2. Listen → Japanese — Hear English. Type Japanese. (えいごを聞いて、日本語を書こう)
 3. Japanese → Speak English — See and hear Japanese. Say the English word. (日本語を見て聞いて、えいごで言おう)
-4. Listen → Speak English — Hear Japanese. Say the English word. (日本語を聞いて、えいごで言おう)
+4. Japanese → Speak English — See and hear Japanese. Say the English word. (日本語を見て聞いて、えいごで言おう)
 
 Every question auto-speaks its prompt (only the word: `en` or `ja`, nothing
 else). Every mode has a `🔊 Replay` button (unlimited). Prompt text dominates the

@@ -1,6 +1,19 @@
 # Current State
 
-## Status (2026-10-05)
+## Status (2026-10-17)
+
+2026-10-17: Adventure Stage 4 now uses the same learning format as Stage 3 —
+visible Japanese prompt (spoken with ja-JP TTS) → spoken English answer. There
+is no Japanese-listening-only quiz phase any more (Japanese listening is not the
+target skill). Modes are now 1 see EN → type JA, 2 hear EN → type JA, 3 and 4
+see JA → speak EN; Stage 4 is still its own round, AP and battle. Study Level 4
+reads the same config, so it now matches Level 3.
+Verified: `npm test` 95/95, browser playthrough passes, `npm run balance`
+byte-identical to the previous commit; a scratchpad Playwright script played
+stages 3 and 4 by stubbed speech (Japanese visible on every question and after
+answering, ja-JP TTS of the shown word, recognition en-US, 10 AP → Stage Clear →
+BATTLE! opens the battle) and both fallbacks (no recognition API; three
+recognition errors) with choices under the still-visible Japanese.
 
 The Osaka expansion is implemented on `master`: the Osaka campaign map,
 regional saves, and Sakai as the first full post-Matsubara city (40 questions,

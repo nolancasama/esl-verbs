@@ -1,10 +1,14 @@
 export const QUESTIONS_PER_ROUND = 10;
 
+// Modes 3 and 4 share one format (see Japanese → speak English): the target skill is the
+// English verb, so there is no Japanese-listening-only mode. They stay separate stages.
+const SEE_JA_SPEAK_EN = Object.freeze({ prompt: 'ja', showPrompt: true, speakLang: 'ja-JP', answer: 'enSpeech' });
+
 export const MODES = Object.freeze({
   1: Object.freeze({ prompt: 'en', showPrompt: true, speakLang: 'en-US', answer: 'jaText' }),
   2: Object.freeze({ prompt: 'en', showPrompt: false, speakLang: 'en-US', answer: 'jaText' }),
-  3: Object.freeze({ prompt: 'ja', showPrompt: true, speakLang: 'ja-JP', answer: 'enSpeech' }),
-  4: Object.freeze({ prompt: 'ja', showPrompt: false, speakLang: 'ja-JP', answer: 'enSpeech' }),
+  3: SEE_JA_SPEAK_EN,
+  4: SEE_JA_SPEAK_EN,
 });
 
 function shuffled(items, rng) {

@@ -29,7 +29,7 @@ const titles = {
   1: ['English → Japanese', 'See and hear English. Type Japanese.', 'えいごを見て聞いて、日本語を書こう'],
   2: ['Listen → Japanese', 'Hear English. Type Japanese.', 'えいごを聞いて、日本語を書こう'],
   3: ['Japanese → Speak English', 'See and hear Japanese. Say the English word.', '日本語を見て聞いて、えいごで言おう'],
-  4: ['Listen → Speak English', 'Hear Japanese. Say the English word.', '日本語を聞いて、えいごで言おう'],
+  4: ['Japanese → Speak English', 'See and hear Japanese. Say the English word.', '日本語を見て聞いて、えいごで言おう'],
 };
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const apMeter = createApMeter();
