@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COMPILED, TRACKS, createAudio, noteFrequency, parseSeq } from '../src/audio.js';
+import { COMPILED, TRACKS, createAudio, musicGain, noteFrequency, parseSeq, readVolumes } from '../src/audio.js';
 
 const BAR = 16;
 
@@ -79,7 +79,119 @@ test('without Web Audio the engine is a silent no-op that never throws', () => {
   assert.doesNotThrow(() => {
     audio.unlock(); audio.play('ominous'); audio.play('awaken'); audio.duck('tts', true); audio.sfx('hit'); audio.duck('tts', false);
     for (const name of ['heroSting', 'allySting', 'wave']) audio.sfx(name);
-    audio.setEnabled(false); audio.stop(); audio.cut();
+    audio.setMusicVolume(0); audio.setSfxVolume(0.4); audio.stop(); audio.cut();
   });
   assert.equal(audio.enabled, false);
+  assert.equal(audio.musicVolume, 0);
+  assert.equal(audio.sfxVolume, 0.4);
+});
+
+const MUSIC_KEY = 'esl-verbs-music-volume';
+const SFX_KEY = 'esl-verbs-sfx-volume';
+function memoryStorage(values = {}) {
+  const data = new Map(Object.entries(values));
+  return { getItem: (key) => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) };
+}
+
+test('sound volumes default to twelve percent and persist independently', () => {
+  const storage = memoryStorage();
+  assert.deepEqual(readVolumes(storage), { musicVolume: 0.12, sfxVolume: 0.12 });
+  const audio = createAudio({ storage });
+  audio.setMusicVolume(0);
+  assert.equal(audio.sfxVolume, 0.12);
+  audio.setSfxVolume(0.65);
+  assert.equal(audio.musicVolume, 0);
+  assert.equal(storage.getItem(MUSIC_KEY), '0');
+  assert.equal(storage.getItem(SFX_KEY), '0.65');
+  assert.deepEqual(readVolumes(storage), { musicVolume: 0, sfxVolume: 0.65 });
+});
+
+test('invalid stored volumes default and finite out-of-range volumes clamp', () => {
+  for (const [stored, expected] of [['abc', 0.12], ['-1', 0], ['7', 1], ['', 0.12], ['Infinity', 0.12]]) {
+    assert.deepEqual(readVolumes(memoryStorage({ [MUSIC_KEY]: stored, [SFX_KEY]: stored })),
+      { musicVolume: expected, sfxVolume: expected }, stored);
+  }
+});
+
+test('legacy music setting migrates once without changing independent SFX', () => {
+  for (const [old, expected] of [['off', 0], ['on', 0.12], [null, 0.12]]) {
+    const storage = memoryStorage(old === null ? {} : { 'esl-verbs-music': old });
+    assert.deepEqual(readVolumes(storage), { musicVolume: expected, sfxVolume: 0.12 });
+    assert.equal(storage.getItem(MUSIC_KEY), String(expected));
+    assert.equal(storage.getItem('esl-verbs-music'), old);
+    storage.setItem('esl-verbs-music', 'off');
+    assert.equal(readVolumes(storage).musicVolume, expected);
+  }
+  assert.equal(readVolumes(memoryStorage({ 'esl-verbs-music': 'off', [MUSIC_KEY]: '0.7' })).musicVolume, 0.7);
+  assert.equal(readVolumes(memoryStorage({ 'esl-verbs-music': 'off', [MUSIC_KEY]: '' })).musicVolume, 0.12);
+});
+
+test('ducked music gain is proportional to the chosen music volume', () => {
+  assert.equal(musicGain(0.5), 0.5);
+  assert.equal(musicGain(0.5, ['tts']), 0.06);
+  assert.equal(musicGain(0.12, ['tts']), 0.0144);
+  assert.equal(musicGain(0.8, ['tts', 'stt']), 0);
+  assert.equal(musicGain(0, ['tts']), 0);
+});
+
+test('live music gain keeps the track and SFX remains independent of music and ducking', (t) => {
+  const gains = [];
+  let soundStarts = 0;
+  const parameter = () => ({ value: 0, setValueAtTime() {}, linearRampToValueAtTime() {},
+    exponentialRampToValueAtTime() {}, cancelScheduledValues() {},
+    setTargetAtTime(value) { this.value = value; } });
+  const node = () => ({ connect() {}, disconnect() {}, start() { soundStarts += 1; }, stop() {},
+    setPeriodicWave() {}, frequency: parameter(), detune: parameter(), Q: parameter() });
+  class FakeContext {
+    state = 'running'; currentTime = 0; sampleRate = 8; destination = {};
+    createDynamicsCompressor() { return { ...node(), threshold: parameter(), ratio: parameter() }; }
+    createGain() { const gain = { ...node(), gain: parameter() }; gains.push(gain); return gain; }
+    createDelay() { return { ...node(), delayTime: parameter() }; }
+    createBiquadFilter() { return node(); }
+    createBuffer() { return { getChannelData: () => new Float32Array(8) }; }
+    createBufferSource() { return node(); }
+    createOscillator() { return node(); }
+    createPeriodicWave() { return {}; }
+  }
+  t.mock.method(globalThis, 'setInterval', () => 1);
+  t.mock.method(globalThis, 'clearInterval', () => {});
+  const previousContext = globalThis.AudioContext;
+  globalThis.AudioContext = FakeContext;
+  let audio;
+  try {
+    audio = createAudio({ storage: memoryStorage() });
+    audio.play('field');
+    audio.unlock();
+    const gainCount = gains.length;
+    audio.setMusicVolume(0.5);
+    assert.equal(gains.length, gainCount, 'changing gain does not create another track');
+    assert.equal(gains[0].gain.value, 0.5);
+    audio.duck('tts', true);
+    assert.equal(gains[0].gain.value, 0.06);
+    audio.setMusicVolume(0);
+    const beforeSfx = soundStarts;
+    audio.sfx('cursor');
+    assert.ok(soundStarts > beforeSfx, 'music off still allows SFX while TTS ducks');
+    audio.setSfxVolume(0);
+    const muted = soundStarts;
+    audio.sfx('cursor');
+    assert.equal(soundStarts, muted);
+    audio.setSfxVolume(0.12);
+    audio.duck('stt', true);
+    audio.sfx('cursor');
+    assert.equal(soundStarts, muted, 'microphone listening still suppresses SFX');
+    audio.duck('stt', false);
+    for (const name of ['swordSwing', 'swordHit', 'magicCast', 'boltTravel', 'magicHit', 'ninjaSlash', 'ninjaHit', 'apGain']) {
+      const before = soundStarts;
+      audio.sfx(name);
+      assert.ok(soundStarts > before, `${name} synthesizes a sound`);
+    }
+    const beforeResume = gains.length;
+    audio.setMusicVolume(0.2);
+    assert.equal(gains.length, beforeResume, 'unmuting keeps the current track');
+  } finally {
+    audio?.cut();
+    if (previousContext === undefined) delete globalThis.AudioContext;
+    else globalThis.AudioContext = previousContext;
+  }
 });

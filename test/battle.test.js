@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { battleHint, targetHintMode } from '../src/battle-ui.js';
 import { BALANCE, ENCOUNTERS, ENEMIES, HEROES, ITEMS, SKILLS } from '../src/battle-data.js';
 import {
   availableItems, availableSkills, battleXp, chooseEncounter, chooseEnemyIntent, createBattle, cycleTarget, getEnemyIntent,
@@ -16,6 +17,21 @@ const patchEnemy = (state, uid, changes) => ({
 const damageTo = (events, target) => events.filter((event) => event.type === 'damage' && event.target === target).reduce((sum, event) => sum + event.amount, 0);
 const apGains = (events, reason) => events.filter((event) => event.type === 'ap' && (!reason || event.reason === reason)).reduce((sum, event) => sum + event.amount, 0);
 const heavyOn = (state, uid = state.enemies[0].uid) => patchEnemy(state, uid, { intent: 'heavy', charging: true });
+
+test('target discovery requires two living enemies and an idle player turn', () => {
+  const pair = battle({ encounterId: 'goblin-slime' });
+  assert.equal(targetHintMode(pair, 'intro'), 'intro');
+  assert.equal(targetHintMode(pair, 'quiet'), 'quiet');
+  assert.equal(targetHintMode(pair, null), null);
+  assert.equal(targetHintMode(pair, 'intro', true), null);
+  assert.equal(targetHintMode({ ...pair, turn: 'enemy' }, 'intro'), null);
+  assert.equal(targetHintMode({ ...pair, turn: 'won' }, 'quiet'), null);
+  assert.equal(targetHintMode(patchEnemy(pair, pair.enemies[0].uid, { hp: 0 }), 'intro'), null);
+  assert.equal(targetHintMode(battle(), 'intro'), null);
+  const onboarding = { skill: 'basic', text: 'Use your first skill' };
+  assert.deepEqual(battleHint(pair, onboarding), onboarding, 'target hint does not replace the action hint');
+  assert.equal(battleHint(heavyOn(pair), onboarding).skill, 'defense');
+});
 
 test('battle creation, level-derived hero values, targeting and skill gates', () => {
   const state = battle();

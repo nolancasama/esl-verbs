@@ -80,6 +80,17 @@
 @keyframes fx-flash-red { 0% { opacity: .38; } 100% { opacity: 0; } }
 @keyframes fx-warn { 0%, 50% { opacity: .35; } 25%, 75% { opacity: 0; } 100% { opacity: 0; } }
 
+.ap-energy-mote { position: fixed; z-index: 900; pointer-events: none; padding: 3px 5px; color: #fff5bb; background: #8f551b; border: 2px solid #ffd35a; box-shadow: 3px 0 #fff2a4, -3px 0 #e9a63a; font-family: var(--pixel-font); font-size: 12px; transition: transform 300ms ease-in; }
+.ap-meter__pop { position: absolute; top: 0; bottom: 0; width: 10%; pointer-events: none; background: #fff4ac; box-shadow: inset 0 0 0 2px #ffd35a; animation: ap-segment-pop 200ms steps(4) forwards; }
+.ap-meter--pulse { animation: ap-frame-pulse 200ms steps(3); }
+@keyframes ap-segment-pop { from { opacity: 1; transform: scale(1.25); } to { opacity: 0; transform: scale(1); } }
+@keyframes ap-frame-pulse { 50% { border-color: #fff0a5; } }
+@media (prefers-reduced-motion: reduce) {
+  .ap-meter__pop { animation-name: ap-segment-flash; }
+  .ap-energy-mote { display: none; }
+}
+@keyframes ap-segment-flash { from { opacity: 1; } to { opacity: 0; } }
+
 /* ---------------------------------------------------------- reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .px-sprite, .hero-card .px-sprite { animation: none !important; }

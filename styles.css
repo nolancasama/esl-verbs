@@ -53,6 +53,14 @@ button:focus-visible, input:focus-visible { outline: 4px solid #f5a623; outline-
   .debug-form { grid-template-columns: 1fr; }
   .debug-form button { grid-column: auto; }
 }
+.sound-button { min-height: 44px; padding: .35rem .8rem; font-size: 11px; white-space: nowrap; }
+.sound-popover { position: fixed; z-index: 1000; width: min(370px, calc(100vw - 16px)); padding: 12px; background: #17162c; color: #fff4cf; }
+.sound-popover > strong { font-family: var(--pixel-font); font-size: 12px; }
+.sound-popover__row { display: grid; grid-template-columns: 1fr 110px 4ch; align-items: center; gap: 10px; min-height: 48px; }
+.sound-popover__row label { font-size: 13px; font-weight: 700; }
+.sound-popover__row input { width: 100%; min-height: 44px; margin: 0; padding: 0; accent-color: #ffd35a; cursor: pointer; }
+.sound-popover__row output { font-size: 13px; text-align: right; }
+.sound-popover__row input:focus-visible { outline: 2px solid #ffd35a; outline-offset: 2px; }
 /* A Chromebook browser window is ~635px tall: keep the menu's toggles above the fold. */
 @media (max-height: 740px) {
   .app:has(> .menu-card) { padding-block: 12px; }

@@ -1,43 +1,55 @@
 {
-  "task": "Implement the frozen combat revision in .ai/combat-spec.md: engine-owned enemy intents with injected RNG, per-hero tactical mechanics (Fighter combo/break/counter, Mage power recovery, Ninja opening/dodge counter/chain), lightweight boss phase 2, intent/status UI, and a naive-vs-smart balance simulation.",
+  "task": "Implement Slice 1 of the frozen spec .ai/pass-spec.md: enemy target-selection clarity and onboarding hint (battle UI), independent Music/SFX volume settings with a SOUND popover and migration (audio), and hero-specific verb-success SFX plus AP-gain chime, travelling +1 energy mote and AP segment pop (quiz training strike + AP meter).",
   "requirements": [
-    "Follow .ai/combat-spec.md exactly; it is the controller-approved design. Where it says 'suggest', tune numbers in src/battle-data.js as needed for the balance tests.",
-    "All battle mechanics live in src/battle-engine.js with numbers in src/battle-data.js; src/battle-ui.js only renders state/intents and replays engine events.",
-    "Enemy intent is chosen once by chooseEnemyIntent with an injected rng and displayed before the player acts; resolveEnemyPhase executes exactly the stored intent.",
-    "Every hero keeps exactly four skills; no new systems beyond the spec.",
-    "Update test/battle.test.js with every test listed in section 5 of the spec, including the naive-at-Power-2 winnability over several seeds and smart-beats-naive on tier 3-4.",
-    "Update hero kanaSummary wording per spec section 4.",
-    "Append a dated entry to DESIGN_DECISIONS.md recording the principle 'Easy to play casually; rewarding to understand deeply.', the per-hero identities, engine-owned enemy intents, boss phase 2, only-Mage-regenerates-Power, and any balance tuning; revise the 'Balance is guarded by a simulation test' line. Update CURRENT_STATE.md status/test counts/next steps (revise stale lines, don't append)."
+    "Follow section 'Slice 1' of .ai/pass-spec.md exactly (1A targeting, 1B sound settings, 1C verb-success feedback, Slice 1 tests). It is the controller-approved design.",
+    "Preserve what is already on master: Stage 3/4 share SEE_JA_SPEAK_EN in src/engine.js; the streak badge stays wrapped with the dummy and centred above it; Stage Clear stays title -> hero scene + nameplate -> AP meter -> AP note -> BATTLE!.",
+    "Keep the existing targeting logic (cycleTarget/selectTarget, data-select-uid); this is discoverability and visuals. Selecting an enemy never attacks.",
+    "Music and SFX volumes are fully independent: defaults 0.12 each, keys esl-verbs-music-volume / esl-verbs-sfx-volume, clamp 0..1, malformed values -> default, one-time migration from esl-verbs-music='off' -> music 0. Ducking is relative to the chosen music volume. Live music changes never restart the track.",
+    "Replace every MUSIC ON/OFF toggle with one SOUND button + document-level popover (native range inputs, >=44px rows, Escape/outside click closes, battle keys ignored while open, survives battle re-renders).",
+    "Training strike: per-hero weapon/cast sfx and separate impact sfx at the TRAINING_STRIKE timings, then a +1 mote travels to the AP meter; AP set + segment pop + apGain chime happen on arrival. No extra quiz delay; AP never lost or doubled; reduced-motion path.",
+    "Targeting onboarding uses an in-memory session flag (never localStorage), intro -> quiet after the first real target change.",
+    "Add the tests listed under 'Slice 1 tests'; keep all existing tests passing; npm run balance output must stay byte-identical (battle numbers untouched).",
+    "Append dated DESIGN_DECISIONS.md entries for the decisions made (sound popover replacing the music toggle, 12% defaults + migration, target hint levels via session state, success feedback sequence). Revise stale CURRENT_STATE.md lines (music toggle, AP feedback, targeting) instead of appending logs."
   ],
   "constraints": [
-    "Do not modify vocabulary, normalization, quiz modes, STT, TTS, quiz scoring, campaign.js Power formula, campaign stage order, or Study mode.",
-    "Keep the ?debug=battle launcher working; adapt it only if createBattle's options change.",
-    "Placeholder art only; add at most small CSS/data-state effects (break flash, enraged tint, heavy-intent pulse).",
-    "Battle view must still fit 1366x768 without vertical scroll.",
-    "Do not store DOM state or the rng function in battle state.",
-    "Edit source with structured edit tools; if a shell edit hits a quoting/escaping failure, switch to file edit tools.",
-    "Do not commit. Do not delete .ai/combat-spec.md."
+    "Do not touch src/battle-engine.js, src/battle-data.js, src/region.js, src/story.js, src/pixel-enemies.js, src/pixel-effects.js, src/station-map.js or src/battle-locations.js (other slices own them).",
+    "No new runtime dependency, no build step, no framework, no canvas animation loop, no large-area CSS filters. Effects are CSS / light DOM.",
+    "1024x600 must not page-scroll on the quiz, Stage Clear or battle screens; the target hint must not cover enemy sprites, plates, intents or status badges.",
+    "Edit source with structured edit tools; on the first shell quoting/escaping failure switch to file edit tools.",
+    "Do not commit. Do not delete .ai files."
   ],
   "startingPoints": [
-    ".ai/combat-spec.md",
-    "src/battle-data.js",
-    "src/battle-engine.js",
+    ".ai/pass-spec.md",
     "src/battle-ui.js",
+    "src/audio.js",
     "src/app.js",
-    "src/battle-art.js",
+    "src/ap-meter.js",
+    "rpg.css",
+    "fx.css",
     "styles.css",
+    "test/audio.test.js",
     "test/battle.test.js",
-    "test/browser/playthrough.mjs",
-    "DESIGN_DECISIONS.md",
-    "CURRENT_STATE.md"
+    "test/browser/playthrough.mjs"
   ],
-  "validation": ["npm test"],
+  "validation": [
+    "npm test",
+    "npm run balance"
+  ],
   "behavioralAcceptance": {
-    "owner": "controller",
-    "description": "Controller runs npm run test:browser with PLAYWRIGHT_PATH and screenshots a debug battle at 1366x768 to judge intent chips and feedback."
+    "owner": "worker",
+    "description": "Run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser (extended per the spec) and confirm it passes. Take screenshots at 1024x600 of: a multi-enemy battle with the intro hint and a selected enemy, the quiet hint, the open SOUND popover over the quiz and over a battle, and a quiz strike mid-mote. Save them under .tmp/slice1/ and list the paths."
   },
+  "notes": [
+    "createBattleView re-renders container.innerHTML on every render; anything that must persist (the sound popover) lives outside it on document.body.",
+    "battle-ui onKeydown is a document listener: it already bails when .modal-backdrop exists; add the same bail-out while the sound popover is open or focus is inside it.",
+    "audio.js: musicLevel()/applyLevel() compute the music gain with DUCK ratios against MUSIC_VOLUME; sfx() currently returns when !enabled, which must become sfxVolume <= 0. The silent fallback object (no AudioContext) needs the same new API.",
+    "app.js: musicToggle()/musicToggleMarkup()/paintMusicToggle and the [data-music-toggle] document click handler are the toggles to replace; showBattle passes topRight: musicToggleMarkup().",
+    "app.js trainingStrike(): TRAINING_STRIKE has per-hero pose/projectile/launch/hit/impact; land() currently sets the AP at impact and plays sfx('hit').",
+    "ap-meter.js is one persistent node mounted into each screen's slot; the fill is a width bar with notches, so the segment pop is an absolutely positioned overlay at index*10%.",
+    "Browser test runs with PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright; debug entry points: ?debug=battle, ?debug=quiz&stage=N&hero=X."
+  ],
   "category": "feature",
-  "complexity": "hard",
+  "complexity": "medium",
   "bounded": true,
   "exploration": "local",
   "risk": "medium",

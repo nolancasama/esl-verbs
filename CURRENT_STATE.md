@@ -34,13 +34,16 @@ What a player sees now:
   まつばら市 → あぶない！ with the Horde → the chosen hero on the left, facing
   the Horde on the right, まもろう！ → STAGE 1)
   → Matsubara stages 1–4.
-- Adventure quiz: menu / AP / music strip on top (the only AP display), a
+- Adventure quiz: menu / AP / SOUND strip on top (the only AP display), a
   readable stage / instruction / count banner, then one scene: hero | word on
   a translucent plate (speaker beneath) | training dummy, a flat nameplate
   (NAME · LV, then HP + potions) under the hero, the word centred between the
   banner and the answer box, which sits a short way below the scene. Typed
-  stages answer in a dark こたえ / ANSWER slot. A correct answer is a class strike on the dummy and +1 on the
-  top meter as it hits; a wrong answer is a stumble. From 2 in a row, an
+  stages answer in a dark こたえ / ANSWER slot. A correct answer plays a class
+  weapon/cast and impact sound, then a +1 energy mote travels from the dummy
+  to the top meter; arrival fills and pops the segment with an AP chime.
+  Reduced motion applies AP at impact without the mote; a screen change settles
+  pending AP once. A wrong answer is a stumble. From 2 in a row, an
   "N in a row!" badge bobs centred above the dummy.
 - Stage Clear (between quiz and battle): STAGE N CLEAR! → the hero on the
   stage backdrop with the nameplate on the floor under them → the AP meter
@@ -58,6 +61,16 @@ What a player sees now:
   Shadow Commander last) → ending (the ally stays in Sakai) → city results →
   map save animation. A checkpoint is saved at each Sakai stage start; the
   map and menu offer つづき / CONTINUE ADVENTURE.
+- Battle targeting: select with ←/→ or tap anywhere on an enemy; selection
+  never attacks. The selected enemy has a larger marker, gold plate, stepped
+  ground ring and warm sprite backing, plus an accessible target announcement.
+  A Japanese-first field hint becomes quiet after the first real target change
+  in the current Adventure session; Study/debug battles use the quiet hint.
+- SOUND opens a body-level popover with independent Music and SFX sliders
+  (12% defaults), live percentages and Escape/outside-click dismissal. Battle
+  keys pause while it is open. Volumes persist separately; legacy music OFF
+  migrates once to music 0 without muting SFX. Ducking scales the chosen music
+  level, and live music changes keep the current track position.
 
 Verified 2026-10-05 (streak badge + Stage Clear):
 - `npm test` 95/95, browser playthrough passes (its Stage Clear check now
@@ -183,9 +196,9 @@ Verified 2026-09-30:
   furigana readable on a projector.
 - The music cut when the Horde appears, the ominous/awaken tracks and the
   stings, by ear, and with TTS ducking.
-- Quiz scene on a real Chromebook: sprite scale-up smoothness at 1024×600, the
-  strike (~0.5 s to impact) without slowing the quiz, and whether students
-  notice +1 on the top AP meter now that the in-field gauge is gone.
+- Quiz scene on a real Chromebook: sprite scale-up smoothness at 1024×600,
+  hero-specific strike sounds and the energy mote / AP segment pop; check that
+  students notice the AP gain without slowing the quiz.
 - Sakai: is the 20-minute city too long for one lesson (checkpoints resume at
   the current stage); do students find the Horde waves and the ally clear.
 - Earlier open items: real mic grant/denial, IME Enter, sprite build time and

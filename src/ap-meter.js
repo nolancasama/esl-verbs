@@ -26,6 +26,7 @@ export function createApMeter() {
   const trail = el.querySelector('.ap-meter__trail');
   const now = el.querySelector('.ap-meter__now');
   const delta = el.querySelector('.ap-meter__delta');
+  const track = el.querySelector('.ap-meter__track');
   let value = 0;
   let deltaTimer = null;
 
@@ -64,6 +65,13 @@ export function createApMeter() {
   return {
     el,
     get value() { return value; },
+    /** Zero-based segment bounds in viewport coordinates for the quiz mote. */
+    segmentRect(index) {
+      const rect = track.getBoundingClientRect();
+      const left = rect.left + track.clientLeft;
+      const width = track.clientWidth / MAX;
+      return { left: left + Math.max(0, Math.min(MAX - 1, index)) * width, top: rect.top + track.clientTop, width, height: track.clientHeight };
+    },
     /** Place the meter into a screen's slot (moving it from wherever it was). */
     mount(slot) {
       if (!slot) return;
@@ -73,10 +81,22 @@ export function createApMeter() {
     /** Set AP; animates by default and shows a +N / −N chip for the change. */
     set(next, { animate = true, quiet = false } = {}) {
       const target = Math.max(0, Math.min(MAX, Math.round(next)));
-      const change = target - value;
+      const previous = value;
+      const change = target - previous;
       value = target;
       paint(target, animate);
       if (animate && !quiet) showDelta(change);
+      if (animate && !quiet && change > 0) {
+        for (let index = previous; index < target; index += 1) {
+          const pop = document.createElement('span');
+          pop.className = 'ap-meter__pop'; pop.setAttribute('aria-hidden', 'true');
+          pop.style.left = `${index * 10}%`; track.append(pop);
+          setTimeout(() => pop.remove(), 200);
+        }
+        el.classList.remove('ap-meter--pulse'); void el.offsetWidth;
+        el.classList.add('ap-meter--pulse');
+        setTimeout(() => el.classList.remove('ap-meter--pulse'), 200);
+      }
     },
     /** A short "not enough AP" shake. */
     deny() {

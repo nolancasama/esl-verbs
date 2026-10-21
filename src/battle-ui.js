@@ -136,6 +136,12 @@ export function battleHint(state, onboarding = null) {
   return payoffHint(state) || onboarding;
 }
 
+/** Target discovery is separate from action hints and is hidden during playback. */
+export function targetHintMode(state, requested, playing = false) {
+  if (playing || state.turn !== 'player' || state.enemies.filter((enemy) => enemy.hp > 0).length < 2) return null;
+  return requested === 'intro' || requested === 'quiet' ? requested : null;
+}
+
 /** COMBO / OPENING point at the skill that cashes the bonus in; COUNTER applies to any attack. */
 function payoffHint(state) {
   const best = availableSkills(state)
@@ -158,6 +164,7 @@ function payoffHint(state) {
  */
 export function createBattleView(container, {
   state, apMeter = null, onAction = () => {}, onSelect = () => {}, onExit = () => {}, hint = null, sound = null, topRight = '',
+  targetHint = null, onTargetChange = () => {},
 } = {}) {
   if (!container) throw new Error('createBattleView needs a container');
   if (!state) throw new Error('createBattleView needs battle state');
@@ -171,6 +178,12 @@ export function createBattleView(container, {
   let activeTimer = null;
   let finishDelay = null;
   let shownAp = state.ap;
+  let targetHintLevel = targetHint;
+  const targetAnnouncement = document.createElement('div');
+  targetAnnouncement.className = 'sr-only';
+  targetAnnouncement.setAttribute('aria-live', 'polite');
+  targetAnnouncement.setAttribute('aria-atomic', 'true');
+  document.body.append(targetAnnouncement);
   // While events play, the view shows this snapshot (HP, statuses, stance) and updates it per event,
   // so bars drop as hits land instead of jumping to the end-of-turn values.
   let display = null;
@@ -287,7 +300,7 @@ export function createBattleView(container, {
     const selected = !gone && !display && enemy.uid === currentState.selectedUid;
     const art = gone ? '' : getBattleArt(enemy.id, enemyRestState(enemy), { variant: enemy.phase === 2 ? 'enraged' : '' });
     return `<button type="button" class="battle-enemy${selected ? ' battle-enemy--selected' : ''}${data.boss ? ' battle-enemy--boss' : ''}${enemy.phase === 2 ? ' battle-enemy--enraged' : ''}${gone ? ' battle-enemy--gone' : ''}${pending ? ' battle-enemy--pending' : ''}${incoming ? ' battle-enemy--incoming' : ''}"
-      data-select-uid="${enemy.uid}" data-enemy-uid="${enemy.uid}" data-enemy-id="${enemy.id}" aria-pressed="${selected}" ${gone ? 'disabled aria-hidden="true" tabindex="-1"' : ''}>
+      data-select-uid="${enemy.uid}" data-enemy-uid="${enemy.uid}" data-enemy-id="${enemy.id}" aria-pressed="${selected}" aria-label="${esc(data.name)} / ${esc(data.jaName)}${selected ? ', selected / えらんでいる' : ''}" ${gone ? 'disabled aria-hidden="true" tabindex="-1"' : ''}>
       <span class="battle-target-marker" aria-hidden="true">${getIcon('cursor')}</span>
       <span class="battle-enemy__plate px-panel">
         <span class="battle-enemy__name">${esc(data.name)}<small>${esc(data.jaName)}</small></span>
@@ -303,6 +316,7 @@ export function createBattleView(container, {
     effects.clear();
     const hero = HEROES[currentState.heroId];
     const activeHint = currentHint();
+    const targetMode = targetHintMode(currentState, targetHintLevel, playing);
     const defaultMessage = currentState.turn === 'won' ? 'VICTORY!' : currentState.turn === 'lost' ? 'DEFEATED...'
       : recovering ? 'RECOVERING… / ひとやすみ…' : currentState.turn === 'enemy' ? 'Enemy turn...' : itemMenu ? 'Use an item? / アイテムをつかう？' : 'Choose an action.';
     const heroShown = display?.hero ?? currentState.hero;
@@ -316,7 +330,7 @@ export function createBattleView(container, {
         ${AP_SLOT}
         <div class="battle-topbar__right">${waveCount > 1 ? `<div class="battle-round battle-wave px-panel">WAVE ${waveShown} / ${waveCount}</div>` : ''}<div class="battle-round px-panel">TURN ${currentState.round}</div>${topRight}</div>
       </div>
-      <div class="battle-field ${backdropClass(stage)}${allyShown ? ' battle-field--ally' : ''}">
+      <div class="battle-field ${backdropClass(stage)}${allyShown ? ' battle-field--ally' : ''}${targetMode ? ` battle-field--target-${targetMode}` : ''}">
         <div class="battle-light" aria-hidden="true"></div>
         ${reserveMarkup()}
         ${allyMarkup(allyShown)}
@@ -324,6 +338,7 @@ export function createBattleView(container, {
           <div class="battle-art-wrap">${getBattleArt(hero.id, heroState)}${heroShown.defense === 'barrier' ? getBarrierArt() : ''}</div>
         </article>
         <div class="battle-enemies">${shownEnemies().map(enemyMarkup).join('')}</div>
+        ${targetMode ? `<div class="battle-target-hint battle-target-hint--${targetMode}">${targetMode === 'intro' ? '<strong>← → てきを えらぶ</strong><span>てきを タップしても OK！</span><small>CHOOSE A TARGET</small>' : '← → / タップ'}</div>` : ''}
         <div class="battle-banner" aria-hidden="true"></div>
       </div>
       <div class="battle-lower">
@@ -339,6 +354,7 @@ export function createBattleView(container, {
         <div class="battle-skills${itemMenu ? ' battle-skills--items' : ''}" aria-label="${itemMenu ? 'Items' : 'Skills'}">${skillsMarkup(activeHint)}</div>
       </div>
     </section>`;
+    container.querySelector('[data-sound-button]')?.setAttribute('aria-expanded', String(Boolean(document.querySelector('[data-sound-popover]'))));
     if (fitPx) container.querySelector('.battle-view')?.style.setProperty('--px', fitPx);
     else fit();
     if (apMeter) {
@@ -359,7 +375,7 @@ export function createBattleView(container, {
     const enemyH = Math.max(1, ...[...field.querySelectorAll('.battle-enemy .px-sprite')].map((node) => read(node, '--fh') - read(node, '--top')));
     const heroNode = field.querySelector('.battle-hero .px-sprite');
     const heroH = heroNode ? read(heroNode, '--fh') : 72;
-    const room = field.clientHeight - 12;
+    const room = field.clientHeight - (parseFloat(getComputedStyle(field).paddingBottom) || 0) - 12;
     let px = Math.max(1, Math.min(4, Math.floor(Math.min((room - 118) / enemyH, room / heroH))));
     view.style.setProperty('--px', px);
     // The estimate assumes one-line name plates; step down while anything still spills below the field.
@@ -584,8 +600,9 @@ export function createBattleView(container, {
   function chooseTarget(uid) {
     if (destroyed || playing || currentState.turn !== 'player') return;
     const next = selectTarget(currentState, uid);
-    if (next === currentState) return;
+    if (next === currentState || next.selectedUid === currentState.selectedUid) return;
     currentState = next;
+    targetChanged();
     sound?.sfx('cursor');
     render();
     onSelect(currentState);
@@ -593,10 +610,20 @@ export function createBattleView(container, {
 
   function moveTarget(direction) {
     if (destroyed || playing || currentState.turn !== 'player') return;
-    currentState = cycleTarget(currentState, direction);
+    const next = cycleTarget(currentState, direction);
+    if (next.selectedUid === currentState.selectedUid) return;
+    currentState = next;
+    targetChanged();
     sound?.sfx('cursor');
     render();
     onSelect(currentState);
+  }
+
+  function targetChanged() {
+    if (targetHintLevel === 'intro') { targetHintLevel = 'quiet'; fitPx = null; }
+    const enemy = currentState.enemies.find((unit) => unit.uid === currentState.selectedUid);
+    targetAnnouncement.textContent = `Target: ${ENEMIES[enemy.id].name}`;
+    onTargetChange(currentState);
   }
 
   function skipPlayback(event) {
@@ -613,10 +640,10 @@ export function createBattleView(container, {
   }
 
   function onClick(event) {
-    if (skipPlayback(event)) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('[data-battle-exit]')) { onExit(); return; }
     if (target?.closest('[data-topbar-extra]')) return;
+    if (skipPlayback(event)) return;
+    if (target?.closest('[data-battle-exit]')) { onExit(); return; }
     const enemy = target?.closest('[data-select-uid]');
     if (enemy) { chooseTarget(Number(enemy.dataset.selectUid)); return; }
     if (target?.closest('[data-item-menu]')) { toggleItems(true); return; }
@@ -628,7 +655,7 @@ export function createBattleView(container, {
   }
 
   function onKeydown(event) {
-    if (document.querySelector('.modal-backdrop')) return; // the quit dialog owns the keyboard
+    if (document.querySelector('.modal-backdrop, [data-sound-popover]') || document.activeElement?.closest('[data-sound-popover]')) return;
     if (playing) {
       if (event.key === 'Enter' || event.key === ' ') skipPlayback(event);
       return;
@@ -680,6 +707,7 @@ export function createBattleView(container, {
       finishDelay = null;
       resolve?.();
       effects.destroy();
+      targetAnnouncement.remove();
       container.removeEventListener('click', onClick, true);
       document.removeEventListener('keydown', onKeydown);
       globalThis.removeEventListener?.('resize', onResize);

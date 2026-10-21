@@ -63,8 +63,6 @@
   width: calc(var(--fw) * var(--icon, 2) * 1px); height: calc(var(--fh) * var(--icon, 2) * 1px);
   background-size: 100% 100%; image-rendering: pixelated; image-rendering: crisp-edges;
 }
-.music-toggle { min-height: 44px; padding: .35rem .8rem; font-size: 11px; white-space: nowrap; }
-.music-toggle--off { color: #c6cbe0; }
 
 /* --------------------------------------------------------------- AP meter */
 .ap-slot { display: block; min-width: 1px; }
@@ -299,12 +297,39 @@
 /* Name plate and intents may sit over the transparent rows at the top of a sprite frame. */
 .battle-enemy .px-sprite { margin-top: calc(var(--top, 0) * var(--px) * -1px); }
 .battle-enemy--defeated .battle-enemy__plate, .battle-enemy--defeated .battle-cues, .battle-enemy--defeated .battle-target-marker { visibility: hidden; }
-.battle-target-marker { visibility: hidden; height: 22px; --icon: 2; }
+.battle-target-marker { visibility: hidden; height: 30px; --icon: 3; }
 .battle-target-marker .px-icon { transform: rotate(90deg); animation: px-bob .6s steps(2) infinite; }
 @keyframes px-bob { 50% { translate: 0 4px; } }
 .battle-enemy--selected .battle-target-marker { visibility: visible; }
 .battle-enemy__plate { display: grid; gap: 3px; width: 100%; min-width: 132px; max-width: 210px; padding: 4px 8px 5px; text-align: center; }
-.battle-enemy--selected .battle-enemy__plate { border-color: var(--gold); }
+.battle-enemy--selected .battle-enemy__plate { border: 3px solid var(--gold); background: #493b2c; box-shadow: inset 0 0 0 1px #ffe6a6, 0 0 0 var(--b) var(--ink); }
+.battle-enemy--selected .battle-art-wrap { isolation: isolate; }
+.battle-enemy--selected .battle-art-wrap::before {
+  content: ''; position: absolute; z-index: -1; inset: 5% -10% 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 72%, #ffd96a6e 0 30%, #ffd96a30 52%, transparent 70%);
+}
+.battle-enemy--selected .battle-art-wrap::after {
+  content: ''; position: absolute; bottom: 1px; left: 50%; width: 4px; height: 3px; pointer-events: none;
+  transform: translateX(-50%) scale(calc(var(--px) * .6)); transform-origin: 50% 100%; background: #ffd35a;
+  box-shadow: -4px 0 #ffd35a, -8px 0 #ffd35a, -12px 0 #ffd35a, 4px 0 #ffd35a, 8px 0 #ffd35a, 12px 0 #ffd35a,
+    -16px -3px #ffd35a, 16px -3px #ffd35a, -20px -3px #ffd35a, 20px -3px #ffd35a,
+    -24px -6px #ffd35a, 24px -6px #ffd35a, -20px -9px #ffd35a, 20px -9px #ffd35a, -16px -9px #ffd35a, 16px -9px #ffd35a,
+    -12px -12px #ffd35a, -8px -12px #ffd35a, -4px -12px #ffd35a, 0 -12px #ffd35a, 4px -12px #ffd35a, 8px -12px #ffd35a, 12px -12px #ffd35a;
+  animation: target-ring .8s steps(2) infinite;
+}
+@keyframes target-ring { 50% { opacity: .65; } }
+/* Reserve a floor strip, so the hint never overlaps an enemy or its cues. */
+.battle-field--target-intro { padding-bottom: 70px; }
+.battle-field--target-quiet { padding-bottom: 36px; }
+.battle-target-hint {
+  position: absolute; right: 18px; bottom: 6px; z-index: 3; display: grid; justify-items: center; gap: 2px;
+  padding: 4px 12px; border: 2px solid #b69450; background: #191624e8; color: #fff1c4;
+  font-family: var(--read-font); font-size: 12px; line-height: 1.2; pointer-events: none;
+}
+.battle-target-hint small { font-family: var(--pixel-font); font-size: 8px; }
+.battle-target-hint--intro { font-size: 15px; font-weight: 800; padding: 5px 14px; border-color: var(--gold); }
+.battle-target-hint--quiet { font-size: 11px; padding: 4px 10px; }
+@media (prefers-reduced-motion: reduce) { .battle-enemy--selected .battle-art-wrap::after { animation: none; } }
 /* A long English + Japanese name breaks between the two instead of spilling out of the plate. */
 .battle-enemy__name { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 4px; font-family: var(--read-font); font-weight: 900; font-size: .85rem; line-height: 1.1; }
 .battle-enemy__name small { font-weight: 600; font-size: .75rem; opacity: .9; white-space: nowrap; }
@@ -586,6 +611,8 @@
   .battle-app { height: auto; min-height: 100vh; overflow: visible; }
   .battle-view { min-height: 100vh; grid-template-rows: auto auto auto auto; overflow: visible; }
   .battle-field { grid-template-columns: 1fr; min-height: 420px; padding: 8px; }
+  .battle-field--target-intro { padding-bottom: 70px; }
+  .battle-field--target-quiet { padding-bottom: 36px; }
   .battle-enemies { flex-wrap: wrap; padding-bottom: 0; }
   .battle-hero { order: 2; justify-items: start; }
   .battle-skill { grid-template-columns: auto minmax(0, 1fr); }
@@ -597,7 +624,7 @@
   .battle-topbar__right { grid-column: 1 / -1; justify-self: stretch; justify-content: space-between; }
   .battle-message-box { flex-direction: column; align-items: flex-start; }
   .ap-meter__ja { display: none; }
-  .music-toggle { font-size: 10px; }
+  .sound-button { font-size: 10px; }
   /* Phones: the word above, the hero and the dummy side by side below it. */
   .rpg-field { --apx: 2; }
   .rpg-field__arena { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) auto auto auto minmax(0, 1fr); grid-template-areas: ". ." "prompt prompt" "hero dummy" "stats ." ". ."; row-gap: 6px; }

@@ -353,7 +353,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
       case 'opening':
       case 'opening-hit': spawn('eyeFx', centre(event.target, 0.2), { dur: 300 }); return 320;
       case 'break': spawn('breakFx', centre(event.target, 0.5), { dur: 520 }); sfx('break'); shake('m'); light('white', 200); return 560;
-      case 'ap': spawn('sparkle', centre('hero', 0.2), { dur: 300 }); sfx('ap'); return 320;
+      case 'ap': spawn('sparkle', centre('hero', 0.2), { dur: 300 }); sfx('apGain'); return 320;
       case 'recover': spawn('recoverFx', centre('hero', 0.5), { dur: 620 }); sfx('recover'); return 700;
       case 'chain': {
         const from = centre(lastTarget, 0.5), to = centre(event.target, 0.5);

@@ -227,17 +227,85 @@ async function debugBattleFlow(page, baseUrl) {
   await page.getByRole('button', { name: /Back to debug/i }).waitFor();
 }
 
-async function musicToggle(page, baseUrl) {
+async function targetDiscovery(page, baseUrl) {
+  await page.goto(`${baseUrl}/?debug=battle`);
+  await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
+  await page.locator('select').nth(1).selectOption('goblin-slime');
+  await page.getByLabel(/^AP/i).first().fill('5');
+  await page.getByRole('button', { name: /START BATTLE/i }).click();
+  await page.locator('.battle-target-hint').waitFor();
+  const selected = () => page.locator('.battle-enemy[aria-pressed="true"]').getAttribute('data-select-uid');
+  const initial = await selected();
+  const ap = await page.locator('.ap-meter').innerText();
+  const turn = await page.locator('.battle-round').last().innerText();
+  await page.keyboard.press('ArrowRight');
+  if (await selected() === initial) throw new Error('ArrowRight did not select another enemy');
+  const otherSprite = page.locator('.battle-enemy[aria-pressed="false"] .battle-sprite').first();
+  await otherSprite.click();
+  if (await selected() !== initial) throw new Error('Clicking the sprite did not select its enemy');
+  if (await page.locator('.ap-meter').innerText() !== ap || await page.locator('.battle-round').last().innerText() !== turn) {
+    throw new Error('Target selection spent AP or advanced the turn');
+  }
+  await page.locator('[data-sound-button]').first().click();
+  await page.locator('[data-sound-popover]').waitFor();
+  const beforeSound = await selected();
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  if (await page.locator('[data-sound-popover]').count() !== 1 || await page.locator('[data-sound-button]').getAttribute('aria-expanded') !== 'true') {
+    throw new Error('Battle re-render lost the open sound popover');
+  }
+  await page.locator('[data-sound-popover] input[type="range"]').first().focus();
+  await page.keyboard.press('ArrowRight');
+  if (await selected() !== beforeSound) throw new Error('Sound slider arrows changed the battle target');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-sound-popover]').waitFor({ state: 'detached' });
+  await page.keyboard.press('ArrowRight');
+  if (await selected() === beforeSound) throw new Error('Battle keys did not resume after closing sound');
+
+  // Exercise the introductory view option and an already defeated slot without
+  // depending on damage rolls or event playback timings.
   await page.goto(baseUrl);
-  const toggle = page.locator('[data-music-toggle]').first();
-  await toggle.waitFor();
-  const before = await toggle.innerText();
-  await toggle.click();
-  const after = await toggle.innerText();
-  if (before === after) throw new Error('Music toggle did not change');
+  await page.evaluate(async () => {
+    const { createBattle } = await import('/src/battle-engine.js');
+    const { createBattleView } = await import('/src/battle-ui.js');
+    const state = createBattle({ heroId: 'fighter', encounterId: 'goblin-slime', ap: 5, rng: () => .99 });
+    state.enemies.splice(1, 0, { ...state.enemies[0], uid: 999, hp: 0 });
+    const host = document.createElement('div');
+    host.id = 'target-hint-fixture';
+    document.body.append(host);
+    globalThis.targetHintFixture = createBattleView(host, { state, targetHint: 'intro' });
+  });
+  await page.locator('.battle-target-hint--intro').waitFor();
+  await page.keyboard.press('ArrowRight');
+  await page.locator('.battle-target-hint--quiet').waitFor();
+  if (await page.locator('[data-select-uid="999"]').getAttribute('aria-pressed') !== 'false') throw new Error('A defeated enemy was selected');
+  await page.keyboard.press('ArrowRight');
+  if (await page.locator('[data-select-uid="999"]').getAttribute('aria-pressed') !== 'false') throw new Error('Target cycling did not skip the defeated slot');
+  await page.evaluate(() => { globalThis.targetHintFixture.destroy(); document.querySelector('#target-hint-fixture').remove(); delete globalThis.targetHintFixture; });
+}
+
+async function soundSettings(page, baseUrl) {
+  await page.goto(baseUrl);
+  const button = page.locator('[data-sound-button]').first();
+  await button.waitFor();
+  await button.click();
+  const popover = page.locator('[data-sound-popover]');
+  await popover.waitFor();
+  const sliders = popover.locator('input[type="range"]');
+  await sliders.nth(0).fill('37');
+  await sliders.nth(0).dispatchEvent('input');
+  await sliders.nth(1).fill('21');
+  await sliders.nth(1).dispatchEvent('input');
+  await sliders.nth(1).dispatchEvent('change');
+  const values = await popover.innerText();
+  if (!values.includes('37%') || !values.includes('21%')) throw new Error('Sound percentages did not update live');
+  await page.keyboard.press('Escape');
+  await popover.waitFor({ state: 'detached' });
+  if (await button.getAttribute('aria-expanded') !== 'false') throw new Error('Sound button stayed expanded');
   await page.reload();
-  if ((await page.locator('[data-music-toggle]').first().innerText()) !== after) throw new Error('Music preference was not remembered');
-  await page.locator('[data-music-toggle]').first().click();
+  await page.locator('[data-sound-button]').first().click();
+  const restored = page.locator('[data-sound-popover] input[type="range"]');
+  if (await restored.nth(0).inputValue() !== '37' || await restored.nth(1).inputValue() !== '21') throw new Error('Independent sound preferences were not remembered');
+  await page.keyboard.press('Escape');
 }
 
 async function studyFlow(page, baseUrl) {
@@ -267,11 +335,12 @@ try {
   await adventureFlow(page, baseUrl);
   await regionalFlow(page, baseUrl);
   await debugBattleFlow(page, baseUrl);
-  await musicToggle(page, baseUrl);
+  await targetDiscovery(page, baseUrl);
+  await soundSettings(page, baseUrl);
   await studyFlow(page, baseUrl);
 
   if (browserErrors.length) throw new Error(`Browser errors:\n${browserErrors.join('\n')}`);
-  console.log('Browser playthrough passed: Adventure, Osaka regional continuation/checkpoint, 0-AP recovery battle, music toggle, and Study mode 1.');
+  console.log('Browser playthrough passed: Adventure, Osaka regional continuation/checkpoint, 0-AP recovery battle, target discovery, sound settings, and Study mode 1.');
 } catch (error) {
   console.error(error?.stack || error);
   process.exitCode = 1;

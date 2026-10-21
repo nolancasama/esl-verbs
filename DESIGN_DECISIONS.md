@@ -640,3 +640,25 @@ and proves the regional framework with one full city (Sakai).
   format as Level 3. Study's マイクなし behaviour is unchanged.
 - Rejected: hiding the prompt or adding a Stage-4-only flag; mapping Adventure
   stage 4 to mode 3 (would blur the stage/mode link used by titles and saves).
+
+## 2026-10-22 — Slice 1: target discovery, sound settings and AP arrival
+
+- SOUND replaces the music ON/OFF toggle with a single RPG popover on
+  `document.body`. Native Music and SFX ranges remain usable across battle
+  re-renders; Escape/outside click closes it, restores button focus and keeps
+  battle shortcuts from consuming slider keys.
+- Music and SFX default independently to 12%, with separate persisted decimal
+  volumes. Legacy music OFF migrates once to music 0; it never mutes SFX.
+  Ducking multiplies the chosen music volume, and live gain changes preserve
+  the current track rather than restarting it.
+- Target hints use in-memory Adventure session state, reset on a new campaign
+  or checkpoint resume. The first actual selection change makes the prominent
+  Japanese-first hint quiet immediately; debug/Study use the quiet version.
+  Gold marker, plate, pixel ground ring and warm sprite backing identify the
+  target without dimming other enemies or changing selection/attack rules.
+- Correct answers retain the existing class strike timing: weapon/cast sound,
+  class impact, then a 300 ms gold +1 mote to the new AP segment. Arrival fills
+  and pops that segment with an AP chime (also used by battle AP events).
+  A pending credit settles once if a screen re-renders early, so the quiz
+  gains no delay and AP cannot be lost or doubled. Reduced motion skips travel
+  and applies AP with sound at impact; the segment flashes without scaling.

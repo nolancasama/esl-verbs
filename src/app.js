@@ -39,6 +39,8 @@ let micFree = readMicFree(), round = null, quizContext = null, feedback = '', au
 let recognitionErrors = 0, speechDenied = false, speechFailed = false, tap = null, lastHeard = '';
 let campaign = null, stageResult = null, battleView = null, screen = 'menu', debugConfig = null, screenTimers = [], upcomingEncounter = null;
 let campaignOutcome = null; // the finished campaign's saved record, for the results screen
+let targetingTaught = false;
+let pendingTrainingGain = null;
 
 function readMicFree() { try { return localStorage.getItem(MIC_FREE_KEY) === 'true'; } catch { return false; } }
 function saveMicFree(value) { try { localStorage.setItem(MIC_FREE_KEY, String(value)); } catch {} }
@@ -56,32 +58,68 @@ function element(tag, className = '', text = '') { const node = document.createE
 function speechRecognitionAvailable() { return Boolean(globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition); }
 function stopMedia() { tap?.cancel(); tap = null; globalThis.speechSynthesis?.cancel?.(); }
 function clearBattle() { battleView?.destroy?.(); battleView = null; }
-function clearTimers() { screenTimers.forEach((id) => clearTimeout(id)); screenTimers = []; }
+function clearTimers() { pendingTrainingGain?.(); screenTimers.forEach((id) => clearTimeout(id)); screenTimers = []; }
 function later(ms, fn) { screenTimers.push(setTimeout(fn, ms)); }
-function clearScreen() { stopMedia(); clearBattle(); clearTimers(); apMeter?.hide(); app.replaceChildren(); app.className = 'app'; }
+function clearScreen() { closeSoundPopover(); stopMedia(); clearBattle(); clearTimers(); apMeter?.hide(); app.replaceChildren(); app.className = 'app'; }
 function isAdventure() { return quizContext === 'adventure' && campaign; }
 
 /* ------------------------------------------------------------------ sound */
 
-function musicToggle() {
-  const button = element('button', 'music-toggle px-button secondary');
-  button.type = 'button';
-  button.dataset.musicToggle = '';
-  paintMusicToggle(button);
-  return button;
+const soundButtonMarkup = () => `<button type="button" class="sound-button px-button secondary" data-sound-button data-topbar-extra aria-haspopup="dialog" aria-expanded="${Boolean(soundPopover)}">🔊 SOUND</button>`;
+function soundButton() {
+  const holder = document.createElement('template');
+  holder.innerHTML = soundButtonMarkup();
+  return holder.content.firstElementChild;
 }
-function paintMusicToggle(button) {
-  button.textContent = `♫ MUSIC ${audio.enabled ? 'ON' : 'OFF'}`;
-  button.setAttribute('aria-pressed', String(audio.enabled));
-  button.classList.toggle('music-toggle--off', !audio.enabled);
+let soundPopover = null, soundAnchor = null;
+function closeSoundPopover() {
+  if (!soundPopover) return;
+  soundPopover.remove(); soundPopover = null;
+  const anchor = soundAnchor?.isConnected ? soundAnchor : document.querySelector('[data-sound-button]');
+  document.querySelectorAll('[data-sound-button]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+  soundAnchor = null;
+  anchor?.focus({ preventScroll: true });
 }
-const musicToggleMarkup = () => `<button type="button" class="music-toggle px-button secondary${audio.enabled ? '' : ' music-toggle--off'}" data-music-toggle data-topbar-extra aria-pressed="${audio.enabled}">♫ MUSIC ${audio.enabled ? 'ON' : 'OFF'}</button>`;
+function positionSoundPopover() {
+  if (!soundPopover) return;
+  const anchor = soundAnchor?.isConnected ? soundAnchor : document.querySelector('[data-sound-button]');
+  const rect = anchor?.getBoundingClientRect();
+  const panel = soundPopover.getBoundingClientRect();
+  soundPopover.style.left = `${Math.max(8, Math.min(rect?.right - panel.width || 8, innerWidth - panel.width - 8))}px`;
+  soundPopover.style.top = `${Math.max(8, Math.min((rect?.bottom ?? 0) + 6, innerHeight - panel.height - 8))}px`;
+}
+function openSoundPopover(button) {
+  soundAnchor = button;
+  soundPopover = element('section', 'sound-popover px-panel');
+  soundPopover.dataset.soundPopover = '';
+  soundPopover.setAttribute('role', 'dialog');
+  soundPopover.setAttribute('aria-labelledby', 'sound-title');
+  soundPopover.innerHTML = '<strong id="sound-title">SOUND / おと</strong>';
+  for (const [bus, label] of [['music', 'MUSIC おんがく'], ['sfx', 'SFX こうかおん']]) {
+    const row = element('div', 'sound-popover__row');
+    const text = element('label', '', label); text.htmlFor = `sound-${bus}`;
+    const input = element('input'); input.type = 'range'; input.id = text.htmlFor;
+    input.min = '0'; input.max = '100'; input.step = '1'; input.value = String(Math.round(audio[`${bus}Volume`] * 100));
+    const value = element('output', '', `${input.value}%`); value.htmlFor = input.id;
+    input.addEventListener('input', () => {
+      audio[bus === 'music' ? 'setMusicVolume' : 'setSfxVolume'](Number(input.value) / 100);
+      value.textContent = `${input.value}%`;
+    });
+    if (bus === 'sfx') input.addEventListener('change', () => audio.sfx('cursor'));
+    row.append(text, input, value); soundPopover.append(row);
+  }
+  document.body.append(soundPopover); button.setAttribute('aria-expanded', 'true');
+  positionSoundPopover(); soundPopover.querySelector('input').focus();
+}
 document.addEventListener('click', (event) => {
-  const toggle = event.target instanceof Element ? event.target.closest('[data-music-toggle]') : null;
-  if (!toggle) return;
-  audio.setEnabled(!audio.enabled);
-  document.querySelectorAll('[data-music-toggle]').forEach(paintMusicToggle);
+  const button = event.target instanceof Element ? event.target.closest('[data-sound-button]') : null;
+  if (button) { if (soundPopover) closeSoundPopover(); else openSoundPopover(button); return; }
+  if (soundPopover && !soundPopover.contains(event.target)) closeSoundPopover();
 });
+document.addEventListener('keydown', (event) => {
+  if (soundPopover && event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeSoundPopover(); }
+}, true);
+window.addEventListener('resize', positionSoundPopover);
 ['pointerdown', 'keydown'].forEach((type) => document.addEventListener(type, () => audio.unlock(), { capture: true, passive: true }));
 
 /* ------------------------------------------------------------------ menus */
@@ -108,7 +146,7 @@ function mainMenu() {
   } else actions.append(adventure);
   const study = element('button', 'menu-choice practice-choice secondary'); study.onclick = levelSelect;
   study.append(element('span', '', 'PRACTICE ONLY'), element('small', '', 'れんしゅうだけ'));
-  const toggles = element('div', 'menu-toggles'); toggles.append(musicToggle());
+  const toggles = element('div', 'menu-toggles'); toggles.append(soundButton());
   actions.append(study); card.append(actions, toggles); app.append(card);
 }
 
@@ -131,7 +169,7 @@ function heroSelect() {
   audio.play('title');
   const top = element('div', 'topline'); const title = element('h1', '', 'CHOOSE YOUR HERO'); title.append(element('small', '', 'ヒーローをえらぼう'));
   const back = element('button', 'secondary px-button', '← Main Menu'); back.onclick = mainMenu;
-  const right = element('div', 'topline-actions'); right.append(musicToggle(), back); top.append(title, right); card.append(top);
+  const right = element('div', 'topline-actions'); right.append(soundButton(), back); top.append(title, right); card.append(top);
   const grid = element('div', 'hero-grid');
   // Replay progress appears only once some hero has finished a campaign.
   const records = readRecords(); const anyDone = completedHeroes(records).length > 0;
@@ -159,6 +197,7 @@ function heroSelect() {
 /* ------------------------------------------------------------------- quiz */
 
 function startCampaign(heroId) {
+  targetingTaught = false;
   campaign = createCampaign(heroId); campaignOutcome = null;
   introCinematic(() => startRound(stageMode(campaign), createRound(VOCABULARY), 'adventure'));
 }
@@ -213,11 +252,11 @@ function heroQuizPose(strike = false) {
 }
 
 // A correct Adventure answer is a quick class strike on the training dummy; the
-// AP point lands on the top meter when the hit does. Timings in ms from the answer.
+// AP point travels to the top meter after impact. Timings in ms from the answer.
 const TRAINING_STRIKE = {
-  fighter: { pose: 'attack', hit: 'slash', impact: 230 },
-  mage: { pose: 'cast', projectile: 'boltProj', launch: 160, hit: 'boltHit', impact: 420 },
-  ninja: { pose: 'attack', hit: 'strikeX', impact: 200 },
+  fighter: { pose: 'attack', hit: 'slash', impact: 230, weapon: 'swordSwing', weaponAt: 40, impactSfx: 'swordHit' },
+  mage: { pose: 'cast', projectile: 'boltProj', launch: 160, hit: 'boltHit', impact: 420, weapon: 'magicCast', weaponAt: 0, travelSfx: 'boltTravel', impactSfx: 'magicHit' },
+  ninja: { pose: 'attack', hit: 'strikeX', impact: 200, weapon: 'ninjaSlash', weaponAt: 30, impactSfx: 'ninjaHit' },
 };
 let quizStrike = false; // set by a correct Adventure answer; the next render plays it once
 
@@ -255,31 +294,48 @@ function fieldEffect(field, name, x, y, { dur = 360, travel = null } = {}) {
 function trainingStrike({ field, heroNode, dummy, value }) {
   const move = TRAINING_STRIKE[campaign.heroId] ?? TRAINING_STRIKE.fighter;
   const heroSprite = heroNode.querySelector('.battle-sprite'), dummySprite = dummy.querySelector('.battle-sprite');
-  const land = () => apMeter?.set(value);
-  if (reducedMotion()) { land(); return; }
+  let credited = false, mote = null;
+  const land = () => {
+    if (credited) return;
+    credited = true; mote?.remove(); pendingTrainingGain = null;
+    if (apMeter && value > apMeter.value) { apMeter.set(value); audio.sfx('apGain'); }
+  };
+  pendingTrainingGain = land;
+  later(move.weaponAt, () => audio.sfx(move.weapon));
+  if (move.travelSfx) later(move.launch, () => audio.sfx(move.travelSfx));
+  if (reducedMotion()) { later(move.impact, () => { audio.sfx(move.impactSfx); land(); }); return; }
   const box = field.getBoundingClientRect(), from = heroNode.getBoundingClientRect(), to = dummy.getBoundingClientRect();
   const at = { x: to.left - box.left + to.width * 0.5, y: to.top - box.top + to.height * 0.45 };
   if (move.projectile) {
     const start = { x: from.right - box.left - from.width * 0.15, y: from.top - box.top + from.height * 0.38 };
-    later(move.launch, () => fieldEffect(field, move.projectile, start.x, start.y, { travel: { dx: at.x - start.x, dy: at.y - start.y, ms: move.impact - move.launch } }));
+    later(move.launch, () => {
+      fieldEffect(field, move.projectile, start.x, start.y, { travel: { dx: at.x - start.x, dy: at.y - start.y, ms: move.impact - move.launch } });
+    });
   }
   later(move.impact, () => {
     fieldEffect(field, move.hit, at.x, at.y);
     fieldEffect(field, 'impact', at.x, at.y, { dur: 300 });
     if (dummySprite) dummySprite.dataset.state = 'hit';
     dummy.classList.add('is-hit');
-    audio.sfx('hit');
-    land();
+    audio.sfx(move.impactSfx);
+    const destination = apMeter?.segmentRect(value - 1);
+    if (!destination || !apMeter.el.isConnected) { land(); return; }
+    mote = element('span', 'ap-energy-mote', '+1'); mote.setAttribute('aria-hidden', 'true');
+    const x = to.left + to.width / 2, y = to.top + to.height * .45;
+    mote.style.left = `${x}px`; mote.style.top = `${y}px`;
+    document.body.append(mote); void mote.offsetWidth;
+    mote.style.transform = `translate(${destination.left + destination.width / 2 - x}px, ${destination.top + destination.height / 2 - y}px)`;
+    later(300, land);
   });
   later(move.impact + 460, () => { dummy.classList.remove('is-hit'); if (dummySprite) dummySprite.dataset.state = 'idle'; });
   later(Math.max(700, move.impact + 300), () => { if (heroSprite) heroSprite.dataset.state = 'idle'; });
 }
 
 /**
- * Adventure quiz: one training field under a thin top strip (menu, AP, music).
+ * Adventure quiz: one training field under a thin top strip (menu, AP, sound).
  * The scene is HERO | WORD | DUMMY on one centre line, the hero's status under
  * the hero, the answer centred below. A correct answer is a strike on the
- * dummy, and the AP point lands on the top meter with the hit.
+ * dummy, followed by an energy mote to the persistent top AP meter.
  */
 function renderAdventureQuestion(autoSpeak = true) {
   tap?.cancel(); tap = null; clearBattle(); clearTimers(); screen = 'adventure-quiz';
@@ -421,7 +477,7 @@ function endScreen() {
 function rpgTopbar(menuAction = confirmQuit) {
   const top = element('div', 'rpg-topbar');
   const back = element('button', 'secondary px-button rpg-topbar__menu', '← Menu'); back.onclick = menuAction;
-  const slot = element('span', 'ap-slot'); const right = element('div', 'rpg-topbar__right'); right.append(musicToggle());
+  const slot = element('span', 'ap-slot'); const right = element('div', 'rpg-topbar__right'); right.append(soundButton());
   top.append(back, slot, right);
   return { top, slot };
 }
@@ -466,7 +522,9 @@ function showBattle(initialState, options) {
   } : null;
   apMeter?.set(initialState.ap, { quiet: true, animate: options.kind === 'adventure' });
   battleView = createBattleView(host, {
-    state: initialState, hint: onboardingHint, apMeter, sound: audio, topRight: musicToggleMarkup(),
+    state: initialState, hint: onboardingHint, apMeter, sound: audio, topRight: soundButtonMarkup(),
+    targetHint: options.kind === 'adventure' && !targetingTaught ? 'intro' : 'quiet',
+    onTargetChange: () => { if (options.kind === 'adventure') targetingTaught = true; },
     onExit: options.kind === 'adventure' ? confirmQuit : debugLauncher,
     onAction: (nextState) => { if (nextState?.turn === 'won' || nextState?.turn === 'lost') battleEnded(nextState, options); }, onSelect: () => {},
   });
@@ -779,6 +837,7 @@ function startCityCampaign(cityId) {
     return;
   }
   if (!region.heroId) { heroSelect(); return; }
+  targetingTaught = false;
   campaignOutcome = null;
   if (region.checkpoint?.cityId === cityId) {
     campaign = resumeCampaign(region);

@@ -4,10 +4,36 @@
 // speech recognition silences it. Everything degrades to a silent no-op when
 // Web Audio is missing or blocked, and nothing here ever throws.
 
-const STORAGE_KEY = 'esl-verbs-music';
-const MUSIC_VOLUME = 0.3;
-const SFX_VOLUME = 0.42;
+const MUSIC_KEY = 'esl-verbs-music-volume';
+const SFX_KEY = 'esl-verbs-sfx-volume';
+const DEFAULT_VOLUME = 0.12;
 const DUCK = { tts: 0.12, stt: 0 };
+
+export function parseVolume(value) {
+  if (value == null || String(value).trim() === '') return DEFAULT_VOLUME;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : DEFAULT_VOLUME;
+}
+
+function stored(storage, key) {
+  try { return storage?.getItem(key) ?? null; } catch { return null; }
+}
+function persist(storage, key, value) {
+  try { storage?.setItem(key, String(value)); } catch {}
+}
+export function readVolumes(storage) {
+  const savedMusic = stored(storage, MUSIC_KEY);
+  const musicVolume = savedMusic === null && stored(storage, 'esl-verbs-music') === 'off'
+    ? 0 : parseVolume(savedMusic);
+  if (savedMusic === null) persist(storage, MUSIC_KEY, musicVolume);
+  return { musicVolume, sfxVolume: parseVolume(stored(storage, SFX_KEY)) };
+}
+
+export function musicGain(volume, reasons = []) {
+  let ratio = 1;
+  for (const reason of reasons) ratio = Math.min(ratio, DUCK[reason] ?? 1);
+  return volume * ratio;
+}
 
 /* ------------------------------------------------------------- notation */
 
@@ -199,18 +225,20 @@ export const COMPILED = Object.fromEntries(Object.entries(TRACKS).map(([name, tr
 
 /* ------------------------------------------------------------------ engine */
 
-function silentAudio(enabled) {
-  return { enabled, setEnabled() {}, unlock() {}, play() {}, stop() {}, cut() {}, duck() {}, sfx() {} };
-}
-
-export function createAudio() {
-  let enabled = true;
-  try { enabled = localStorage.getItem(STORAGE_KEY) !== 'off'; } catch {}
+export function createAudio(options = {}) {
+  let storage = options.storage;
+  if (!storage) { try { storage = globalThis.localStorage; } catch {} }
+  let { musicVolume, sfxVolume } = readVolumes(storage);
+  const settings = {
+    get enabled() { return musicVolume > 0; },
+    get musicVolume() { return musicVolume; },
+    get sfxVolume() { return sfxVolume; },
+    setMusicVolume(value) { musicVolume = parseVolume(value); persist(storage, MUSIC_KEY, musicVolume); },
+    setSfxVolume(value) { sfxVolume = parseVolume(value); persist(storage, SFX_KEY, sfxVolume); },
+  };
   const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!Context) {
-    const silent = silentAudio(enabled);
-    silent.setEnabled = (value) => { silent.enabled = Boolean(value); try { localStorage.setItem(STORAGE_KEY, value ? 'on' : 'off'); } catch {} };
-    return silent;
+    return Object.assign(settings, { unlock() {}, play() {}, stop() {}, cut() {}, duck() {}, sfx() {} });
   }
 
   let ctx = null, master = null, musicBus = null, sfxBus = null, noise = null, pulse = null;
@@ -227,7 +255,7 @@ export function createAudio() {
       master.threshold.value = -18; master.ratio.value = 4;
       master.connect(ctx.destination);
       musicBus = ctx.createGain(); musicBus.gain.value = 0;
-      sfxBus = ctx.createGain(); sfxBus.gain.value = SFX_VOLUME;
+      sfxBus = ctx.createGain(); sfxBus.gain.value = sfxVolume;
       // SNES-style echo: a filtered feedback delay on the music.
       const delay = ctx.createDelay(1); delay.delayTime.value = 0.24;
       const feedback = ctx.createGain(); feedback.gain.value = 0.3;
@@ -250,10 +278,7 @@ export function createAudio() {
   }
 
   function musicLevel() {
-    if (!enabled) return 0;
-    let level = MUSIC_VOLUME;
-    for (const reason of ducks) level = Math.min(level, MUSIC_VOLUME * (DUCK[reason] ?? 1));
-    return level;
+    return musicGain(musicVolume, ducks);
   }
   function applyLevel(fast = false) {
     if (!ctx) return;
@@ -402,7 +427,7 @@ export function createAudio() {
   }
 
   function start(name) {
-    if (!ctx || !enabled || !COMPILED[name]) return;
+    if (!ctx || musicVolume <= 0 || !COMPILED[name]) return;
     if (current?.name === name) return;
     fadeOut(current);
     const gain = ctx.createGain(); gain.gain.value = 1; gain.connect(musicBus);
@@ -413,26 +438,32 @@ export function createAudio() {
   }
 
   const api = {
-    get enabled() { return enabled; },
-    setEnabled(value) {
-      enabled = Boolean(value);
-      try { localStorage.setItem(STORAGE_KEY, enabled ? 'on' : 'off'); } catch {}
-      if (!enabled) { fadeOut(current); current = null; stopTimer(); applyLevel(true); return; }
-      api.unlock();
-      if (wanted && COMPILED[wanted].loop) start(wanted);
+    get enabled() { return musicVolume > 0; },
+    get musicVolume() { return musicVolume; },
+    get sfxVolume() { return sfxVolume; },
+    setMusicVolume(value) {
+      settings.setMusicVolume(value);
+      applyLevel(true);
+      if (musicVolume > 0 && !current) {
+        api.unlock();
+        if (wanted) start(wanted);
+      }
+    },
+    setSfxVolume(value) {
+      settings.setSfxVolume(value);
+      if (ctx) { try { sfxBus.gain.setTargetAtTime(sfxVolume, ctx.currentTime, 0.01); } catch {} }
     },
     /** Call from a user gesture; creates/resumes the AudioContext and starts the wanted track. */
     unlock() {
-      if (!enabled && ctx) return;
       if (!build()) return;
       try { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); } catch {}
-      if (enabled && wanted && !current && COMPILED[wanted]?.loop) start(wanted);
+      if (musicVolume > 0 && wanted && !current && COMPILED[wanted]?.loop) start(wanted);
     },
     /** Switch music by game phase: title, field, battle, boss, victory, defeat, finale. */
     play(name) {
       wanted = name;
       if (!ctx || ctx.state !== 'running') return; // starts on unlock
-      if (!COMPILED[name].loop) { fadeOut(current); current = null; stopTimer(); if (enabled) { const gain = ctx.createGain(); gain.connect(musicBus); current = { name, gain, step: 0, nextTime: ctx.currentTime + 0.1 }; applyLevel(); startTimer(); pump(); } return; }
+      if (!COMPILED[name].loop) { fadeOut(current); current = null; stopTimer(); if (musicVolume > 0) { const gain = ctx.createGain(); gain.connect(musicBus); current = { name, gain, step: 0, nextTime: ctx.currentTime + 0.1 }; applyLevel(); startTimer(); pump(); } return; }
       start(name);
     },
     stop() { wanted = null; fadeOut(current); current = null; stopTimer(); },
@@ -444,7 +475,7 @@ export function createAudio() {
       applyLevel(true);
     },
     sfx(name) {
-      if (!enabled || !ctx || ctx.state !== 'running' || ducks.has('stt')) return;
+      if (sfxVolume <= 0 || !ctx || ctx.state !== 'running' || ducks.has('stt')) return;
       try { playSfx(name); } catch {}
     },
   };
@@ -473,6 +504,14 @@ export function createAudio() {
       case 'wrong': notes(['E5', 'C5'], t, 0.11, 'triangle', 0.16, 0.16); break;
       case 'alarm': notes(['A5', 'F5', 'A5', 'F5'], t, 0.2, 'triangle', 0.13, 0.18); hiss(t, 0.9, 0.12, 300, 60); break;
       case 'slash': hiss(t, 0.12, 0.35, 6000, 1200, 'bandpass'); break;
+      case 'swordSwing': hiss(t, 0.12, 0.35, 4200, 650, 'bandpass'); tone('sine', 1600, t + 0.03, 0.08, 0.06, 1200); break;
+      case 'swordHit': hiss(t, 0.1, 0.4, 2800, 450); tone('triangle', 190, t, 0.12, 0.23, 85); tone('sine', 1900, t, 0.09, 0.1, 1350); break;
+      case 'magicCast': tone('sine', 520, t, 0.18, 0.16, 1350); tone('triangle', 1040, t + 0.025, 0.15, 0.1, 2100); break;
+      case 'boltTravel': hiss(t, 0.13, 0.15, 3200, 700, 'bandpass'); notes(['D6', 'A6'], t, 0.045, 'sine', 0.1, 0.07); break;
+      case 'magicHit': hiss(t, 0.12, 0.2, 6500, 1800, 'highpass'); notes(['D6', 'A6', 'D7'], t, 0.025, 'triangle', 0.17, 0.1); break;
+      case 'ninjaSlash': hiss(t, 0.07, 0.27, 8000, 2400, 'bandpass'); break;
+      case 'ninjaHit': hiss(t, 0.045, 0.32, 4500, 1600, 'highpass'); tone('triangle', 460, t, 0.055, 0.16, 220); break;
+      case 'apGain': notes(['E5', 'A5', 'D6'], t, 0.045, 'triangle', 0.16, 0.09); break;
       case 'hit': hiss(t, 0.09, 0.45, 2500, 300); tone('square', 160, t, 0.08, 0.2, 70); break;
       case 'bigHit': hiss(t, 0.28, 0.6, 1800, 120); tone('square', 110, t, 0.3, 0.28, 35); break;
       case 'magic': tone('sine', 700, t, 0.3, 0.2, 1800); tone('sine', 1400, t + 0.05, 0.25, 0.12, 2600); break;
