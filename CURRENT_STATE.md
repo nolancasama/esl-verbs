@@ -208,6 +208,9 @@ Verified 2026-09-30:
   card before each Adventure battle; the app mounts the controller-owned card.
 - Art: Osaka Defender on the hero rig (`ALLY_IDS`), training dummy
   (`PROP_ART`), Shadow Commander (recoloured Goblin Captain), ground tiles.
+- Dev jump: **Ctrl+Alt+Shift+D** on any screen opens a panel (hero, quiz score,
+  then Quiz / Battle 1–4 or Map for each playable city); it rewrites this
+  browser's regional save (earlier cities saved, later progress cleared).
 - Debug: `?debug=quiz&stage=N&hero=X`, `?debug=map&preset=fresh|matsubara|sakai[&justSaved=id]`
   (writes the regional save), `?debug=battle` (city encounters, start wave),
   `?debug=art` (Sakai intro / ending / city results previews).

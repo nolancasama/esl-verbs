@@ -1101,5 +1101,97 @@ function debugMap(params) {
   osakaMapScreen({ justSaved: saved.includes(justSaved) ? justSaved : null });
 }
 
+/* --------------------------------------------- dev jump (Ctrl+Alt+Shift+D) */
+// A hidden dev/teacher panel: pick a hero and a quiz score, then jump to any
+// city stage's quiz, its battle (through Stage Clear and the station map) or
+// the Osaka map. It rewrites this browser's regional save so the jump is real:
+// the cities before the chosen one count as saved, later progress is cleared.
+const DEV_CITIES = Object.keys(CITY_CAMPAIGNS); // campaign order: matsubara, sakai, yao, ...
+const devSettings = { heroId: 'fighter', ap: 10 };
+let devPanel = null;
+
+function devStageResult(cityId, index) {
+  const stage = CITY_CAMPAIGNS[cityId].stages[index];
+  const encounterId = stage.encounterId ?? chooseEncounter(stage.tier).id;
+  return { mode: stage.mode, correct: 10, total: 10, bestStreak: 10, missedIds: [], startingAp: 10, perfect: true, encounterId };
+}
+/** A campaign standing at the start of `stage`: Matsubara at that stage's level, later cities at max level. */
+function devCampaign(cityId, stage) {
+  const origin = CITY_CAMPAIGNS[cityId].origin;
+  const level = origin ? stage : LEVELS.length;
+  const base = createCampaign(devSettings.heroId, { cityId, level, xp: LEVELS[level - 1].xp });
+  return { ...(origin ? base : chapterRest(base)), stage, stageResults: Array.from({ length: stage - 1 }, (_, index) => devStageResult(cityId, index)) };
+}
+function devRegion(cityId) {
+  const before = DEV_CITIES.slice(0, DEV_CITIES.indexOf(cityId));
+  return before.length
+    ? { heroId: devSettings.heroId, level: LEVELS.length, xp: LEVELS.at(-1).xp, savedCities: before, checkpoint: null }
+    : { heroId: null, level: 1, xp: 0, savedCities: [], checkpoint: null };
+}
+function devJump(cityId, stage, target) {
+  closeDevPanel(); clearScreen();
+  campaign = null; campaignOutcome = null; targetingTaught = false; upcomingEncounter = null;
+  saveRegion(devRegion(cityId));
+  if (target === 'map') { osakaMapScreen(); return; }
+  campaign = devCampaign(cityId, stage);
+  if (!CITY_CAMPAIGNS[cityId].origin) saveRegion(stageCheckpoint(readRegion(), campaign));
+  if (target === 'quiz') { startRound(stageMode(campaign), createRound(VOCABULARY), 'adventure'); return; }
+  // Battle: a finished quiz at the chosen score → Stage Clear → station map → battle.
+  const items = createRound(VOCABULARY);
+  const correct = Math.min(devSettings.ap, items.length);
+  round = { mode: stageMode(campaign), items, currentIndex: items.length, correctCount: correct, currentStreak: correct, bestStreak: correct,
+    missedIds: new Set(items.slice(correct).map((item) => item.id)), allItems: VOCABULARY };
+  quizContext = 'adventure';
+  finishAdventureStage();
+}
+
+function closeDevPanel() { devPanel?.remove(); devPanel = null; }
+function openDevPanel() {
+  if (devPanel) { closeDevPanel(); return; }
+  if (document.querySelector('.modal-backdrop')) return;
+  devPanel = element('div', 'modal-backdrop dev-backdrop');
+  const panel = element('section', 'dev-panel px-panel');
+  panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-labelledby', 'dev-title');
+  const title = element('h2', '', 'DEV JUMP'); title.id = 'dev-title';
+  const note = element('p', 'dev-panel__note', 'Ctrl+Alt+Shift+D · replaces this browser\'s save · Esc closes');
+  const hero = selectField('Hero', ART_IDS.heroes.map((id) => [id, HEROES[id].name]));
+  hero.select.value = devSettings.heroId; hero.select.onchange = () => { devSettings.heroId = hero.select.value; };
+  const ap = selectField('Quiz score (battle AP)', Array.from({ length: 11 }, (_, value) => [String(value), `${value} / 10`]));
+  ap.select.value = String(devSettings.ap); ap.select.onchange = () => { devSettings.ap = Number(ap.select.value); };
+  const settings = element('div', 'dev-panel__settings'); settings.append(hero.label, ap.label);
+  const table = element('div', 'dev-panel__cities');
+  for (const cityId of DEV_CITIES) {
+    const row = element('div', 'dev-panel__city');
+    row.append(element('b', '', `${CITIES[cityId].name} ${CITIES[cityId].jaName}`));
+    const stages = CITY_CAMPAIGNS[cityId].stages.length;
+    for (const [target, label] of [['quiz', 'Quiz'], ['battle', 'Battle']]) {
+      const group = element('span', 'dev-panel__group'); group.append(element('small', '', label));
+      for (let stage = 1; stage <= stages; stage += 1) {
+        const button = element('button', 'secondary', String(stage));
+        button.type = 'button'; button.title = `${CITIES[cityId].name} stage ${stage} ${label.toLowerCase()}`;
+        button.onclick = () => devJump(cityId, stage, target);
+        group.append(button);
+      }
+      row.append(group);
+    }
+    const map = element('button', 'secondary', 'Map'); map.type = 'button'; map.title = `Osaka map with ${CITIES[cityId].name} under attack`;
+    map.onclick = () => devJump(cityId, 1, 'map');
+    row.append(map);
+    table.append(row);
+  }
+  const close = element('button', 'secondary', 'Close'); close.type = 'button'; close.onclick = closeDevPanel;
+  panel.append(title, note, settings, table, close);
+  devPanel.append(panel);
+  devPanel.addEventListener('click', (event) => { if (event.target === devPanel) closeDevPanel(); });
+  panel.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDevPanel(); } });
+  document.body.append(devPanel);
+  queueMicrotask(() => hero.select.focus());
+}
+document.addEventListener('keydown', (event) => {
+  if (event.ctrlKey && event.altKey && event.shiftKey && event.code === 'KeyD') {
+    event.preventDefault(); event.stopImmediatePropagation(); openDevPanel();
+  }
+}, true);
+
 const debugParams = new URLSearchParams(location.search);
 if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'quiz') debugQuiz(debugParams); else if (debugMode === 'map') debugMap(debugParams); else mainMenu();
