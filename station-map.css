@@ -1,0 +1,86 @@
+/* Station-defence map (src/station-map.js): shown between Stage Clear and a city
+   battle. The map frame, pins and plates reuse the Osaka map's look
+   (.osaka-map / .osaka-city in rpg.css); this file only adds the card layout,
+   the hero, the Horde, its arrows and the flames. Everything is small DOM:
+   stepped animations on a few nodes, no filters over the map. */
+.app.rpg-app:has(> .station-card) { padding-block: 8px; }
+.station-card { width: min(1000px, 100%); gap: 8px; padding: 10px 16px 12px; }
+.station-card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 16px; }
+.station-card__stage { font-family: var(--pixel-font); font-size: 13px; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
+.station-card .station-card__name { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 2px 12px; line-height: 1.1; }
+.station-card__ja { font-family: var(--read-font); font-weight: 900; font-size: 30px; color: #fff; text-shadow: 3px 3px 0 var(--ink); }
+.station-card__ja rt { font-size: 12px; font-weight: 800; color: #ffe9a8; text-shadow: none; }
+.station-card__en { font-family: var(--pixel-font); font-size: 11px; color: var(--edge-dim); }
+
+.station-map {
+  --px: .6;
+  position: relative; overflow: hidden; width: min(100%, calc((100vh - 238px) * 192 / 108)); aspect-ratio: 192 / 108;
+  container-type: inline-size; background-size: 100% 100%; image-rendering: pixelated;
+  border: var(--b) solid var(--edge); box-shadow: 0 0 0 var(--b) var(--ink);
+}
+@container (min-width: 820px) { .station-map > * { --px: .8; } }
+.station-map__sprite { position: absolute; z-index: 2; display: block; line-height: 0; pointer-events: none; }
+
+/* Markers: the Osaka map's pin + plate, placed by percent. */
+.station-map .station-map__marker { z-index: 3; pointer-events: none; cursor: default; }
+.station-map__marker--landmark, .station-map__marker--edge { translate: -50% -50%; }
+.station-map__marker--next .osaka-city__pin { width: clamp(14px, 2.6cqw, 20px); height: clamp(14px, 2.6cqw, 20px); }
+.station-map__marker--next .osaka-city__pin::before, .station-map__marker--next .osaka-city__pin::after { display: none; }
+.station-map__marker--next .osaka-city__plate, .station-map__marker--edge .osaka-city__plate { opacity: .92; }
+.station-map__marker--edge .osaka-city__name, .station-map__marker--next .osaka-city__name { color: #e6e9ff; font-size: clamp(.66rem, 1.9cqw, .9rem); }
+.station-map__marker--landmark .osaka-city__name { color: #fff4c8; font-size: clamp(.66rem, 1.9cqw, .9rem); }
+.station-map__marker--station { z-index: 4; }
+.station-map__marker--station .osaka-city__pin { width: clamp(22px, 4.6cqw, 34px); height: clamp(22px, 4.6cqw, 34px); }
+
+/* River / hill names: plain shadowed text like the Osaka map's びわ湖. */
+.station-map__water-label {
+  position: absolute; z-index: 2; translate: -50% -50%; display: grid; justify-items: center; pointer-events: none;
+  font-family: var(--read-font); font-weight: 800; font-size: clamp(.68rem, 1.9cqw, .9rem); line-height: 1.1; color: #e8f4ff; text-shadow: 2px 2px 0 var(--ink); white-space: nowrap;
+}
+.station-map__water-label small { font-size: .78em; font-weight: 700; }
+.station-map__water-label--hill { color: #f2f4e4; }
+
+/* The hero stands guard just west of the station pin. */
+.station-map__hero { z-index: 3; translate: -125% -78%; }
+.station-map__hero--east { translate: 30% -78%; }
+
+/* The Horde: a unit at each approach with a marching arrow to the station, and small monsters by the fires. */
+.station-threat__unit { translate: -50% -62%; animation: station-hop .5s steps(2) infinite; animation-delay: calc(var(--i, 0) * -.17s); }
+.station-roamer { translate: -50% -70%; animation: station-roam 1.8s steps(6) infinite; animation-delay: calc(var(--i, 0) * -.4s); }
+@keyframes station-hop { 50% { margin-top: -3px; } }
+@keyframes station-roam { 0%, 100% { margin-left: 0; margin-top: 0; } 25% { margin-left: 6px; margin-top: -3px; } 50% { margin-left: 12px; margin-top: 0; } 75% { margin-left: 6px; margin-top: -3px; } }
+.station-threat__arrow {
+  position: absolute; z-index: 1; height: 8px; translate: 0 -50%; transform-origin: 0 50%;
+  background: repeating-linear-gradient(90deg, #ff5a44 0 9px, transparent 9px 15px);
+  filter: drop-shadow(2px 2px 0 var(--ink));
+  animation: station-march .6s steps(3) infinite;
+}
+.station-threat__arrow::after { content: ""; position: absolute; right: -11px; top: 50%; translate: 0 -50%; border-left: 13px solid #ff5a44; border-block: 9px solid transparent; }
+@keyframes station-march { to { background-position-x: 15px; } }
+
+/* Flames on burning houses: a three-frame pixel flicker. */
+.station-fire { --n: 3; --px: 2.4; position: absolute; z-index: 2; translate: -50% -78%; pointer-events: none; animation: station-flicker .42s steps(3) infinite; animation-delay: calc(var(--i, 0) * -.13s); }
+@container (min-width: 820px) { .station-map > .station-fire { --px: 3.2; } }
+@keyframes station-flicker { to { background-position-x: calc(var(--fw) * var(--n) * var(--px) * -1px); } }
+
+/* Goal + note on the left, DEFEND! on the right. */
+.station-card__foot { display: flex; align-items: center; justify-content: center; gap: 10px 24px; width: 100%; flex-wrap: wrap; }
+.station-card__words { display: grid; gap: 2px; justify-items: center; text-align: center; }
+.station-card__goal { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 2px 10px; }
+.station-card__goal b { font-family: var(--read-font); font-weight: 900; font-size: 1.45rem; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
+.station-card__goal b rt { font-size: .5em; color: #fff4c8; }
+.station-card__goal span { font-family: var(--pixel-font); font-size: 11px; color: #fff; }
+.station-card__note { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0 8px; font-family: var(--read-font); font-weight: 800; font-size: .95rem; color: #e6e9ff; }
+.station-card__note small { font-weight: 600; font-size: .78rem; color: var(--edge-dim); }
+.rpg-card .station-defend { min-width: 220px; min-height: 58px; display: grid; gap: 2px; padding: .3rem 1.6rem; font-family: var(--read-font); font-weight: 900; font-size: 1.45rem; }
+.station-defend small { font-family: var(--pixel-font); font-size: 10px; font-weight: 400; }
+
+@media (max-height: 640px) {
+  .station-card { gap: 6px; padding-block: 6px 8px; }
+  .station-card__ja { font-size: 24px; }
+  .station-map { width: min(100%, calc((100vh - 206px) * 192 / 108)); }
+  .rpg-card .station-defend { min-height: 50px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .station-threat__unit, .station-roamer, .station-threat__arrow, .station-fire { animation: none !important; }
+}

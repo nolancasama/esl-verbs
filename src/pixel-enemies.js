@@ -379,9 +379,10 @@ function golem(params) {
   return done(p);
 }
 
-function goblinCaptain({ mode, f }) {
+function goblinCaptain({ mode, f }, gear = null) {
   const p = new Painter(70, 76, LIGHT);
   const poses = {
+    cast: [{ lean: -8, head: -6, frontUpper: 172, frontFore: 178, weapon: 182, call: true }, { lean: -8, head: -6, bob: 1, frontUpper: 168, frontFore: 176, weapon: 178, call: true }, { lean: -8, head: -6, frontUpper: 172, frontFore: 178, weapon: 182, call: true }],
     idle: [{}, { bob: 1 }, { bob: 1 }, {}],
     attack: [{ x: 26, lean: -8, frontUpper: 196, frontFore: 214, weapon: 236 }, { x: 30, lean: 6, frontUpper: 164, frontFore: 150, weapon: 168 }, { x: 35, lean: 18, frontUpper: 96, frontFore: 72, weapon: 66, swing: true }, { x: 31, lean: 10, frontUpper: 54, frontFore: 30, weapon: 26 }],
     charge: [{ lean: -6, frontUpper: 176, frontFore: 176, weapon: 180, glow: true }, { lean: -6, bob: 1, frontUpper: 176, frontFore: 176, weapon: 180, glow: true }],
@@ -391,6 +392,7 @@ function goblinCaptain({ mode, f }) {
   const pose = { x: 28, ground: 74, backThigh: -18, frontThigh: 22, frontUpper: 30, frontFore: 60, weapon: 126, backUpper: -24, backFore: 4, ...(poses[mode] || poses.idle)[f % (poses[mode] || poses.idle).length] };
   const s = skeleton(pose, { thigh: 9.5, shin: 10, torso: 14, upperArm: 8.5, foreArm: 8, headLift: 11 });
   const [nx, ny] = s.neck, [px, py] = s.hip;
+  gear?.behind?.(p, s, pose, mode, f);
   // red cape
   poly(p, 'red', [[nx - 7, ny], [nx + 2, ny], [px - 2, py + 10], [px - 14, py + 14], [px - 16, py + 8]], { shadow: 2, dither: true });
   limb(p, 'goblin', s.backLeg.start, s.backLeg.knee, 3.4, 2.8); limb(p, 'steel', s.backLeg.knee, s.backLeg.foot, 2.8, 2.3, { gloss: true });
@@ -415,6 +417,7 @@ function goblinCaptain({ mode, f }) {
   blob(p, 'steel', s.frontArm.shoulder[0], s.frontArm.shoulder[1] - 1, 4.5, 3.6, { gloss: true });
   if (pose.swing) arc(p, s.frontArm.shoulder[0], s.frontArm.shoulder[1], 30, -80, 50, 'white', 4);
   if (pose.glow) { sparkle(p, wx + dx * 26, wy + dy * 26, true, 'orange'); sparkle(p, wx - 10, wy + 4 - f * 2, false, 'orange'); sparkle(p, wx + 10, wy - 10 + f, false, 'glow'); }
+  if (pose.call) { sparkle(p, wx + dx * 27, wy + dy * 27 - 1, f % 2 === 0, 'glow'); sparkle(p, wx + 8, wy - 12 - f, false, 'spark'); }
   return done(p);
 }
 
@@ -422,6 +425,27 @@ function goblinCaptain({ mode, f }) {
 const COMMANDER_MATERIAL = { goblin: 'shade', steel: 'shadowCloth', red: 'crimson', gold: 'ember', leather: 'indigo' };
 function hordeCommander(opts) {
   return recolor(goblinCaptain(opts), (key) => key.replace(/^([a-zA-Z]+)(\d)$/, (all, name, level) => (COMMANDER_MATERIAL[name] ? `${COMMANDER_MATERIAL[name]}${level}` : all)));
+}
+
+// Yao's mid-city commander: the captain's rig in signal orange, with a tall
+// beacon banner (のろし) that smokes and waves harder while it calls for help.
+const SIGNAL_MATERIAL = { red: 'ember', steel: 'blue' };
+function signalBanner(p, s, pose, mode, f) {
+  const [nx, ny] = s.neck, [px, py] = s.hip;
+  const call = mode === 'cast';
+  const wave = [0, 1, 2, 1][f % 4] + (call ? 3 : 0);
+  const top = [nx - 13, ny - 27];
+  limb(p, 'wood', [px - 8, py + 4], top, 1.1);
+  poly(p, 'red', [[top[0] - 1, top[1] + 2], [top[0] - 22, top[1] + 3 + wave], [top[0] - 18, top[1] + 10 + wave], [top[0] - 22, top[1] + 17 + wave], [top[0] - 1, top[1] + 16]], { shadow: 2, gloss: true });
+  poly(p, 'gold', [[top[0] - 11, top[1] + 4 + wave * 0.5], [top[0] - 6, top[1] + 9 + wave * 0.5], [top[0] - 11, top[1] + 14 + wave * 0.5], [top[0] - 16, top[1] + 9 + wave * 0.5]], { line: false, gloss: true });
+  // beacon cup and smoke on top of the pole
+  p.shape('gold', (id) => p.rect(id, Math.round(top[0] - 3), Math.round(top[1] - 3), 6, 3), { gloss: true });
+  const puffs = call ? [[0, -5, 2.6], [-3, -9, 3], [1, -13, 3.2]] : [[0, -5, 2.2], [-2, -8, 2.4]];
+  puffs.forEach(([dx, dy, r], i) => { if ((i + f) % 4 !== 3) blob(p, 'cream', top[0] + dx - f * 0.5, top[1] + dy - (f % 2), r, r * 0.8, { level: 3, line: false }); });
+  p.dots([[top[0] - 1, top[1] - 4], [top[0] + 1, top[1] - 4]], call ? 'orange' : 'glow');
+}
+function signalCaptain(opts) {
+  return recolor(goblinCaptain(opts, { behind: signalBanner }), (key) => key.replace(/^([a-zA-Z]+)(\d)$/, (all, name, level) => (SIGNAL_MATERIAL[name] ? `${SIGNAL_MATERIAL[name]}${level}` : all)));
 }
 
 function necromancer({ mode, f }) {
@@ -698,6 +722,303 @@ function vampireLord({ mode, f, angry }) {
   return done(p);
 }
 
+/* --------------------------------------------------------------- Yao foes */
+// Yao's Horde specialists. Each role reads from its silhouette: the horn (calls
+// help), the lit fuse (countdown), the drawn bow (aimed shot), the tower shield
+// (protects a friend). 'cast' is a call for help on every caller.
+
+/** A curved war horn from its mouthpiece at (x, y) along `deg`, bending by `bend` and flaring to a gold bell. Returns the bell centre and its facing (deg). */
+function warHorn(p, x, y, deg, len = 14, k = 1, bend = 28) {
+  const [dx, dy] = along(deg), [bx, by] = along(deg + bend);
+  const mid = [x + dx * len * 0.55, y + dy * len * 0.55];
+  const bell = [mid[0] + bx * len * 0.5, mid[1] + by * len * 0.5];
+  limb(p, 'bone', [x, y], mid, 0.9 * k, 1.8 * k, { gloss: true });
+  limb(p, 'bone', mid, bell, 1.8 * k, 3.2 * k, { gloss: true });
+  limb(p, 'gold', pt([x, y], mid, 0.55), pt([x, y], mid, 0.7), 1.7 * k, 1.8 * k, { line: false, gloss: true });
+  blob(p, 'gold', bell[0], bell[1], 3.4 * k, 3.4 * k, { gloss: true });
+  blob(p, 'leather', bell[0] + bx * k, bell[1] + by * k, 1.6 * k, 1.6 * k, { level: 0, line: false });
+  return { bell, deg: deg + bend };
+}
+/** Sound rings spreading from a horn bell along `deg` (pixel arcs, no blur). */
+function hornRings(p, bell, deg, f, k = 1) {
+  const [dx, dy] = along(deg);
+  const a = (Math.atan2(dy, dx) * 180) / Math.PI;
+  for (let i = 0; i < 3; i += 1) arc(p, bell[0], bell[1], (6 + i * 5 + (f % 3) * 1.5) * k, a - 38, a + 38, 'glow', 1, i === 0 ? 'white' : 'spark');
+}
+
+function hornGoblin({ mode, f }) {
+  const p = new Painter(66, 64, LIGHT);
+  const call = mode === 'cast';
+  const poses = {
+    idle: [{}, { bob: 1 }, { bob: 1, frontFore: 50 }, {}],
+    attack: [{ x: 26, lean: -8, frontUpper: 196, frontFore: 214, weapon: 220 }, { x: 30, lean: 6, frontUpper: 160, frontFore: 150, weapon: 150 }, { x: 34, lean: 16, frontUpper: 90, frontFore: 70, weapon: 70, swing: true }, { x: 31, lean: 8, frontUpper: 50, frontFore: 40, weapon: 40 }],
+    cast: [{ lean: -10, head: -12, frontUpper: 100, frontFore: 204 }, { lean: -12, head: -14, bob: 1, frontUpper: 100, frontFore: 204 }, { lean: -10, head: -12, frontUpper: 100, frontFore: 204 }],
+    tired: [{ lean: 20, head: 10, frontUpper: 20, frontFore: 10, weapon: 10 }, { lean: 22, head: 12, bob: 1, frontUpper: 20, frontFore: 10, weapon: 10 }],
+  };
+  const list = poses[mode] || poses.idle;
+  const pose = { x: 30, ground: 62, backThigh: -16, frontThigh: 20, frontUpper: 30, frontFore: 60, weapon: 112, backUpper: -20, backFore: 10, ...list[f % list.length] };
+  const s = skeleton(pose, GOBLIN_BODY);
+  const [nx, ny] = s.neck, [px, py] = s.hip;
+  // red signal flag on a pole strapped to the back
+  const wave = [0, 1, 2, 1][f % 4] + (call ? 2 : 0);
+  const top = [nx - 8, ny - 25];
+  limb(p, 'wood', [px - 4, py + 3], top, 0.9);
+  poly(p, 'red', [[top[0], top[1] + 1], [top[0] - 14, top[1] + 2 + wave], [top[0] - 12, top[1] + 6 + wave], [top[0] - 14, top[1] + 10 + wave], [top[0], top[1] + 10]], { shadow: 1, gloss: true });
+  blob(p, 'gold', top[0] - 6, top[1] + 5 + wave * 0.5, 1.8, 1.8, { line: false, gloss: true });
+  p.dot(top[0], top[1] - 1, 'glow');
+  limb(p, 'goblin', s.backLeg.start, s.backLeg.knee, 2.6, 2.1); limb(p, 'goblin', s.backLeg.knee, s.backLeg.foot, 2.1, 1.8);
+  blob(p, 'leather', s.backLeg.foot[0] + 1, s.backLeg.foot[1] - 1, 3, 1.8);
+  limb(p, 'goblin', s.backArm.shoulder, s.backArm.elbow, 2, 1.8); limb(p, 'goblin', s.backArm.elbow, s.backArm.hand, 1.8, 1.6);
+  poly(p, 'leather', [[nx - 5, ny + 1], [nx + 5, ny + 1], [px + 6, py + 4], [px - 6, py + 4]], { shadow: 2 });
+  limb(p, 'red', [nx - 5, ny + 2], [px + 5, py], 1.1, 1.1, { line: false }); // flag strap
+  poly(p, 'wood', [[px - 6, py - 1], [px + 6, py - 1], [px + 5, py + 6], [px, py + 4], [px - 5, py + 6]]);
+  limb(p, 'goblin', s.frontLeg.start, s.frontLeg.knee, 2.8, 2.2); limb(p, 'goblin', s.frontLeg.knee, s.frontLeg.foot, 2.2, 1.9);
+  blob(p, 'leather', s.frontLeg.foot[0] + 1, s.frontLeg.foot[1] - 1, 3.2, 1.9);
+  goblinHead(p, s.head[0], s.head[1], { open: (mode === 'attack' && f > 0) || call, angry: mode !== 'tired' });
+  // red headband: the callers' mark
+  p.shape('red', (id) => p.rect(id, Math.round(s.head[0] - 8), Math.round(s.head[1] - 6), 16, 2), { line: false, gloss: true });
+  if (mode === 'tired') { p.dots([[s.head[0] + 2, s.head[1] - 1], [s.head[0] + 3, s.head[1] - 1], [s.head[0] + 6, s.head[1] - 1], [s.head[0] + 7, s.head[1] - 1]], 'goblin1'); zzz(p, Math.round(s.head[0] + 6), Math.round(s.head[1] - 18)); }
+  const [hx, hy] = s.frontArm.hand;
+  if (call) {
+    const { bell, deg } = warHorn(p, hx, hy, 104, 17, 1, 24);
+    hornRings(p, bell, deg, f);
+  } else {
+    const [dx, dy] = along(pose.weapon);
+    warHorn(p, hx - dx * 3, hy - dy * 3, pose.weapon, 15, 1, 26);
+  }
+  limb(p, 'goblin', s.frontArm.shoulder, s.frontArm.elbow, 2.2, 2); limb(p, 'goblin', s.frontArm.elbow, s.frontArm.hand, 2, 1.8);
+  blob(p, 'goblin', hx, hy, 2.2, 2.2);
+  if (pose.swing) arc(p, s.frontArm.shoulder[0], s.frontArm.shoulder[1], 21, -80, 50, 'white', 3);
+  return done(p);
+}
+
+function bombSlime({ mode, f }) {
+  const p = new Painter(48, 52, LIGHT);
+  const lit = mode === 'charge';
+  const lunge = mode === 'attack' ? [0, 5, 7, 2][f] : 0;
+  const squash = mode === 'idle' ? [0, 1, 2, 1][f] : mode === 'attack' ? [2, -2, -2, 0][f] : mode === 'tired' ? 3 : lit ? [-1, 1][f % 2] : 0;
+  const rx = 15 + squash * 0.7, ry = 13 - squash * 0.8;
+  const cx = 22 + lunge, cy = 50 - ry;
+  // an iron-dark slime with a hot core when it is about to blow
+  p.shape(lit && f % 2 ? 'crimson' : 'navy', (id) => {
+    p.ellipse(id, cx, cy, rx, ry);
+    p.rect(id, Math.round(cx - rx + 1), Math.round(cy + 2), Math.round(rx * 2 - 1), Math.round(ry - 2));
+  }, { dark: 1, shadow: 2, dither: true, gloss: true });
+  if (lit) blob(p, 'ember', cx - 2, cy + 3, rx * 0.45, ry * 0.4, { level: f % 2 ? 4 : 3, line: false });
+  // iron cap, red band and a curly fuse
+  const capX = cx + 2, capY = cy - ry + 1;
+  p.shape('steel', (id) => p.rect(id, Math.round(capX - 4), Math.round(capY - 4), 9, 5), { gloss: true });
+  p.shape('red', (id) => p.rect(id, Math.round(capX - 4), Math.round(capY - 2), 9, 1), { line: false });
+  const fuse = [[capX, capY - 4], [capX + 2, capY - 8], [capX, capY - 11], [capX + 3, capY - 14]];
+  for (let i = 0; i + 1 < fuse.length; i += 1) limb(p, 'leather', fuse[i], fuse[i + 1], 0.8);
+  const [sx, sy] = fuse.at(-1);
+  sparkle(p, sx, sy - 1, lit || f % 2 === 0, lit ? 'red' : 'orange');
+  p.dot(sx, sy - 1, 'glow');
+  if (lit) [[sx - 4, sy - 4], [sx + 4, sy - 3], [sx + 1, sy - 6]].forEach(([x, y], i) => { if ((i + f) % 2 === 0) p.dot(x, y, 'orange'); });
+  // shine, eyes, toothy grin
+  p.stamp(['.WW', 'WWW', '.W.'], Math.round(cx + rx * 0.4), Math.round(cy - ry * 0.5), { W: 'white' });
+  const ey = Math.round(cy - 2), ex = Math.round(cx - 1);
+  if (mode === 'tired') { p.dots([[ex, ey + 2], [ex + 1, ey + 2], [ex + 6, ey + 2], [ex + 7, ey + 2]], 'white'); zzz(p, Math.round(cx + 10), Math.round(cy - ry - 8)); }
+  else {
+    [ex, ex + 6].forEach((x) => { p.stamp(['WWW', 'WWW', 'WWW', 'WWW'], x, ey, { W: 'white' }); p.stamp(['kk', 'kk', 'kk'], x + 1, ey + 1, { k: 'ink' }); });
+    p.dots([[ex - 1, ey - 1], [ex, ey - 1], [ex + 1, ey], [ex + 8, ey - 1], [ex + 7, ey - 1], [ex + 6, ey]], 'ink');
+  }
+  if (mode !== 'tired') p.stamp(['k.....k', '.kWkWk.', '..kkk..'], ex, ey + 6, { k: 'ink', W: 'fang' });
+  return done(p);
+}
+
+const ARCHER_BODY = { thigh: 9, shin: 9.5, torso: 12, upperArm: 7.5, foreArm: 7, headLift: 9 };
+function shadowArcher({ mode, f }) {
+  const p = new Painter(62, 70, LIGHT);
+  const aim = { frontUpper: 92, frontFore: 90, backUpper: 250, backFore: 92 };
+  const poses = {
+    idle: [{}, { bob: 1 }, { bob: 1 }, {}],
+    attack: [{ ...aim, pull: true, lean: 2 }, { ...aim, backFore: 210, lean: -6, release: true }, { ...aim, backFore: 220, lean: -4, release: true }, { lean: 0 }],
+    charge: [{ ...aim, pull: true, lean: -2 }, { ...aim, pull: true, lean: -2, bob: 1 }],
+    tired: [{ lean: 18, head: 12, frontUpper: 16, frontFore: 8, backUpper: 4, backFore: 4 }, { lean: 20, head: 14, bob: 1, frontUpper: 16, frontFore: 8, backUpper: 4, backFore: 4 }],
+  };
+  const list = poses[mode] || poses.idle;
+  const pose = { x: 24, ground: 68, backThigh: -16, frontThigh: 18, frontUpper: 60, frontFore: 74, backUpper: -14, backFore: 6, ...list[f % list.length] };
+  const s = skeleton(pose, ARCHER_BODY);
+  const [nx, ny] = s.neck, [px, py] = s.hip;
+  // quiver on the back
+  poly(p, 'leather', [[nx - 9, ny - 6], [nx - 5, ny - 8], [px - 2, py - 2], [px - 6, py]], { shadow: 1 });
+  p.dots([[nx - 9, ny - 8], [nx - 7, ny - 9], [nx - 5, ny - 10]], 'red');
+  limb(p, 'indigo', s.backLeg.start, s.backLeg.knee, 2.2, 1.9); limb(p, 'indigo', s.backLeg.knee, s.backLeg.foot, 1.9, 1.6);
+  blob(p, 'leather', s.backLeg.foot[0] + 1, s.backLeg.foot[1] - 1, 3, 1.6);
+  // tattered shadow cloak
+  poly(p, 'shadowCloth', [[nx - 6, ny], [nx + 5, ny], [px + 8, py + 10], [px + 4, py + 14], [px, py + 10], [px - 4, py + 15], [px - 9, py + 9]], { shadow: 2, dither: true, gloss: true });
+  poly(p, 'violet', [[nx - 1, ny + 2], [nx + 2, ny + 2], [px + 2, py + 2], [px - 1, py + 2]], { line: false });
+  limb(p, 'indigo', s.frontLeg.start, s.frontLeg.knee, 2.4, 2); limb(p, 'indigo', s.frontLeg.knee, s.frontLeg.foot, 2, 1.7);
+  blob(p, 'leather', s.frontLeg.foot[0] + 1, s.frontLeg.foot[1] - 1, 3.2, 1.7);
+  // hood with a dark face and violet eyes
+  const [hx, hy] = s.head;
+  poly(p, 'shadowCloth', [[hx - 8, hy + 6], [hx - 8, hy - 4], [hx - 2, hy - 10], [hx + 6, hy - 7], [hx + 8, hy + 2], [hx + 6, hy + 7]], { shadow: 2, gloss: true });
+  poly(p, 'shadowCloth', [[hx - 7, hy - 6], [hx - 13, hy - 1], [hx - 7, hy + 1]]);
+  blob(p, 'shade', hx + 3, hy + 1, 4.5, 4.5, { level: 0, line: false });
+  if (mode === 'tired') { p.dots([[hx + 1, hy + 1], [hx + 2, hy + 1], [hx + 5, hy + 1], [hx + 6, hy + 1]], 'violet'); zzz(p, Math.round(hx + 7), Math.round(hy - 18)); }
+  else { glowEye(p, Math.round(hx + 1), Math.round(hy), 'violet', 'shade4', 0); glowEye(p, Math.round(hx + 5), Math.round(hy), 'violet', 'shade4', 0); }
+  // drawing hand and the bow
+  limb(p, 'shadowCloth', s.backArm.shoulder, s.backArm.elbow, 2, 1.8); limb(p, 'shadowCloth', s.backArm.elbow, s.backArm.hand, 1.8, 1.6);
+  const [bx, by] = s.frontArm.hand, [sx, sy] = s.backArm.hand;
+  const up = [[bx, by], [bx + 3, by - 7], [bx + 1, by - 14]], down = [[bx, by], [bx + 3, by + 7], [bx + 1, by + 14]];
+  [up, down].forEach((seg) => { limb(p, 'violet', seg[0], seg[1], 1.3, 1.1, { gloss: true }); limb(p, 'violet', seg[1], seg[2], 1.1, 0.8, { gloss: true }); });
+  const tip = [up[2], down[2]];
+  const string = (a, b) => { const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1])); for (let i = 0; i <= n; i += 1) p.dot(lerp(a[0], b[0], i / n), lerp(a[1], b[1], i / n), 'spark'); };
+  if (pose.pull) { string(tip[0], [sx, sy]); string([sx, sy], tip[1]); } else string(tip[0], tip[1]);
+  if (pose.pull) {
+    limb(p, 'wood', [sx - 1, sy], [bx + 6, by], 0.6, 0.6, { line: false });
+    poly(p, 'crystal', [[bx + 5, by - 2], [bx + 10, by], [bx + 5, by + 2]], { gloss: true });
+    if (mode === 'charge') { sparkle(p, bx + 12, by - 1, f % 2 === 0, 'violet'); sparkle(p, bx + 4, by - 6 + f, false, 'violet'); }
+  }
+  if (pose.release) [[0, 0], [3, -3], [3, 3]].forEach(([dx, dy]) => p.stamp(['SSSSSS'], Math.round(bx + 5 + dx), Math.round(by + dy), { S: 'speed' }));
+  limb(p, 'shadowCloth', s.frontArm.shoulder, s.frontArm.elbow, 2.2, 2); limb(p, 'shadowCloth', s.frontArm.elbow, s.frontArm.hand, 2, 1.8);
+  blob(p, 'leather', bx, by, 1.9, 1.9);
+  return done(p);
+}
+
+const ORC_BODY = { thigh: 10, shin: 10, torso: 15, upperArm: 9, foreArm: 8.5, headLift: 11 };
+/** Orc head facing right: jutting jaw, tusks, heavy brow; helm optional. */
+function orcHead(p, hx, hy, { k = 1, angry = false, open = false, tired = false, helm = 'steel', horns = false } = {}) {
+  const r = (v) => v * k;
+  poly(p, 'moss', [[hx - r(4), hy - r(2)], [hx - r(12), hy - r(6)], [hx - r(6), hy + r(2)]]);
+  blob(p, 'moss', hx, hy, r(9), r(8), { gloss: true });
+  poly(p, 'moss', [[hx + r(1), hy + r(1)], [hx + r(11), hy + r(2)], [hx + r(11), hy + r(8 + (open ? 2 : 0))], [hx, hy + r(9)]], { shadow: 2 });
+  if (open) p.shape('red', (id) => p.rect(id, Math.round(hx + r(4)), Math.round(hy + r(5)), Math.round(r(6)), Math.max(1, Math.round(r(2)))), { level: 1, line: false });
+  // tusks
+  [[r(5), r(4)], [r(9), r(4)]].forEach(([dx, dy]) => poly(p, 'bone', [[hx + dx - r(1.2), hy + dy + r(1)], [hx + dx + r(1.2), hy + dy + r(1)], [hx + dx, hy + dy - r(3)]], { gloss: true }));
+  if (tired) p.dots([[hx + r(2), hy - r(1)], [hx + r(3), hy - r(1)], [hx + r(6), hy - r(1)], [hx + r(7), hy - r(1)]], 'ink');
+  else {
+    glowEye(p, Math.round(hx + r(2)), Math.round(hy - r(2)), angry ? 'red' : 'glow', 'red', k > 1.3 ? 1 : 0);
+    glowEye(p, Math.round(hx + r(6)), Math.round(hy - r(2)), angry ? 'red' : 'glow', 'red', k > 1.3 ? 1 : 0);
+    const brow = Math.round(hy - r(3.2));
+    for (let x = Math.round(hx); x <= Math.round(hx + r(9)); x += 1) p.dot(x, brow + (angry ? Math.round((x - hx) / r(5)) : 0), 'ink');
+  }
+  if (helm) {
+    p.shape(helm, (id) => p.ellipse(id, hx - r(1.5), hy - r(8), r(9.5), r(5)), { gloss: true });
+    p.shape(helm, (id) => p.rect(id, Math.round(hx - r(10.5)), Math.round(hy - r(5.6)), Math.round(r(19)), Math.max(2, Math.round(r(1.8)))), { level: 2 });
+    p.dot(hx + r(3), hy - r(10), 'white');
+  }
+  if (horns) {
+    limb(p, 'bone', [hx - r(5), hy - r(8)], [hx - r(10), hy - r(17)], r(2.4), r(1.6), { gloss: true });
+    limb(p, 'bone', [hx - r(10), hy - r(17)], [hx - r(7), hy - r(23)], r(1.6), r(0.6), { gloss: true });
+    limb(p, 'bone', [hx + r(4), hy - r(9)], [hx + r(6), hy - r(18)], r(2.4), r(1.6), { gloss: true });
+    limb(p, 'bone', [hx + r(6), hy - r(18)], [hx + r(11), hy - r(22)], r(1.6), r(0.6), { gloss: true });
+  }
+}
+/** The Shadow Horde's black star (emblem on shields and banners). */
+function hordeStar(p, x, y, r, material = 'shadowCloth') {
+  const pts = Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r; return [x + Math.cos(a) * rr, y + Math.sin(a) * rr]; });
+  poly(p, material, pts, { line: false, level: 1 });
+}
+
+function armoredOrc({ mode, f }) {
+  const p = new Painter(76, 80, LIGHT);
+  const guard = mode === 'guard';
+  const poses = {
+    idle: [{}, { bob: 1 }, { bob: 1 }, {}],
+    attack: [{ x: 30, lean: -6, shield: -2 }, { x: 34, lean: 8, shield: 3 }, { x: 40, lean: 16, shield: 8, bash: true }, { x: 35, lean: 8, shield: 4 }],
+    guard: [{ lean: -6, shield: 2, raise: 6 }, { lean: -6, bob: 1, shield: 2, raise: 6 }],
+    tired: [{ lean: 18, head: 10, shield: -4, raise: -6 }, { lean: 20, head: 12, bob: 1, shield: -4, raise: -6 }],
+  };
+  const list = poses[mode] || poses.idle;
+  const pose = { x: 32, ground: 78, backThigh: -18, frontThigh: 22, frontUpper: 54, frontFore: 84, backUpper: 30, backFore: 60, shield: 0, raise: 0, ...list[f % list.length] };
+  const s = skeleton(pose, ORC_BODY);
+  const [nx, ny] = s.neck, [px, py] = s.hip;
+  // mace in the back hand, behind the body
+  const [mx, my] = s.backArm.hand;
+  limb(p, 'wood', [mx - 2, my + 4], [mx + 5, my - 12], 1.2);
+  blob(p, 'stone', mx + 6, my - 14, 4, 4, { gloss: true });
+  [[0, -5], [4, -2], [-3, -3]].forEach(([dx, dy]) => p.dot(mx + 6 + dx, my - 14 + dy, 'white'));
+  limb(p, 'moss', s.backLeg.start, s.backLeg.knee, 4, 3.4); limb(p, 'steel', s.backLeg.knee, s.backLeg.foot, 3.4, 2.8, { gloss: true });
+  blob(p, 'leather', s.backLeg.foot[0] + 1, s.backLeg.foot[1] - 1, 4.4, 2.4);
+  limb(p, 'moss', s.backArm.shoulder, s.backArm.elbow, 3.4, 3); limb(p, 'moss', s.backArm.elbow, s.backArm.hand, 3, 2.6);
+  blob(p, 'moss', mx, my, 2.8, 2.8);
+  // barrel chest in plate armour, red Horde sash, belt and tasset
+  poly(p, 'steel', [[nx - 10, ny], [nx + 9, ny], [px + 10, py + 2], [px - 10, py + 2]], { gloss: true, shadow: 2 });
+  limb(p, 'red', [nx - 8, ny + 1], [px + 8, py - 1], 1.6, 1.6, { line: false });
+  poly(p, 'leather', [[px - 10, py - 1], [px + 10, py - 1], [px + 10, py + 3], [px - 10, py + 3]]);
+  poly(p, 'steel', [[px - 9, py + 3], [px + 9, py + 3], [px + 7, py + 10], [px - 7, py + 10]], { shadow: 2 });
+  limb(p, 'moss', s.frontLeg.start, s.frontLeg.knee, 4.2, 3.6); limb(p, 'steel', s.frontLeg.knee, s.frontLeg.foot, 3.6, 3, { gloss: true });
+  blob(p, 'leather', s.frontLeg.foot[0] + 1, s.frontLeg.foot[1] - 1, 4.8, 2.4);
+  orcHead(p, s.head[0], s.head[1], { open: mode === 'attack' && f === 2, tired: mode === 'tired' });
+  if (mode === 'tired') zzz(p, Math.round(s.head[0] + 8), Math.round(s.head[1] - 22));
+  blob(p, 'steel', s.frontArm.shoulder[0], s.frontArm.shoulder[1] - 1, 6, 4.6, { gloss: true });
+  limb(p, 'moss', s.frontArm.shoulder, s.frontArm.elbow, 3.6, 3.2); limb(p, 'moss', s.frontArm.elbow, s.frontArm.hand, 3.2, 2.8);
+  // tower shield: steel rim, dark face with the Horde's black star
+  const [hx, hy] = s.frontArm.hand;
+  const shx = hx + 5 + pose.shield, shy = hy - 6 - pose.raise;
+  p.shape('steel', (id) => p.poly(id, [[shx - 11, shy - 18], [shx + 11, shy - 18], [shx + 12, shy + 12], [shx, shy + 20], [shx - 12, shy + 12]]), { gloss: true });
+  p.shape('stone', (id) => p.poly(id, [[shx - 9, shy - 16], [shx + 9, shy - 16], [shx + 10, shy + 11], [shx, shy + 17], [shx - 10, shy + 11]]), { line: false, shadow: 2, dither: true });
+  hordeStar(p, shx, shy - 1, 7, 'crimson');
+  hordeStar(p, shx, shy - 1, 4, 'shadowCloth');
+  [[-8, -14], [8, -14], [-9, 9], [9, 9]].forEach(([dx, dy]) => p.dot(shx + dx, shy + dy, 'white'));
+  if (pose.bash) [[0, -10], [0, 0], [0, 10]].forEach(([dx, dy]) => p.stamp(['SSSS'], shx + 14 + dx, shy + dy, { S: 'speed' }));
+  if (guard) { sparkle(p, shx + 9, shy - 17, f % 2 === 0); sparkle(p, shx - 9, shy + 12, false, 'cyan'); }
+  return done(p);
+}
+
+const WARCALLER_BODY = { thigh: 15, shin: 15, torso: 23, upperArm: 13, foreArm: 12, headLift: 16 };
+// Yao's boss: an orc warlord with a giant war horn, a horned helm and the
+// Horde banner. 'cast' is the call (horn to the mouth); 'charge' raises the horn
+// for War Horn Blast. Angry: red eyes and steam.
+function warcaller({ mode, f, angry }) {
+  const p = new Painter(124, 128, LIGHT);
+  const poses = {
+    idle: [{}, { bob: 1 }, { bob: 2 }, { bob: 1 }],
+    attack: [{ x: 50, lean: -6, frontUpper: 160, frontFore: 190, horn: 200 }, { x: 54, lean: 8, frontUpper: 120, frontFore: 120, horn: 130 }, { x: 60, lean: 16, frontUpper: 80, frontFore: 60, horn: 60, swing: true }, { x: 55, lean: 8, frontUpper: 50, frontFore: 40, horn: 40 }],
+    cast: [{ lean: -10, head: -12, frontUpper: 104, frontFore: 206, call: true }, { lean: -12, head: -14, bob: 1, frontUpper: 104, frontFore: 206, call: true }, { lean: -10, head: -12, frontUpper: 104, frontFore: 206, call: true }],
+    charge: [{ lean: -8, frontUpper: 170, frontFore: 176, horn: 160, glow: true }, { lean: -8, bob: 1, frontUpper: 170, frontFore: 176, horn: 160, glow: true }],
+    tired: [{ lean: 18, head: 10, frontUpper: 20, frontFore: 10, horn: 20 }, { lean: 20, head: 12, bob: 1, frontUpper: 20, frontFore: 10, horn: 20 }],
+  };
+  const list = poses[mode] || poses.idle;
+  const pose = { x: 54, ground: 125, backThigh: -16, backShin: -2, frontThigh: 20, frontShin: 2, frontUpper: 40, frontFore: 70, horn: 112, backUpper: -24, backFore: 0, ...list[f % list.length] };
+  const s = skeleton(pose, WARCALLER_BODY);
+  const [nx, ny] = s.neck, [px, py] = s.hip;
+  const k = 1.7;
+  // Horde banner on a pole behind the shoulders
+  const wave = [0, 1, 2, 1][f % 4] + (pose.call ? 2 : 0);
+  const top = [nx - 18, ny - 40];
+  limb(p, 'wood', [px - 12, py + 6], top, 1.6);
+  blob(p, 'gold', top[0], top[1] - 1, 2.2, 2.2, { gloss: true });
+  const flag = [[top[0] - 1, top[1] + 2], [top[0] - 24, top[1] + 4 + wave], [top[0] - 21, top[1] + 14 + wave], [top[0] - 25, top[1] + 24 + wave], [top[0] - 1, top[1] + 22]];
+  poly(p, 'crimson', flag, { shadow: 2, dither: true, gloss: true });
+  hordeStar(p, top[0] - 12, top[1] + 13 + wave * 0.5, 6, 'shadowCloth');
+  if (angry) for (let i = 0; i < 6; i += 1) { const a = (i / 6) * Math.PI * 2 + f; sparkle(p, nx + Math.cos(a) * 36, ny + 24 + Math.sin(a) * 38, i % 2 === 0, i % 2 ? 'orange' : 'red'); }
+  // fur cloak
+  poly(p, 'fur', [[nx - 14, ny - 4], [nx + 6, ny - 4], [px - 2, py + 8], [px - 10, 124], [px - 30, 125], [px - 36, 106], [nx - 28, ny + 20]], { shadow: 3, dither: true, gloss: true });
+  bossLimbs(p, s, { cloth: 'leather', skin: 'moss', boots: 'steel', k: 1.05 });
+  // plate torso, belt with a skull buckle, armoured skirt
+  poly(p, 'moss', [[nx - 15, ny], [nx + 14, ny], [px + 13, py + 2], [px - 13, py + 2]], { shadow: 2, gloss: true });
+  const mid = pt(s.neck, s.hip, 0.6);
+  poly(p, 'steel', [[nx - 13, ny + 3], [nx + 12, ny + 3], [mid[0] + 11, mid[1]], [mid[0], mid[1] + 6], [mid[0] - 11, mid[1]]], { gloss: true, shadow: 2 });
+  hordeStar(p, nx, ny + 12, 5, 'crimson');
+  poly(p, 'leather', [[px - 14, py - 3], [px + 14, py - 3], [px + 14, py + 3], [px - 14, py + 3]]);
+  blob(p, 'bone', px + 1, py, 3, 2.8, { gloss: true });
+  p.dots([[px, py - 1], [px + 2, py - 1]], 'ink');
+  poly(p, 'steel', [[px - 13, py + 3], [px + 13, py + 3], [px + 15, py + 18], [px + 4, py + 15], [px - 4, py + 18], [px - 14, py + 16]], { shadow: 2, gloss: true });
+  bossFrontLeg(p, s, { cloth: 'leather', boots: 'steel', knee: 'steel', k: 1.05 });
+  orcHead(p, s.head[0], s.head[1], { k, angry: angry || mode === 'charge', open: pose.call || (mode === 'attack' && f === 2), tired: mode === 'tired', horns: true });
+  if (mode === 'tired') zzz(p, Math.round(s.head[0] + 12), Math.round(s.head[1] - 34));
+  if (angry) smoke(p, Math.round(s.head[0] - 14), Math.round(s.head[1] - 18), f);
+  // spiked pauldrons
+  blob(p, 'steel', s.frontArm.shoulder[0], s.frontArm.shoulder[1] - 2, 9, 7, { gloss: true, shadow: 2 });
+  [[-6, -7], [0, -9], [6, -7]].forEach(([dx, dy]) => poly(p, 'bone', [[s.frontArm.shoulder[0] + dx - 1.6, s.frontArm.shoulder[1] - 4], [s.frontArm.shoulder[0] + dx + 1.6, s.frontArm.shoulder[1] - 4], [s.frontArm.shoulder[0] + dx, s.frontArm.shoulder[1] + dy - 4]], { gloss: true }));
+  // giant war horn
+  const [hx, hy] = s.frontArm.hand;
+  if (pose.call) { const { bell, deg } = warHorn(p, hx, hy, 106, 30, 1.8, 24); hornRings(p, bell, deg, f, 1.6); }
+  else {
+    const [dx, dy] = along(pose.horn);
+    const { bell } = warHorn(p, hx - dx * 5, hy - dy * 5, pose.horn, 26, 1.7, 24);
+    if (pose.glow) { sparkle(p, bell[0], bell[1] - 2, true, 'orange'); sparkle(p, bell[0] + 6, bell[1] + 6 - f * 2, false, 'glow'); sparkle(p, bell[0] - 8, bell[1] - 6, f % 2 === 0, 'red'); }
+  }
+  limb(p, 'moss', s.frontArm.shoulder, s.frontArm.elbow, 5.6, 5); limb(p, 'moss', s.frontArm.elbow, s.frontArm.hand, 5, 4.4);
+  limb(p, 'leather', pt(s.frontArm.elbow, s.frontArm.hand, 0.5), pt(s.frontArm.elbow, s.frontArm.hand, 0.85), 5, 4.6, { gloss: true });
+  blob(p, 'moss', hx, hy, 4.2, 4.2);
+  if (pose.swing) arc(p, s.frontArm.shoulder[0], s.frontArm.shoulder[1], 36, -80, 50, 'white', 4);
+  return done(p);
+}
+
 // The Adventure quiz's practice target: a wooden post, a straw-padded body with
 // a painted target and a stitched sack head. Friendly equipment, not a monster.
 function trainingDummy({ mode, f }) {
@@ -748,4 +1069,10 @@ export const ENEMY_ART = {
   demonKing: { draw: demonKing, boss: true, modes: { idle: 4, attack: 4, cast: 2, charge: 2, guard: 2, tired: 2 } },
   giantGolem: { draw: giantGolem, boss: true, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
   vampireLord: { draw: vampireLord, boss: true, modes: { idle: 4, attack: 4, cast: 2, charge: 2, tired: 2 } },
+  hornGoblin: { draw: hornGoblin, modes: { idle: 4, attack: 4, cast: 3, tired: 2 } },
+  bombSlime: { draw: bombSlime, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
+  shadowArcher: { draw: shadowArcher, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
+  armoredOrc: { draw: armoredOrc, large: true, modes: { idle: 4, attack: 4, guard: 2, tired: 2 } },
+  signalCaptain: { draw: signalCaptain, large: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, guard: 2, tired: 2 } },
+  warcaller: { draw: warcaller, boss: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, tired: 2 } },
 };
