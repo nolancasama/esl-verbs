@@ -266,7 +266,7 @@
 .battle-exit { justify-self: start; min-height: 44px; padding: .35rem 1rem; font-size: 11px; }
 .battle-topbar .ap-meter { width: min(460px, 44vw); }
 .battle-topbar__right { justify-self: end; display: flex; align-items: center; gap: 8px; }
-.battle-round { padding: 8px 14px; font-family: var(--pixel-font); font-size: 12px; }
+.battle-round { padding: 8px 12px; font-family: var(--pixel-font); font-size: 12px; white-space: nowrap; }
 
 .battle-field {
   position: relative; display: grid; grid-template-columns: minmax(170px, .55fr) minmax(300px, 1.8fr); align-items: end; gap: 10px;
@@ -343,6 +343,11 @@
 @keyframes px-blink { 50% { background: #8e2436; } }
 .battle-intent--support { background: #d8f7c8; }
 .battle-intent--charge { background: var(--gold); }
+.battle-intent--call { background: #c34f26; color: #fff; animation: call-warning .7s steps(2) infinite; }
+.battle-intent--call, .battle-intent--labeled { max-width: 230px; text-align: center; justify-content: center; }
+.battle-intent--call { flex-direction: column; gap: 2px; }
+.battle-intent--call > span { white-space: nowrap; }
+@keyframes call-warning { 50% { background: #8e2436; } }
 
 .battle-hp { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; font-family: var(--pixel-font); font-size: 10px; }
 .battle-hp__label { color: var(--gold); }
@@ -356,6 +361,7 @@
 .battle-status--combo, .battle-status--counter, .battle-status--opening { background: var(--gold); }
 .battle-status--charge, .battle-status--angry { background: var(--red); color: #fff; }
 .battle-status--guard { background: #b8d4ff; }
+.battle-status--protected { background: #b8d4ff; border-color: #365d9a; }
 .battle-status--tired { background: #c9d2e8; }
 
 .battle-lower { display: grid; grid-template-columns: minmax(210px, 250px) 1fr; gap: 10px 12px; align-items: stretch; }
@@ -632,7 +638,7 @@
   .rpg-field--choices .rpg-field__answer:not(.is-answered) { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .px-summoned, .battle-skill--hint, .battle-floater, .battle-intent--heavy, .battle-hint--danger, .battle-target-marker .px-icon, .rpg-reward-line, .rpg-xp__gain, .rpg-burst::before, .rpg-field__streak, .ap-meter--recovering, .ap-meter--deny, .ap-meter--gain .ap-meter__fill {
+  .px-summoned, .battle-skill--hint, .battle-floater, .battle-intent--heavy, .battle-intent--call, .battle-hint--danger, .battle-target-marker .px-icon, .rpg-reward-line, .rpg-xp__gain, .rpg-burst::before, .rpg-field__streak, .ap-meter--recovering, .ap-meter--deny, .ap-meter--gain .ap-meter__fill {
     animation: none !important;
   }
   .rpg-xp__fill { transition-duration: .001ms !important; }

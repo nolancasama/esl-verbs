@@ -42,6 +42,7 @@ function enemyState(id, uid, summoned = false) {
   return {
     uid, id, hp: enemy.maxHp, maxHp: enemy.maxHp, phase: 1, intent: null, cadence: 0,
     guarding: false, tired: false, charging: false, summoned,
+    callWait: enemy.ai?.firstCall ?? 0, calls: 0, fuse: enemy.fuse ?? null,
   };
 }
 
@@ -57,9 +58,25 @@ function canSummon(state, enemy, ai) {
   return state.enemies.filter((candidate) => living(candidate) && candidate.id === data.summonId).length < maxSummons;
 }
 
+function canCall(state, enemy, ai) {
+  return enemy.callWait <= 0 && enemy.calls < (ai.maxCalls ?? Infinity)
+    && state.callBudget > 0 && state.enemies.filter(living).length < 3;
+}
+
+/** One caller/boss per living protector, in UID order. Optional UID selects that Orc. */
+export function protectedUid(state, protectorUid) {
+  const protectors = state.enemies.filter((enemy) => living(enemy) && ENEMIES[enemy.id].protector).sort((a, b) => a.uid - b.uid);
+  const index = protectorUid == null ? 0 : protectors.findIndex((enemy) => enemy.uid === protectorUid);
+  if (index < 0 || !protectors[index]) return null;
+  const candidates = state.enemies.filter((enemy) => living(enemy) && !ENEMIES[enemy.id].protector
+    && (ENEMIES[enemy.id].ai?.support === 'call' || ENEMIES[enemy.id].boss)).sort((a, b) => a.uid - b.uid);
+  return candidates[index]?.uid ?? null;
+}
+
 function chooseNormalIntent(state, enemy, ai, rng) {
   const data = ENEMIES[enemy.id];
   const alive = state.enemies.filter(living);
+  if (ai.support === 'call' && canCall(state, enemy, ai)) return 'call';
   if (ai.support === 'summon' && canSummon(state, enemy, ai)) return 'summon';
   if (ai.support === 'heal' && alive.length > 1 && alive.some((candidate) => candidate.hp < candidate.maxHp)) return 'heal';
   if (ai.support === 'summon' && data.heal && alive.length > 1 && alive.some((candidate) => candidate.hp < candidate.maxHp)) return 'heal';
@@ -71,6 +88,7 @@ function chooseNormalIntent(state, enemy, ai, rng) {
 
 export function chooseEnemyIntent(state, enemy, rng = Math.random) {
   if (!enemy || !living(enemy)) return null;
+  if (ENEMIES[enemy.id].fuse != null) return enemy.fuse <= 1 ? 'boom' : 'fuse';
   const ai = effectiveAi(enemy);
   if (enemy.intent === 'charge' || enemy.charging) return 'heavy';
   if (enemy.intent === 'heavy') return ai.rests ? 'rest' : chooseNormalIntent(state, enemy, ai, rng);
@@ -98,7 +116,7 @@ function selectedAfter(enemies, priorUid) {
 
 const encounterWaves = (encounter) => encounter.waves ?? [{ enemyIds: encounter.enemyIds }];
 const defeatedXp = (enemies) => enemies
-  .filter((enemy) => !living(enemy) && !enemy.summoned)
+  .filter((enemy) => !living(enemy) && !enemy.summoned && !enemy.exploded)
   .reduce((sum, enemy) => sum + (ENEMIES[enemy.id].xp ?? 0), 0);
 const waveXp = (wave) => wave.enemyIds.reduce((sum, id) => sum + (ENEMIES[id].xp ?? 0), 0);
 
@@ -110,6 +128,7 @@ function beginNextWave(state, events, rng) {
   let next = {
     ...state,
     wave,
+    callBudget: waves[wave - 1].callBudget ?? 3,
     clearedXp: state.clearedXp + defeatedXp(state.enemies),
     enemies,
     selectedUid: enemies[0]?.uid ?? null,
@@ -151,11 +170,13 @@ function gainAp(state, amount, reason, events) {
 
 function damageEnemy(state, uid, amount, events) {
   let hero = state.hero;
+  const protector = state.enemies.find((enemy) => living(enemy) && ENEMIES[enemy.id].protector && protectedUid(state, enemy.uid) === uid);
   const enemies = state.enemies.map((enemy) => {
     if (enemy.uid !== uid || !living(enemy)) return enemy;
-    const damage = damageAmount(amount, enemy);
+    const damage = damageAmount(amount * (protector ? 0.5 : 1), enemy);
     const hp = Math.max(0, enemy.hp - damage);
     let nextEnemy = { ...enemy, hp };
+    if (protector) events.push({ type: 'protected', target: uid, by: protector.uid });
     events.push({ type: 'damage', target: uid, amount: damage });
     if (hp === 0) {
       events.push({ type: 'defeat', target: uid });
@@ -192,7 +213,7 @@ export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier
   let state = {
     heroId, encounterId, level: safeLevel, skillTier: skillTier ?? skillTierForLevel(safeLevel),
     ap: clampAp(Math.floor(ap) || 0), potions: Math.max(0, Math.floor(potions) || 0), turn: 'player', round: 1,
-    wave, waveCount: waves.length,
+    wave, waveCount: waves.length, callBudget: waves[wave - 1].callBudget ?? 3,
     ally: encounter.ally?.joinsAtWave <= wave ? { id: encounter.ally.id } : null,
     clearedXp: waves.slice(0, wave - 1).reduce((sum, priorWave) => sum + waveXp(priorWave), 0),
     hero: {
@@ -357,7 +378,7 @@ export function useSkill(state, skillId, targetUid = state.selectedUid, rng = Ma
     if (skillId === 'magicBolt' && (targetBefore?.charging || targetBefore?.tired)) {
       next = gainAp(next, BALANCE.exploitAp, 'exploit', events);
     }
-    if (skillId === 'strike' && targetBefore && (targetBefore.charging || targetBefore.guarding || targetBefore.tired || ['heal', 'summon'].includes(targetBefore.intent))) {
+    if (skillId === 'strike' && targetBefore && (targetBefore.charging || targetBefore.guarding || targetBefore.tired || ['heal', 'summon', 'call'].includes(targetBefore.intent))) {
       if (next.enemies.some((enemy) => enemy.uid === target && living(enemy))) {
         next.hero = { ...next.hero, openingUid: target };
         events.push({ type: 'opening', target });
@@ -365,6 +386,15 @@ export function useSkill(state, skillId, targetUid = state.selectedUid, rng = Ma
     }
   }
 
+  // Stopping a telegraphed call charges the Action Core: Yao's lesson pays in AP,
+  // which also gives a low-AP hero the economy Sakai's ally provides.
+  for (const before of state.enemies) {
+    if (before.intent !== 'call' || !living(before)) continue;
+    if (next.enemies.find((enemy) => enemy.uid === before.uid)?.hp === 0) {
+      events.push({ type: 'interrupt', target: before.uid });
+      next = gainAp(next, BALANCE.interruptAp, 'interrupt', events);
+    }
+  }
   next.selectedUid = selectedAfter(next.enemies, state.selectedUid);
   const outcome = finish(next, events, rng);
   return outcome.state.turn === 'won' || outcome.events.some((event) => event.type === 'waveStart')
@@ -445,6 +475,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     const data = ENEMIES[current.id];
     const action = current.intent;
     let enemy = { ...current, guarding: false, tired: false, charging: false };
+    if (effectiveAi(enemy).support === 'call' && action !== 'call') enemy.callWait -= 1;
 
     if (['attack', 'heavy', 'drain'].includes(action)) {
       if (action === 'heavy') enemy.cadence = 0;
@@ -458,6 +489,29 @@ export function resolveEnemyPhase(state, rng = Math.random) {
         enemy.hp += healed;
         events.push({ type: 'heal', target: enemy.uid, amount: healed });
       }
+    } else if (action === 'fuse') {
+      enemy.fuse -= 1;
+      events.push({ type: 'fuse', target: enemy.uid, fuse: enemy.fuse });
+    } else if (action === 'boom') {
+      const amount = defendedDamage(data.boom, 'heavy');
+      next.hero = { ...next.hero, hp: Math.max(0, next.hero.hp - amount) };
+      events.push({ type: 'damage', target: 'hero', source: enemy.uid, amount });
+      enemy.hp = 0;
+      enemy.exploded = true;
+      if (next.hero.openingUid === enemy.uid) next.hero = { ...next.hero, openingUid: null };
+      events.push({ type: 'explode', source: enemy.uid }, { type: 'defeat', target: enemy.uid });
+    } else if (action === 'call') {
+      const ai = effectiveAi(enemy);
+      const room = Math.max(0, BALANCE.maxLivingEnemies - next.enemies.filter(living).length);
+      const ids = canCall(next, enemy, ai) ? (ai.callIds ?? []).slice(0, Math.min(room, next.callBudget)) : [];
+      const added = ids.map((id, index) => enemyState(id, next.nextUid + index, true));
+      next.enemies = [...next.enemies, ...added];
+      next.nextUid += added.length;
+      next.callBudget -= added.length;
+      enemy.calls += 1;
+      enemy.callWait = ai.callEvery - 1;
+      enemy.cadence += 1;
+      events.push({ type: 'call', source: enemy.uid, targets: added.map((candidate) => candidate.uid) });
     } else if (action === 'guard') {
       enemy.guarding = true;
       enemy.cadence += 1;
@@ -487,7 +541,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     }
 
     next.enemies = next.enemies.map((candidate) => candidate.uid === enemy.uid ? enemy : candidate);
-    if (action === 'heavy' && next.hero.defense && next.hero.hp > 0) {
+    if (['heavy', 'boom'].includes(action) && next.hero.defense && next.hero.hp > 0) {
       if (['guard', 'dodge'].includes(next.hero.defense) && !next.hero.counter) {
         next.hero = { ...next.hero, counter: true };
         events.push({ type: 'counterReady' });
@@ -502,6 +556,11 @@ export function resolveEnemyPhase(state, rng = Math.random) {
 
   next.hero = { ...next.hero, defense: null, exhausted: false, protected: false };
   next.enemies = next.enemies.map((enemy) => living(enemy) ? { ...enemy, intent: chooseEnemyIntent(next, enemy, rng) } : { ...enemy, intent: null });
+
+  // A bomb can defeat itself and the hero together; it cannot award a victory or next wave.
+  if (next.hero.hp <= 0 && events.some((event) => event.type === 'explode')) {
+    return { state: { ...next, turn: 'lost' }, events: [...events, { type: 'lost' }] };
+  }
 
   const outcome = finish(next, events, rng);
   if (['won', 'lost'].includes(outcome.state.turn) || outcome.events.some((event) => event.type === 'waveStart')) return outcome;

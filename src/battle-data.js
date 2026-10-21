@@ -5,6 +5,7 @@ export const BALANCE = Object.freeze({
   waveClearAp: 2,          // deterministic refill between waves; one-wave Matsubara battles are unchanged
   retryApBonus: 1,         // retry assist unit: +1, +3, +6, +10 AP after 1-4 defeats
   exploitAp: 1,            // Mage: Magic Bolt on a charging or tired enemy
+  interruptAp: 1,          // Yao: defeating a caller while its CALLING HELP shows (the lesson pays in AP)
   defenseAp: 1,            // Guard or Barrier up when a big attack lands (Dodge avoids it instead)
   guardMultiplier: 0.4,
   barrierMultiplier: 0.25,
@@ -89,6 +90,12 @@ export const ALLIES = Object.freeze({
 // Heavy-attack cycles are odd lengths (e.g. attack, attack, charge, heavy, rest)
 // so that a low-AP rest/act rhythm does not always meet the big attack the same way.
 export const ENEMIES = Object.freeze({
+  hornGoblin: { id: 'hornGoblin', name: 'Horn Goblin', jaName: 'つのぶえゴブリン', maxHp: 9, attack: 2, xp: 16, ai: Object.freeze({ support: 'call', callIds: Object.freeze(['goblin']), callEvery: 3, firstCall: 0, maxCalls: 2 }) },
+  bombSlime: { id: 'bombSlime', name: 'Bomb Slime', jaName: 'ばくだんスライム', maxHp: 12, fuse: 3, boom: 12, xp: 16, ai: Object.freeze({}) },
+  shadowArcher: { id: 'shadowArcher', name: 'Shadow Archer', jaName: 'かげの ゆみへい', maxHp: 8, attack: 3, heavy: 10, heavyName: 'Shadow Arrow', chargeLabel: 'AIMING!', chargeLabelJa: 'ねらっている！', xp: 18, ai: Object.freeze({ heavyEvery: 2, rests: true }) },
+  armoredOrc: { id: 'armoredOrc', name: 'Armored Orc', jaName: 'よろいオーク', maxHp: 12, attack: 2, protector: true, xp: 24, ai: Object.freeze({ guardChance: 0 }) },
+  signalCaptain: { id: 'signalCaptain', name: 'Signal Captain', jaName: 'のろし たいちょう', maxHp: 24, attack: 2, heavy: 12, heavyName: 'Signal Strike', large: true, xp: 40, ai: Object.freeze({ support: 'call', callIds: Object.freeze(['goblin', 'bat']), callEvery: 3, firstCall: 1, heavyEvery: 4, rests: true }) },
+  warcaller: { id: 'warcaller', name: 'Warcaller', jaName: 'ウォーコーラー', maxHp: 28, attack: 3, heavy: 12, heavyName: 'War Horn Blast', boss: true, xp: 70, ai: Object.freeze({ support: 'call', callIds: Object.freeze(['goblin']), callEvery: 3, heavyEvery: 3, rests: true, phase2: Object.freeze({ at: 0.5, message: '📯 WARCALLER IS ANGRY!', callIds: Object.freeze(['wolf', 'bombSlime']), callEvery: 2, heavyEvery: 3 }) }) },
   slime: { id: 'slime', name: 'Slime', jaName: 'スライム', maxHp: 8, attack: 2, xp: 10, ai: Object.freeze({}) },
   bat: { id: 'bat', name: 'Bat', jaName: 'コウモリ', maxHp: 6, attack: 2, xp: 8, ai: Object.freeze({}) },
   mushroom: { id: 'mushroom', name: 'Mushroom', jaName: 'キノコ', maxHp: 10, attack: 1, xp: 12, ai: Object.freeze({}) },
@@ -108,6 +115,30 @@ export const ENEMIES = Object.freeze({
 });
 
 export const ENCOUNTERS = Object.freeze({
+  'yao-1': Object.freeze({
+    id: 'yao-1', city: 'yao', stage: 1, name: 'Horn Call', jaName: 'つのぶえの あいず', music: 'battle',
+    enemyIds: Object.freeze(['slime', 'hornGoblin', 'goblin']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['slime', 'hornGoblin', 'goblin']) }), Object.freeze({ enemyIds: Object.freeze(['hornGoblin', 'wolf', 'bat']) })]),
+    ally: null, reserve: 3,
+  }),
+  'yao-2': Object.freeze({
+    id: 'yao-2', city: 'yao', stage: 2, name: 'Danger Everywhere', jaName: 'あぶない てきが いっぱい', music: 'battle',
+    enemyIds: Object.freeze(['bombSlime', 'goblin', 'shadowArcher']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['bombSlime', 'goblin', 'shadowArcher']) }), Object.freeze({ enemyIds: Object.freeze(['hornGoblin', 'bombSlime', 'wolf']) })]),
+    ally: null, reserve: 3,
+  }),
+  'yao-3': Object.freeze({
+    id: 'yao-3', city: 'yao', stage: 3, name: 'Signal Captain', jaName: 'のろし たいちょう', music: 'battle',
+    enemyIds: Object.freeze(['hornGoblin', 'goblin']),
+    waves: Object.freeze([Object.freeze({ callBudget: 2, enemyIds: Object.freeze(['hornGoblin', 'goblin']) }), Object.freeze({ callBudget: 2, enemyIds: Object.freeze(['armoredOrc', 'signalCaptain']) })]),
+    ally: null, reserve: 3,
+  }),
+  'yao-4': Object.freeze({
+    id: 'yao-4', city: 'yao', stage: 4, name: 'Warcaller', jaName: 'ウォーコーラー', music: 'boss',
+    enemyIds: Object.freeze(['shadowArcher', 'hornGoblin']),
+    waves: Object.freeze([Object.freeze({ callBudget: 2, enemyIds: Object.freeze(['shadowArcher', 'hornGoblin']) }), Object.freeze({ callBudget: 2, enemyIds: Object.freeze(['armoredOrc', 'warcaller']) })]),
+    ally: null, reserve: 2,
+  }),
   slime: { id: 'slime', tier: 1, enemyIds: Object.freeze(['slime']) },
   bat: { id: 'bat', tier: 1, enemyIds: Object.freeze(['bat', 'bat']) },
   mushroom: { id: 'mushroom', tier: 1, enemyIds: Object.freeze(['mushroom']) },

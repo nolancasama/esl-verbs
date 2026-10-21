@@ -1,6 +1,28 @@
 # Current State
 
-## Status (2026-10-17)
+## Status (2026-10-22)
+
+Slice 2 adds Yao as the next playable city after Sakai: four quiz/battle stages,
+reinforcement callers, countdown bombs, a charging archer, passive Orc protection,
+the Signal Captain and the Warcaller. Calls are visible intents for one player
+turn; defeating the caller stops the reinforcements. Yao uses the existing city
+checkpoint, progression and retry assist rules, without an ally.
+
+Defeating a caller while CALLING HELP shows gives +1 AP (STOP!); a protected
+caller's hint points at the Orc. Before every city battle a station-defence map
+(Osaka-map style, real station geography, burning houses) shows what is defended.
+Slice 1 the same day: clearer target selection with a first-time hint, a SOUND
+popover with separate Music / SFX volumes (12% defaults), hero-specific strike
+sounds and a +1 that flies to the AP meter.
+
+Verified 2026-10-22: `npm test` 134/134; `npm run balance` passes with the
+Matsubara/Sakai report bytes unchanged; both Yao bots (threat priority and
+first-target) complete Yao at every AP 0–10 within six attempts per battle,
+priority play has the higher first-try rate (yao-3 37/75/100%, yao-4
+22/100/100% at AP5/7/10, hero mean). The browser playthrough passes with the requested Playwright path:
+Stage Clear → station map → battle, Yao unlock/checkpoint, call telegraph and
+arrival, and the protected Warcaller via debug. Four review screenshots are in
+`.tmp/browser/`; checked views fit 1024×600 without page scroll.
 
 2026-10-17: Adventure Stage 4 now uses the same learning format as Stage 3 —
 visible Japanese prompt (spoken with ja-JP TTS) → spoken English answer. There
@@ -26,7 +48,7 @@ a backing plate behind the quiz word, a labelled answer slot, a flat status
 nameplate, quiz actors at 90%, and the intro hero a little further left.
 On 2026-10-05 the streak badge moved over the dummy and Stage Clear was cut
 down to title → hero + nameplate → AP meter → note → BATTLE!.
-Battles, AP, XP and balance are unchanged. Pushing `master` deploys live (GitHub Pages,
+Matsubara and Sakai combat numbers and behavior are unchanged. Pushing `master` deploys live (GitHub Pages,
 https://nolancasama.github.io/esl-verbs/).
 
 What a player sees now:
@@ -48,19 +70,28 @@ What a player sees now:
 - Stage Clear (between quiz and battle): STAGE N CLEAR! → the hero on the
   stage backdrop with the nameplate on the floor under them → the AP meter
   (the only AP display here; no topbar, no score line, no enemy list) → the
-  AP note (EN / JA lines; the rest text at 0 AP) → BATTLE!.
+  AP note (EN / JA lines; the rest text at 0 AP) → BATTLE! → the stage's station
+  defence map → DEFEND! → battle. This applies to Matsubara, Sakai and Yao;
+  retries go directly to battle.
 - Matsubara ending (~26 s auto-play, every card tap-to-advance): victory
   (darkness clears with MATSUBARA CITY IS SAFE!, YOU PROTECTED THE CITY!) →
   five lore cards (Action Energy; Black Star in Lake Biwa + Shadow Horde; why
   it attacked; the Action Core, then the short 「きみだ！」 beat) → Osaka reveal
   (the Horde has spread, then 大阪を まもれ！ / SAVE OSAKA!) → results with `つづける つぎの まちへ！`
-  → Osaka map (Matsubara ★, Sakai きけん！, Yao / Higashiosaka / Osaka City locked).
+  → Osaka map (Matsubara ★, Sakai きけん！; saving Sakai unlocks playable Yao).
+  Higashiosaka and Osaka City remain locked until their campaigns exist.
 - Sakai: short intro → quiz modes 1–4 (fresh random words) → battles
   First Assault / Horde Battle (2 waves) / Defenders Overwhelmed (the Osaka
   Defender joins at wave 2) / Final Sakai Defense (ally from the start, the
   Shadow Commander last) → ending (the ally stays in Sakai) → city results →
   map save animation. A checkpoint is saved at each Sakai stage start; the
   map and menu offer つづき / CONTINUE ADVENTURE.
+- Yao: short horn-call intro → quiz modes 1–4 → Horn Call / Danger Everywhere /
+  Signal Captain / Warcaller (two waves each, no ally) → ending → city results
+  → map save animation. Checkpoints and resume work like Sakai. Callers show
+  CALLING HELP during the player's turn; killing them stops the call. Bombs
+  count down to BOOM; Guard/Barrier reduce it and Dodge avoids it. Orc badges
+  show the caller/boss they protect; defeating the Orc removes protection.
 - Battle targeting: select with ←/→ or tap anywhere on an enemy; selection
   never attacks. The selected enemy has a larger marker, gold plate, stepped
   ground ring and warm sprite backing, plus an accessible target announcement.
@@ -169,8 +200,12 @@ Verified 2026-09-30:
 - `src/osaka-map.js` — map view (markers, save animation); art in
   `pixel-effects.js` `osakaMapImage()`.
 - Battles: one engine with optional `waves` / `ally` on encounters
-  (`src/battle-data.js` ALLIES, sakai-1..4). `battle-ui.js` presents waves and
-  the ally from the display snapshot; `fx-player.js` has ally effects.
+  (`src/battle-data.js` ALLIES, sakai-1..4, yao-1..4). Calls and bombs use the
+  intent system; reinforcements wait until the next phase and give no XP.
+  `battle-ui.js` presents waves and the ally from the display snapshot;
+  `fx-player.js` has ally and reinforcement effects.
+- `src/battle-locations.js` / `src/station-map.js` supply the station defence
+  card before each Adventure battle; the app mounts the controller-owned card.
 - Art: Osaka Defender on the hero rig (`ALLY_IDS`), training dummy
   (`PROP_ART`), Shadow Commander (recoloured Goblin Captain), ground tiles.
 - Debug: `?debug=quiz&stage=N&hero=X`, `?debug=map&preset=fresh|matsubara|sakai[&justSaved=id]`
@@ -179,12 +214,17 @@ Verified 2026-09-30:
 
 ## Next Steps
 
-1. Classroom check of the expansion (below), especially Sakai difficulty
-   (first-try 5 AP is easier than Matsubara's bar; "hard" shows up as ~2.5
-   lost battles per city) and the story length.
-2. More cities: add a CITIES/CITY_CAMPAIGNS entry, city encounters with
-   `city`, a `CITY_STORIES` entry; the flow, map and battle view need no changes.
-3. Optional: a Sakai-specific skyline for its intro/ending (it reuses the
+1. Classroom check of Sakai and Yao difficulty, story length, call telegraphs,
+   bomb countdowns and Orc protection; check station-map pacing between rounds.
+2. Higashiosaka next (Protect: an Action Core with HP, Saboteur / Siege Golem /
+   Engineer Goblin / Sniper / Guardian Construct), then Osaka City (Master
+   everything; multi-phase final boss) — roadmap in DESIGN_DECISIONS
+   "City campaign identities". Each needs a CITIES/CITY_CAMPAIGNS entry, city
+   encounters, a `CITY_STORIES` entry, `BATTLE_LOCATIONS` (real coordinates)
+   and, for Higashiosaka, the Core objective in the engine.
+3. Not heard yet (no audio device): the new strike/impact/AP-gain sfx and the
+   12% defaults on Chromebook speakers.
+4. Optional: a Sakai-specific skyline for its intro/ending (it reuses the
    Matsubara city art); hero titles for city campaigns; a level/XP presentation
    beyond LV 5 MAX (deliberately not done in this pass).
 
@@ -201,6 +241,8 @@ Verified 2026-09-30:
   students notice the AP gain without slowing the quiz.
 - Sakai: is the 20-minute city too long for one lesson (checkpoints resume at
   the current stage); do students find the Horde waves and the ally clear.
+- Yao: do students notice CALLING HELP and learn to stop it; are countdowns
+  and protection badges clear, and can first-target play recover through retries.
 - Earlier open items: real mic grant/denial, IME Enter, sprite build time and
   effect smoothness on a real school Chromebook.
 

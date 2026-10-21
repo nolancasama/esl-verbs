@@ -9,7 +9,7 @@ export { createEffectsPlayer } from './fx-player.js';
 export const SPRITE_STATES = ROWS;
 export const SPRITE_FRAMES = FRAMES;
 export const ART_IDS = Object.freeze({ heroes: HERO_IDS, enemies: ENEMY_IDS });
-const BOSSES = new Set(['dragon', 'demonKing', 'giantGolem', 'vampireLord']);
+const BOSSES = new Set(['dragon', 'demonKing', 'giantGolem', 'vampireLord', 'warcaller']);
 
 /**
  * CSS that plays each state's row: looping rows cycle, the rest play once and
@@ -110,6 +110,8 @@ export function cityClass(mood) {
 /** Sprite row for an enemy's standing condition. A defeated enemy is not drawn at all. */
 export function enemyRestState(enemy) {
   if (enemy.hp <= 0) return 'gone';
+  if (enemy.intent === 'call') return 'cast';
+  if (enemy.intent === 'boom') return 'charge';
   if (enemy.charging) return 'charge';
   if (enemy.tired) return 'tired';
   if (enemy.guarding) return 'guard';
@@ -141,7 +143,9 @@ export function eventSpriteStates(event) {
     case 'guard': return [[event.target, 'guard']];
     case 'charge': return [[event.target, 'charge']];
     case 'rest': return [[event.target, 'tired']];
-    case 'summon': return [[event.source, 'cast']];
+    case 'summon':
+    case 'call': return [[event.source, 'cast']];
+    case 'explode': return [[event.source, 'attack']];
     case 'counter': return [['hero', 'counter']];
     case 'break': return [[event.target, 'broken']];
     case 'barrierUp': return [['hero', 'barrier']];

@@ -156,11 +156,27 @@ so app.js can aim the mote.
 ## Slice 2 — Yao campaign, reinforcements, station-map flow
 
 ### 2A. Station-map flow (src/app.js)
-Controller provides (do not rewrite their art):
-- `src/battle-locations.js`: `battleLocation(cityId, stage)` → location or null.
-- `src/station-map.js`: `stationMapScreen(location, { heroId, stage, onDefend })`
-  → an HTMLElement (the whole card, including the `DEFEND! / まもる！` button,
-  which it focuses itself). Enter/Space work through the focused button.
+Controller provides — already on master, do not restyle or rewrite them:
+- `src/battle-locations.js`: `battleLocation(cityId, stage)` → location or null
+  (Matsubara, Sakai and Yao stages 1–4 all have one).
+- `src/station-map.js`: `stationMapScreen(location, { cityId, heroId, stage, onDefend })`
+  → an HTMLElement `section.rpg-card.station-card` (the whole card, including
+  the `まもる！ / DEFEND!` button, which it focuses itself in a microtask;
+  onDefend fires once). Mount it like other RPG cards (`rpgScreen()` app
+  class, `app.append(card)`); styles are in `station-map.css` (linked).
+  Enter/Space work through the focused button. It fits 1024×600 without scroll.
+- Yao sprites already exist in `src/pixel-enemies.js` ENEMY_ART with the ids
+  below (test/art.test.js fails until ENEMIES gains the same ids — expected;
+  adding the data fixes it). Sprite modes: hornGoblin idle/attack/cast/tired
+  (cast = horn to the mouth with sound rings), bombSlime idle/attack/charge/tired
+  (charge = glowing, about to blow), shadowArcher idle/attack/charge/tired
+  (charge = bow drawn, glowing arrow), armoredOrc idle/attack/guard/tired,
+  signalCaptain (large) idle/attack/cast/charge/guard/tired, warcaller (boss,
+  has the enraged variant) idle/attack/cast/charge/tired.
+- Sprite-state hooks (src/battle-art.js): `enemyRestState` shows `cast` while a
+  living enemy's intent is `call` (the horn up IS the visual telegraph) and
+  `charge` while its intent is `boom`; `eventSpriteStates` maps `call` →
+  `[[source, 'cast']]` and `explode` → `[[source, 'attack']]`.
 Flow: Stage Clear `BATTLE!` → `stationMapScreen` (clear screen, mount) →
 DEFEND → `startAdventureBattle()`. If `battleLocation` returns null, go straight
 to the battle. A retry after defeat goes straight to the battle (no map).
@@ -286,6 +302,40 @@ Furigana syntax per story.js if any kanji is used.
   (yao-4, start wave 2).
 
 ---------------------------------------------------------------------------
+### 2D. Correction after the first Slice 2 run (controller decision, 2026-10-22)
+Observed in `npm run balance`: yao-3/yao-4 are 0% first-try for every hero at
+AP5–7 and ~100% at AP10 although enemy stats were cut far below the spec (a
+cliff that ignores stats → a structural snowball), and the priority bot often
+loses to the naive bot (e.g. fighter yao-3 AP8 0% vs 85%). Fixes:
+- **Reinforcement budget per wave.** Encounter waves get `callBudget` (default
+  3): the total enemies reinforcements may add during one wave. When spent,
+  callers stop choosing `call` (they attack instead). A call never adds more
+  than the remaining budget. Calls also need `living < 3` (not 4) so the field
+  never fills with summons. Every caller including the Warcaller keeps
+  telegraphing exactly as now.
+- **No caller-calls-callers.** Warcaller phase 1 calls `['goblin']`; phase 2
+  `['wolf', 'bombSlime']` (bomb counts against the budget like any other).
+  A summoned Horn Goblin is never produced by a call.
+- **Protected caller = deal with the Orc.** `battleHint`: when a caller with a
+  pending call is protected by a living Armored Orc, the hint becomes
+  `🛡 オークを さきに たおそう！ BREAK THE GUARD!` and highlights nothing
+  special; otherwise the call hint stays. The priority bot follows the same
+  rule as the hint (boom bomb → unprotected caller with a pending call → Orc
+  protecting a caller → charging archer → lowest HP; AoE when 3+ living).
+- **Intent labels never break mid-word:** the call label is two lines —
+  `📯 CALLING HELP!` / `なかまを よぶ！` (each line `white-space: nowrap`).
+- **Restore role-appropriate stats** once the snowball is fixed: tune from the
+  spec table, keeping the Orc a real wall (≥ 18 HP), the Captain a real
+  miniboss (≥ 26 HP) and the Warcaller a real boss (≥ 40 HP) — difficulty
+  should come from behaviour, not from tiny HP.
+- **Targets (balance report, Yao section):** for yao-3 and yao-4 the priority
+  bot's first-try rate per hero is ≥ 35% at AP5, ≥ 60% at AP7, ≥ 90% at AP10;
+  the priority bot is never more than 5 points below the naive bot in any cell
+  and is on average ≥ 10 points above it at AP5–7 across yao-1, yao-3 and yao-4;
+  both bots still complete Yao 100% within the retry assist; the priority bot's
+  mean retries at AP7 ≤ 1.5. Add these as assertions in test/balance.test.js
+  (with the seed count the report uses). Matsubara/Sakai numbers unchanged.
+
 ## Docs (each slice)
 Append dated entries to DESIGN_DECISIONS.md for real decisions made; revise
 CURRENT_STATE.md lines that become stale (no append-only logs).

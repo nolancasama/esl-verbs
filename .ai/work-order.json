@@ -1,35 +1,39 @@
 {
-  "task": "Implement Slice 1 of the frozen spec .ai/pass-spec.md: enemy target-selection clarity and onboarding hint (battle UI), independent Music/SFX volume settings with a SOUND popover and migration (audio), and hero-specific verb-success SFX plus AP-gain chime, travelling +1 energy mote and AP segment pop (quiz training strike + AP meter).",
+  "task": "Repair and complete the PARTIAL Yao correction (section 2D of .ai/pass-spec.md) left in the working tree after the previous worker hit a usage limit: 4 tests fail and Yao stats were pushed to absurd values (Orc attack 0, Warcaller attack 1, callBudget 1). Diagnose why the naive bot still loses Yao 3-4 (real losses vs 200-turn timeouts), then finish the correction with sensible stats.",
   "requirements": [
-    "Follow section 'Slice 1' of .ai/pass-spec.md exactly (1A targeting, 1B sound settings, 1C verb-success feedback, Slice 1 tests). It is the controller-approved design.",
-    "Preserve what is already on master: Stage 3/4 share SEE_JA_SPEAK_EN in src/engine.js; the streak badge stays wrapped with the dummy and centred above it; Stage Clear stays title -> hero scene + nameplate -> AP meter -> AP note -> BATTLE!.",
-    "Keep the existing targeting logic (cycleTarget/selectTarget, data-select-uid); this is discoverability and visuals. Selecting an enemy never attacks.",
-    "Music and SFX volumes are fully independent: defaults 0.12 each, keys esl-verbs-music-volume / esl-verbs-sfx-volume, clamp 0..1, malformed values -> default, one-time migration from esl-verbs-music='off' -> music 0. Ducking is relative to the chosen music volume. Live music changes never restart the track.",
-    "Replace every MUSIC ON/OFF toggle with one SOUND button + document-level popover (native range inputs, >=44px rows, Escape/outside click closes, battle keys ignored while open, survives battle re-renders).",
-    "Training strike: per-hero weapon/cast sfx and separate impact sfx at the TRAINING_STRIKE timings, then a +1 mote travels to the AP meter; AP set + segment pop + apGain chime happen on arrival. No extra quiz delay; AP never lost or doubled; reduced-motion path.",
-    "Targeting onboarding uses an in-memory session flag (never localStorage), intro -> quiet after the first real target change.",
-    "Add the tests listed under 'Slice 1 tests'; keep all existing tests passing; npm run balance output must stay byte-identical (battle numbers untouched).",
-    "Append dated DESIGN_DECISIONS.md entries for the decisions made (sound popover replacing the music toggle, 12% defaults + migration, target hint levels via session state, success feedback sequence). Revise stale CURRENT_STATE.md lines (music toggle, AP feedback, targeting) instead of appending logs."
+    "Inspect the existing diff first. Preserve what is correct (callBudget engine support, living<3 rule, Warcaller goblin calls, protected-caller hint, two-line call label, browser test additions); repair or revert what is wrong; then complete and validate. Do not continue blindly from the previous worker's numbers.",
+    "Measure before tuning: for losing yao-3/yao-4 runs at AP5 report how many end by hero death vs the 200-turn cap, turns, recoveries and reinforcements; fix the cause (e.g. a stalemate) rather than shrinking enemy stats.",
+    "Enemies must keep role-appropriate stats: no enemy with attack 0 except a pure support; Armored Orc attack >= 3, Signal Captain attack >= 4, Warcaller attack >= 4 and heavy >= 12; callBudget >= 2 per caller wave unless a measurement shows why not.",
+    "The working tree already holds the first Slice 2 implementation (uncommitted). Inspect the existing diff first; preserve what is correct (station-map flow, region/story, engine mechanics, UI, tests) and change only what section 2D requires. Do not start over.",
+    "Implement every bullet of section 2D in .ai/pass-spec.md: callBudget per wave (default 3), calls need living < 3, Warcaller callIds goblin -> wolf+bombSlime, the protected-caller hint and matching priority-bot policy, two-line nowrap call label, restored stats (Orc >= 18 HP, Captain >= 26 HP, Warcaller >= 40 HP).",
+    "Before tuning, confirm the snowball diagnosis with a quick measurement (e.g. count reinforcements and turns per lost yao-3/yao-4 run at AP5 before and after the budget) and report the numbers in the summary.",
+    "Meet the 2D balance targets in the Yao section of npm run balance and encode them as assertions in test/balance.test.js. Matsubara and Sakai report lines must stay byte-identical.",
+    "Engine tests: the budget stops calls once spent and resets per wave; no call when living >= 3; a call adds at most the remaining budget; the hint names the Orc when the caller is protected.",
+    "Re-run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser and report the result.",
+    "Update the DESIGN_DECISIONS.md Yao entry (budget, no caller-calls-callers, protected-caller rule, final stats) and the CURRENT_STATE.md balance lines."
   ],
   "constraints": [
-    "Do not touch src/battle-engine.js, src/battle-data.js, src/region.js, src/story.js, src/pixel-enemies.js, src/pixel-effects.js, src/station-map.js or src/battle-locations.js (other slices own them).",
-    "No new runtime dependency, no build step, no framework, no canvas animation loop, no large-area CSS filters. Effects are CSS / light DOM.",
-    "1024x600 must not page-scroll on the quiz, Stage Clear or battle screens; the target hint must not cover enemy sprites, plates, intents or status badges.",
+    "Do not edit src/station-map.js, src/battle-locations.js, station-map.css or sprite drawing code in src/pixel-enemies.js.",
+    "Do not change Matsubara or Sakai numbers or behaviour.",
+    "Keep the telegraph rule: a call is shown a full player turn ahead and never resolves if the caller died.",
     "Edit source with structured edit tools; on the first shell quoting/escaping failure switch to file edit tools.",
     "Do not commit. Do not delete .ai files."
   ],
+  "notes": [
+    "Current (first-run) Yao stats in src/battle-data.js were cut far below the spec (hornGoblin 7 HP, armoredOrc 9 HP atk 1, signalCaptain 18 HP, warcaller 30 HP atk 2) while yao-3/4 stayed 0% at AP5-7 — that is why the controller suspects a structural snowball (uncapped Warcaller calls of Horn Goblins that call again, field refilling to 4).",
+    "Report numbers before the correction (from the current tree) are in the scratch copy the controller took; regenerate them yourself with npm run balance before changing code."
+  ],
   "startingPoints": [
     ".ai/pass-spec.md",
+    "src/battle-data.js",
+    "src/battle-engine.js",
     "src/battle-ui.js",
-    "src/audio.js",
-    "src/app.js",
-    "src/ap-meter.js",
     "rpg.css",
-    "fx.css",
-    "styles.css",
-    "test/audio.test.js",
-    "test/battle.test.js",
-    "test/browser/playthrough.mjs"
+    "test/balance-sim.js",
+    "test/balance-report.mjs",
+    "test/balance.test.js",
+    "test/yao.test.js",
+    "test/yao-ui.test.js"
   ],
   "validation": [
     "npm test",
@@ -37,21 +41,13 @@
   ],
   "behavioralAcceptance": {
     "owner": "worker",
-    "description": "Run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser (extended per the spec) and confirm it passes. Take screenshots at 1024x600 of: a multi-enemy battle with the intro hint and a selected enemy, the quiet hint, the open SOUND popover over the quiz and over a battle, and a quiz strike mid-mote. Save them under .tmp/slice1/ and list the paths."
+    "description": "Run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser and report pass/fail; refresh the .tmp/browser/ Yao screenshots."
   },
-  "notes": [
-    "createBattleView re-renders container.innerHTML on every render; anything that must persist (the sound popover) lives outside it on document.body.",
-    "battle-ui onKeydown is a document listener: it already bails when .modal-backdrop exists; add the same bail-out while the sound popover is open or focus is inside it.",
-    "audio.js: musicLevel()/applyLevel() compute the music gain with DUCK ratios against MUSIC_VOLUME; sfx() currently returns when !enabled, which must become sfxVolume <= 0. The silent fallback object (no AudioContext) needs the same new API.",
-    "app.js: musicToggle()/musicToggleMarkup()/paintMusicToggle and the [data-music-toggle] document click handler are the toggles to replace; showBattle passes topRight: musicToggleMarkup().",
-    "app.js trainingStrike(): TRAINING_STRIKE has per-hero pose/projectile/launch/hit/impact; land() currently sets the AP at impact and plays sfx('hit').",
-    "ap-meter.js is one persistent node mounted into each screen's slot; the fill is a width bar with notches, so the segment pop is an absolutely positioned overlay at index*10%.",
-    "Browser test runs with PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright; debug entry points: ?debug=battle, ?debug=quiz&stage=N&hero=X."
-  ],
-  "category": "feature",
+  "category": "bugfix",
   "complexity": "medium",
+  "composition": "atomic",
   "bounded": true,
   "exploration": "local",
   "risk": "medium",
-  "expectedCost": "large"
+  "expectedCost": "medium"
 }

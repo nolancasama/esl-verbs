@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import process from 'node:process';
@@ -10,6 +10,7 @@ import { VOCABULARY } from '../../src/vocab.js';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const evidenceDir = path.join(repoRoot, '.tmp', 'browser');
 const vocabularyByEnglish = new Map(VOCABULARY.map((item) => [item.en.toLowerCase(), item]));
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -148,6 +149,7 @@ async function selectOption(control, value, labelPattern) {
 }
 
 async function adventureFlow(page, baseUrl) {
+  await page.setViewportSize({ width: 1024, height: 600 });
   await page.goto(baseUrl);
   await page.getByRole('button', { name: /START ADVENTURE/i }).click();
   await page.getByRole('button', { name: /Fighter/i }).click();
@@ -165,6 +167,11 @@ async function adventureFlow(page, baseUrl) {
   if (await page.locator('.stage-card .rpg-topbar').count()) throw new Error('Stage Clear should not show the menu / music topbar');
   if (await apMeterValue(page) !== 10) throw new Error('The AP meter should show the 10 AP earned in the quiz');
   await page.getByRole('button', { name: /BATTLE!/i }).click();
+  await page.locator('.station-card').waitFor();
+  if (await page.locator('.battle-view').count()) throw new Error('Stage Clear must show the station map before battle');
+  await assertNoPageScroll(page, 'Station map');
+  await page.screenshot({ path: path.join(evidenceDir, 'station-map.png') });
+  await page.getByRole('button', { name: /DEFEND!/i }).click();
   await page.locator('.battle-view').waitFor();
   if (await apMeterValue(page) !== 10) throw new Error('The same AP meter should carry into battle');
   await page.locator('.battle-skill__cost').first().getByText(/1 AP/).waitFor();
@@ -225,6 +232,69 @@ async function debugBattleFlow(page, baseUrl) {
   await page.getByRole('button', { name: /^Retry$/i }).waitFor();
   await page.getByRole('button', { name: /Random encounter/i }).waitFor();
   await page.getByRole('button', { name: /Back to debug/i }).waitFor();
+}
+
+async function yaoBattleFlow(page, baseUrl) {
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.goto(`${baseUrl}/?debug=map&preset=sakai`);
+  const yao = page.locator('.osaka-city[data-city="yao"]');
+  await yao.waitFor();
+  if (await yao.isDisabled() || !(await yao.getAttribute('class')).includes('osaka-city--danger')) throw new Error('Saving Sakai should make Yao playable and under attack');
+  if (!(await page.locator('.osaka-city[data-city="higashiosaka"]').isDisabled())) throw new Error('Higashiosaka should remain locked');
+  await page.getByRole('button', { name: /GO TO YAO/i }).click();
+  await page.locator('.story--yao-intro').waitFor();
+  await page.getByRole('button', { name: /^Skip/i }).click();
+  await page.locator('.rpg-quiz.stage-1').waitFor();
+  const checkpoint = await page.evaluate(() => JSON.parse(localStorage.getItem('esl-verbs-region-v1')).checkpoint);
+  if (checkpoint?.cityId !== 'yao' || checkpoint.stage !== 1) throw new Error('Yao did not store its stage 1 checkpoint');
+
+  await page.goto(`${baseUrl}/?debug=battle`);
+  await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
+  await page.getByLabel(/^Hero/i).first().selectOption('fighter');
+  await page.getByLabel(/^Encounter/i).first().selectOption('yao-1');
+  await page.getByLabel(/^AP/i).first().fill('10');
+  await page.getByRole('button', { name: /START BATTLE/i }).click();
+  const horn = page.locator('[data-enemy-id="hornGoblin"]');
+  if (await horn.locator('.battle-intent--call').count()) throw new Error('Three living enemies must block calls');
+  await page.locator('[data-enemy-id="slime"] .battle-sprite').click();
+  await page.locator('[data-skill-id="powerSlash"]').click();
+  await horn.locator('.battle-intent--call').waitFor();
+  if (!(await horn.locator('.battle-intent').innerText()).includes('CALLING HELP!')) throw new Error('The call was not telegraphed before the player action');
+  if (await horn.locator('.battle-sprite').getAttribute('data-state') !== 'cast') throw new Error('The telegraphed caller should raise its horn');
+  const lines = await horn.locator('.battle-intent--call > span').evaluateAll((nodes) => nodes.map((node) => ({ text: node.textContent, nowrap: getComputedStyle(node).whiteSpace, top: node.getBoundingClientRect().top })));
+  if (lines.length !== 2 || lines.some((line) => line.nowrap !== 'nowrap') || lines[1].top <= lines[0].top) throw new Error('Call label must have two nowrap lines');
+  const before = await page.locator('.battle-enemy').evaluateAll((nodes) => nodes.map((node) => node.dataset.enemyUid));
+  if (before.length !== 3) throw new Error('Reinforcements arrived before the player had a turn');
+  await assertNoPageScroll(page, 'Yao call telegraph');
+  await page.screenshot({ path: path.join(evidenceDir, 'yao-call-telegraph.png') });
+  await page.locator('[data-skill-id="guard"]').click();
+  await page.locator('.battle-enemy').nth(3).waitFor({ state: 'visible' });
+  await page.locator('[data-skill-id="guard"]:not(:disabled)').waitFor();
+  const arrivals = await page.locator('.battle-enemy').evaluateAll((nodes, original) => nodes.filter((node) => !original.includes(node.dataset.enemyUid)).map((node) => node.dataset.enemyId), before);
+  if (JSON.stringify(arrivals) !== JSON.stringify(['goblin'])) throw new Error(`Expected one summoned Goblin after the call: ${JSON.stringify(arrivals)}`);
+  await assertNoPageScroll(page, 'Yao reinforcements');
+  await page.screenshot({ path: path.join(evidenceDir, 'yao-reinforcement-arrival.png') });
+
+  await page.goto(`${baseUrl}/?debug=battle`);
+  await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
+  await page.getByLabel(/^Encounter/i).first().selectOption('yao-4');
+  await page.getByLabel(/^Start wave/i).selectOption('2');
+  await page.getByLabel(/^AP/i).first().fill('10');
+  await page.getByRole('button', { name: /START BATTLE/i }).click();
+  await page.locator('[data-enemy-id="warcaller"] .battle-sprite').waitFor();
+  await page.locator('[data-enemy-id="armoredOrc"] .battle-sprite').waitFor();
+  if (!(await page.locator('.battle-wave').innerText()).includes('2 / 2')) throw new Error('Yao final boss debug battle should start in wave 2');
+  const protectedBoss = page.locator('[data-enemy-id="warcaller"] .battle-status--protected');
+  if (!(await protectedBoss.innerText()).includes('まもられている')) throw new Error('The Warcaller should show Orc protection');
+  if (!(await page.locator('[data-enemy-id="armoredOrc"] .battle-status--protected').innerText()).includes('まもっている')) throw new Error('The Orc should show its protection role');
+  if (!(await page.locator('.battle-hint').innerText()).includes('オークを さきに たおそう！ BREAK THE GUARD!')) throw new Error('A protected caller must show the Orc hint');
+  await assertNoPageScroll(page, 'Yao final boss');
+  await page.screenshot({ path: path.join(evidenceDir, 'yao-protected-warcaller.png') });
+}
+
+async function assertNoPageScroll(page, label) {
+  const scrolling = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight, viewportWidth: innerWidth, viewportHeight: innerHeight }));
+  if (scrolling.width > scrolling.viewportWidth || scrolling.height > scrolling.viewportHeight) throw new Error(`${label} scrolls at 1024×600: ${JSON.stringify(scrolling)}`);
 }
 
 async function targetDiscovery(page, baseUrl) {
@@ -324,6 +394,7 @@ let browser;
 const browserErrors = [];
 
 try {
+  await mkdir(evidenceDir, { recursive: true });
   const baseUrl = await listen(server);
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ reducedMotion: 'reduce' });
@@ -335,12 +406,13 @@ try {
   await adventureFlow(page, baseUrl);
   await regionalFlow(page, baseUrl);
   await debugBattleFlow(page, baseUrl);
+  await yaoBattleFlow(page, baseUrl);
   await targetDiscovery(page, baseUrl);
   await soundSettings(page, baseUrl);
   await studyFlow(page, baseUrl);
 
   if (browserErrors.length) throw new Error(`Browser errors:\n${browserErrors.join('\n')}`);
-  console.log('Browser playthrough passed: Adventure, Osaka regional continuation/checkpoint, 0-AP recovery battle, target discovery, sound settings, and Study mode 1.');
+  console.log('Browser playthrough passed: Adventure station defence, Osaka regional continuation/checkpoint, 0-AP recovery battle, Yao call telegraph/reinforcements and final boss, target discovery, sound settings, and Study mode 1.');
 } catch (error) {
   console.error(error?.stack || error);
   process.exitCode = 1;

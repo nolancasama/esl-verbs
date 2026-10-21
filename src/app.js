@@ -19,6 +19,8 @@ import {
   CITIES, CITY_CAMPAIGNS, REGION_KEY, markCitySaved, parseRegion, serializeRegion, stageCheckpoint, stageCount, stageEncounterId, stageMode,
 } from './region.js';
 import { cityPlayable, osakaMapView } from './osaka-map.js';
+import { battleLocation } from './battle-locations.js';
+import { stationMapScreen } from './station-map.js';
 import { createAudio } from './audio.js';
 
 const app = document.querySelector('#app');
@@ -496,11 +498,21 @@ function finishAdventureStage() {
   const apSlot = element('div', 'ap-slot'); // the shared meter replaces this, under the scene
   const [noteEn, noteJa] = stageResult.startingAp > 0 ? ['Every action costs AP.', 'こうどうに AP をつかうよ！'] : ['0 AP… you will rest to recover AP.', 'AP 0 … やすんで かいふく！'];
   const apNote = element('p', 'rpg-note stage-clear__note'); apNote.append(element('span', '', noteEn), element('span', '', noteJa));
-  const battle = element('button', 'battle-start px-button', 'BATTLE!'); battle.onclick = () => startAdventureBattle();
+  const battle = element('button', 'battle-start px-button', 'BATTLE!'); battle.onclick = () => adventureStationMap(stage);
   card.append(element('h1', 'rpg-title', `STAGE ${stage} CLEAR!`), scene, apSlot, apNote, battle);
   app.append(card); apMeter?.mount(apSlot); apMeter?.set(stageResult.startingAp, { quiet: true });
   audio.sfx('fanfare');
   queueMicrotask(() => battle.focus());
+}
+
+function adventureStationMap(stage) {
+  const location = battleLocation(campaign.cityId, stage);
+  if (!location) { startAdventureBattle(); return; }
+  clearScreen(); rpgScreen(); screen = 'station-map';
+  app.append(stationMapScreen(location, {
+    cityId: campaign.cityId, heroId: campaign.heroId, stage,
+    onDefend: () => startAdventureBattle(),
+  }));
 }
 
 function startAdventureBattle() {

@@ -305,6 +305,8 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
     if (reducedMotion) {
       // Keep essential feedback only: a static hit flash, no motion, no shake.
       if (event.type === 'damage' && event.amount > 0) spawn('impact', centre(event.target, 0.45), { dur: 200 });
+      if (event.type === 'call' && event.targets.length) sfx('summon');
+      if (event.type === 'explode') sfx('bigHit');
       return undefined;
     }
     switch (event.type) {
@@ -346,6 +348,17 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
           sfx('summon');
         }
         return 480;
+      case 'call':
+        for (const target of event.targets) {
+          spawn('summon', centre(target, 0.7), { dur: 480 });
+          spriteOf(target)?.classList.add('px-summoned');
+        }
+        if (event.targets.length) sfx('summon');
+        return 480;
+      case 'explode':
+        spawn('bigImpact', centre(event.source, 0.5), { dur: 420 });
+        sfx('bigHit'); light('red', 260); shake('m');
+        return 460;
       case 'comboReady':
       case 'counterReady': spawn('status', centre('hero', 0.1), { dur: 320 }); sfx('ap'); return 320;
       case 'combo':

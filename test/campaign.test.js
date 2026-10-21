@@ -172,3 +172,22 @@ test('city retries start with rising HP; Matsubara retries restart from the batt
   assert.equal(retryHp(origin), 10, 'Matsubara retries are unchanged');
   assert.equal(battleSetup({ ...city, retries: 2, stageResults: [{ encounterId: 'sakai-4', startingAp: 5 }] }).heroHp, retryHp({ ...city, retries: 2 }));
 });
+
+test('Yao carries quiz AP and post-Sakai progression through retry and victory', () => {
+  const entered = createCampaign('fighter', { cityId: 'yao', level: 5, xp: 500 });
+  const campaign = recordStage({ ...entered, heroHp: 8, potions: 1 }, round(5), 'yao-1');
+  const setup = battleSetup(campaign);
+  assert.equal(setup.ap, 5);
+  assert.equal(setup.heroHp, 8);
+  assert.equal(setup.level, 5);
+  assert.equal(setup.encounterId, 'yao-1');
+  const retry = recordDefeat(recordDefeat(recordDefeat(campaign)));
+  assert.equal(battleSetup(retry).ap, 10);
+  assert.equal(battleSetup(retry).heroHp, heroMaxHp('fighter', 5));
+  const { campaign: won } = applyVictory(retry, wonBattle(retry, 10));
+  assert.equal(won.cityId, 'yao');
+  assert.equal(won.stage, 2);
+  assert.equal(won.retries, 0);
+  assert.equal(won.level, 5);
+  assert.ok(won.xp > entered.xp);
+});

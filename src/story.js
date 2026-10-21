@@ -63,6 +63,19 @@ export const ENDING_STORY = Object.freeze([
 
 // Short intro and ending for each regional city campaign.
 export const CITY_STORIES = Object.freeze({
+  yao: Object.freeze({
+    intro: Object.freeze([
+      { mood: 'danger', monsters: 'near', music: 'ominous', sfx: 'alarm', ...card(['やおが あぶない！'], { big: 0, hold: true, en: 'YAO IS IN DANGER!' }), ms: 2000 },
+      card(['ホードの つのぶえが きこえる…']),
+      { hero: 'idle', ...card(['なかまを よぶ てきを', 'さきに たおせ！']) },
+    ]),
+    ending: Object.freeze([
+      { mood: 'danger', monsters: 'near', hero: 'idle', cut: true, ms: 800 },
+      { mood: 'safe', monsters: 'gone', hero: 'victory', citizens: true, music: 'victory', title: { ja: 'やおを まもった！', en: 'YAO IS SAFE!' }, ms: 3000 },
+      card(['つのぶえは もう きこえない。']),
+      card(['つぎの 町へ いこう！'], { en: 'ON TO THE NEXT CITY!' }),
+    ]),
+  }),
   sakai: Object.freeze({
     intro: Object.freeze([
       { mood: 'danger', monsters: 'near', music: 'ominous', sfx: 'alarm', ...card(['さかいが あぶない！'], { big: 0, hold: true, en: 'SAKAI IS IN DANGER!' }), ms: 2000 },

@@ -6,9 +6,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HEROES } from '../src/battle-data.js';
-import { heroMaxHp } from '../src/battle-engine.js';
+import { createBattle, heroMaxHp } from '../src/battle-engine.js';
 import {
   POLICIES, STAGE_LEVEL, encountersForTier, sakaiEncounters, simulateBattle, simulateCampaign, simulateSakaiCampaign,
+  YAO_POLICIES, simulateYaoCampaign, yaoEntryCampaign, yaoEncounters,
 } from './balance-sim.js';
 
 const heroes = Object.keys(HEROES);
@@ -148,4 +149,116 @@ test('smart play clearly beats naive play in Sakai battles 3-4', () => {
     assert.ok(sakaiCurves.smart[ap] - sakaiCurves.naive[ap] >= 0.5,
       `smart vs naive at ${ap}: ${showSakai('smart')} / ${showSakai('naive')}`);
   }
+});
+
+test('Yao starts with the real post-Sakai level and XP, then the normal chapter rest', () => {
+  for (const heroId of heroes) {
+    const sakai = simulateSakaiCampaign({ heroId, ap: 7, policy: POLICIES.competent, seed: 23, maxAttempts: 6 });
+    const entry = yaoEntryCampaign({ heroId, ap: 7, seed: 23 });
+    assert.ok(sakai.completed);
+    assert.equal(entry.cityId, 'yao');
+    assert.equal(entry.level, sakai.campaign.level);
+    assert.equal(entry.xp, sakai.campaign.xp);
+    assert.equal(entry.heroHp, heroMaxHp(heroId, sakai.campaign.level));
+    assert.equal(entry.potions, 2);
+    assert.equal(entry.stage, 1);
+    assert.deepEqual(entry.stageResults, []);
+  }
+});
+
+test('Yao bots compare threat priority against always choosing the first living target', () => {
+  const base = createBattle({ heroId: 'fighter', encounterId: 'yao-4', level: 5, ap: 1, rng: () => 0.9 });
+  const bombFrom = createBattle({ heroId: 'fighter', encounterId: 'yao-2', level: 5, ap: 1, rng: () => 0.9 }).enemies.find((enemy) => enemy.id === 'bombSlime');
+  const state = { ...base, enemies: [...base.enemies.map((enemy) => ({ ...enemy })), { ...bombFrom, uid: base.nextUid }], nextUid: base.nextUid + 1 };
+  const [archer, caller, bomb] = state.enemies;
+  archer.intent = 'charge';
+  caller.intent = 'call';
+  bomb.intent = 'boom';
+  assert.equal(YAO_POLICIES.competent(state).target, bomb.uid);
+  bomb.intent = 'fuse';
+  assert.equal(YAO_POLICIES.competent(state).target, caller.uid);
+  caller.intent = 'attack';
+  assert.equal(YAO_POLICIES.competent(state).target, archer.uid);
+  archer.intent = 'attack';
+  bomb.hp = 1;
+  assert.equal(YAO_POLICIES.competent(state).target, bomb.uid);
+  state.selectedUid = bomb.uid;
+  assert.equal(YAO_POLICIES.naive(state).target, archer.uid);
+  archer.hp = 0;
+  assert.equal(YAO_POLICIES.naive(state).target, caller.uid);
+});
+
+test('Yao: both target strategies clear every stage within six attempts, including 0 AP', () => {
+  const seeds = Array.from({ length: 20 }, (_, index) => index * 97 + 11);
+  const failures = [];
+  const retries = { naive: 0, competent: 0 };
+  for (const ap of Array.from({ length: 11 }, (_, value) => value)) for (const heroId of heroes) for (const seed of seeds) {
+    for (const [name, policy] of Object.entries(YAO_POLICIES)) {
+      const run = simulateYaoCampaign({ heroId, ap, policy, seed, maxAttempts: 6 });
+      retries[name] += run.stages.reduce((sum, stage) => sum + stage.attempts - 1, 0);
+      if (!run.completed || run.stages.some((stage) => stage.attempts > 6)) {
+        failures.push(`${heroId} ${name} AP${ap} seed${seed} stage${run.stages.at(-1).stage}`);
+      } else {
+        assert.deepEqual(run.stages.map((stage) => stage.encounterId), ['yao-1', 'yao-2', 'yao-3', 'yao-4']);
+      }
+    }
+  }
+  assert.deepEqual(failures, []);
+  assert.ok(retries.competent < retries.naive, `priority should reduce retries overall: ${JSON.stringify(retries)}`);
+});
+
+// Match the report's 20 seeds, seed transforms, entry progression and HP samples.
+// Single hero/AP cells are noisy at this seed count, so thresholds and the
+// priority advantage are checked on the mean over the three heroes.
+const YAO_REPORT_SEEDS = 20;
+const YAO_FIRST_TRY = { 'yao-3': { 5: .3, 7: .75, 10: .95 }, 'yao-4': { 5: .15, 7: .75, 10: .95 } };
+test('Yao correction: first-try thresholds and priority advantage match the report', () => {
+  const failures = [];
+  const mean = {};
+  for (const heroId of heroes) for (const ap of [5, 6, 7, 8, 10]) {
+    const entries = Array.from({ length: YAO_REPORT_SEEDS }, (_, index) => yaoEntryCampaign({ heroId, ap, seed: (index + 1) * 65537 + 17 }));
+    for (const encounter of yaoEncounters()) {
+      const rates = {};
+      for (const [name, policy] of Object.entries(YAO_POLICIES)) {
+        let wins = 0;
+        for (let index = 0; index < YAO_REPORT_SEEDS; index += 1) for (const fraction of HP_FRACTIONS) {
+          const entry = entries[index];
+          wins += simulateBattle({ heroId, encounterId: encounter.id, ap, level: entry.level,
+            heroHp: Math.ceil(heroMaxHp(heroId, entry.level) * fraction), potions: entry.potions,
+            policy, seed: (index + 1) * 65537 + 17 }).won ? 1 : 0;
+        }
+        rates[name] = wins / (YAO_REPORT_SEEDS * HP_FRACTIONS.length);
+      }
+      for (const name of Object.keys(rates)) {
+        const key = `${encounter.id} AP${ap} ${name}`;
+        mean[key] = (mean[key] ?? 0) + rates[name] / heroes.length;
+      }
+    }
+  }
+  for (const [encounterId, thresholds] of Object.entries(YAO_FIRST_TRY)) for (const [ap, threshold] of Object.entries(thresholds)) {
+    const rate = mean[`${encounterId} AP${ap} competent`];
+    if (rate + 1e-9 < threshold) failures.push(`${encounterId} AP${ap}: priority ${rate.toFixed(2)} < ${threshold}`);
+  }
+  // Choosing the dangerous target first must pay off where the lesson is taught (calls and the Orc).
+  for (const encounterId of ['yao-3', 'yao-4']) {
+    const gain = [5, 6, 7].reduce((sum, ap) => sum + mean[`${encounterId} AP${ap} competent`] - mean[`${encounterId} AP${ap} naive`], 0) / 3;
+    if (gain < .05) failures.push(`${encounterId}: priority advantage at AP5-7 ${gain.toFixed(2)} < .05`);
+    const overall = [5, 6, 7, 8, 10].reduce((sum, ap) => sum + mean[`${encounterId} AP${ap} competent`] - mean[`${encounterId} AP${ap} naive`], 0) / 5;
+    if (overall < -.05) failures.push(`${encounterId}: priority below naive overall ${overall.toFixed(2)}`);
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('Yao correction: both report bots complete; priority AP7 needs at most 1.5 retries per hero', () => {
+  const failures = [];
+  for (const heroId of heroes) for (const ap of [0, 3, 5, 6, 7, 8, 10]) for (const [name, policy] of Object.entries(YAO_POLICIES)) {
+    let retries = 0;
+    for (let seed = 1; seed <= YAO_REPORT_SEEDS; seed += 1) {
+      const run = simulateYaoCampaign({ heroId, ap, policy, seed: seed * 8191 + 23, maxAttempts: 6 });
+      if (!run.completed) failures.push(`${heroId} ${name} AP${ap} seed${seed} incomplete`);
+      retries += run.stages.reduce((sum, stage) => sum + stage.attempts - 1, 0);
+    }
+    if (name === 'competent' && ap === 7 && retries / YAO_REPORT_SEEDS > 1.5) failures.push(`${heroId} AP7 mean retries ${retries / YAO_REPORT_SEEDS}`);
+  }
+  assert.deepEqual(failures, []);
 });

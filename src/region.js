@@ -7,10 +7,10 @@ export const REGION_KEY = 'esl-verbs-region-v1';
 
 export const CITIES = Object.freeze({
   matsubara: { id: 'matsubara', name: 'Matsubara', jaName: 'まつばら', map: { x: 52, y: 60 }, campaignId: 'matsubara', unlocks: ['sakai'] },
-  sakai: { id: 'sakai', name: 'Sakai', jaName: 'さかい', map: { x: 34, y: 64 }, campaignId: 'sakai', requires: ['matsubara'] },
-  yao: { id: 'yao', name: 'Yao', jaName: 'やお', map: { x: 64, y: 54 }, campaignId: null, requires: ['sakai'] },
-  higashiosaka: { id: 'higashiosaka', name: 'Higashiosaka', jaName: 'ひがしおおさか', map: { x: 57, y: 31 }, campaignId: null, requires: ['sakai'] },
-  osakaCity: { id: 'osakaCity', name: 'Osaka City', jaName: 'おおさか市', map: { x: 40, y: 30 }, campaignId: null, requires: ['sakai'] },
+  sakai: { id: 'sakai', name: 'Sakai', jaName: 'さかい', map: { x: 34, y: 64 }, campaignId: 'sakai', requires: ['matsubara'], unlocks: ['yao'] },
+  yao: { id: 'yao', name: 'Yao', jaName: 'やお', map: { x: 64, y: 54 }, campaignId: 'yao', requires: ['sakai'] },
+  higashiosaka: { id: 'higashiosaka', name: 'Higashiosaka', jaName: 'ひがしおおさか', map: { x: 57, y: 31 }, campaignId: null, requires: ['yao'] },
+  osakaCity: { id: 'osakaCity', name: 'Osaka City', jaName: 'おおさか市', map: { x: 40, y: 30 }, campaignId: null, requires: ['higashiosaka'] },
 });
 
 export const CITY_CAMPAIGNS = Object.freeze({
@@ -23,6 +23,13 @@ export const CITY_CAMPAIGNS = Object.freeze({
     stages: [
       { mode: 1, encounterId: 'sakai-1' }, { mode: 2, encounterId: 'sakai-2' },
       { mode: 3, encounterId: 'sakai-3' }, { mode: 4, encounterId: 'sakai-4' },
+    ],
+  },
+  yao: {
+    id: 'yao', cityId: 'yao',
+    stages: [
+      { mode: 1, encounterId: 'yao-1' }, { mode: 2, encounterId: 'yao-2' },
+      { mode: 3, encounterId: 'yao-3' }, { mode: 4, encounterId: 'yao-4' },
     ],
   },
 });

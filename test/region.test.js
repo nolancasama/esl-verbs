@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CAMPAIGN, ENCOUNTERS, HEROES } from '../src/battle-data.js';
 import { chapterRest, createCampaign, resumeCampaign } from '../src/campaign.js';
+import { cityPlayable } from '../src/osaka-map.js';
 import {
   CITIES, CITY_CAMPAIGNS, REGION_KEY, cityStatus, markCitySaved, parseRegion, serializeRegion,
   stageCheckpoint, stageCount, stageEncounterId, stageMode,
@@ -43,7 +44,7 @@ test('a checkpoint alone never marks a city saved', () => {
 
 test('future cities with no campaign are always locked', () => {
   const region = { ...fresh(), savedCities: Object.keys(CITIES) };
-  for (const id of ['yao', 'higashiosaka', 'osakaCity']) assert.equal(cityStatus(region, id), 'locked', id);
+  for (const id of ['higashiosaka', 'osakaCity']) assert.equal(cityStatus(region, id), 'locked', id);
 });
 
 test('saved cities are de-duplicated and restored in CITIES order', () => {
@@ -103,5 +104,48 @@ test('every city stage points at a real encounter; city encounters never appear 
       if (!campaign.origin) assert.equal(ENCOUNTERS[id].city, campaign.cityId);
       else assert.equal(ENCOUNTERS[id].city, undefined);
     });
+  }
+});
+
+test('old Matsubara and Sakai saves unlock playable Yao without changing the save shape', () => {
+  const beforeSakai = { ...fresh(), heroId: 'fighter', savedCities: ['matsubara'] };
+  assert.equal(cityStatus(beforeSakai, 'yao'), 'locked');
+  assert.equal(cityPlayable(beforeSakai, 'yao'), false);
+  const oldSave = JSON.stringify({ heroId: 'fighter', level: 5, xp: 400, savedCities: ['matsubara', 'sakai'] });
+  const region = parseRegion(oldSave, HERO_IDS);
+  assert.deepEqual(region, { ...fresh(), heroId: 'fighter', level: 5, xp: 400, savedCities: ['matsubara', 'sakai'] });
+  assert.equal(cityStatus(region, 'yao'), 'danger');
+  assert.equal(cityPlayable(region, 'yao'), true);
+  assert.deepEqual(CITIES.sakai.unlocks, ['yao']);
+  assert.deepEqual(CITIES.higashiosaka.requires, ['yao']);
+  assert.deepEqual(CITIES.osakaCity.requires, ['higashiosaka']);
+});
+
+test('Yao checkpoints round-trip and resume with the correct stage and progression', () => {
+  const campaign = {
+    ...createCampaign('mage', { cityId: 'yao', level: 5, xp: 450 }),
+    stage: 3, heroHp: 19, potions: 1,
+    stageResults: [1, 2].map((mode) => ({ ...stageResult(mode), encounterId: `yao-${mode}` })),
+  };
+  const checkpoint = stageCheckpoint({ ...fresh(), savedCities: ['matsubara', 'sakai'] }, campaign);
+  const region = parseRegion(serializeRegion(checkpoint), HERO_IDS);
+  assert.deepEqual(region, checkpoint);
+  assert.deepEqual(resumeCampaign(region), campaign);
+  assert.equal(cityStatus(region, 'yao'), 'danger');
+  const saved = markCitySaved(region, 'yao', campaign);
+  assert.equal(saved.checkpoint, null);
+  assert.equal(cityStatus(saved, 'yao'), 'saved');
+  assert.equal(cityPlayable(saved, 'yao'), true, 'saved Yao can be replayed');
+  assert.equal(cityStatus(saved, 'higashiosaka'), 'locked');
+  assert.equal(cityStatus(saved, 'osakaCity'), 'locked');
+});
+
+test('Yao has four mode-matched battles and no Osaka Defender ally', () => {
+  assert.equal(stageCount('yao'), 4);
+  for (let stage = 1; stage <= 4; stage += 1) {
+    assert.equal(stageMode({ cityId: 'yao', stage }), stage);
+    const id = stageEncounterId({ cityId: 'yao', stage });
+    assert.equal(id, `yao-${stage}`);
+    assert.equal(ENCOUNTERS[id].ally, null);
   }
 });

@@ -1,7 +1,7 @@
 import { ALLIES, BALANCE, ENCOUNTERS, ENEMIES, HEROES, SKILLS } from './battle-data.js';
 import {
   availableItems, availableSkills, cycleTarget, getEnemyIntent, mustRecover, recover, resolveEnemyPhase, selectTarget, skillBonus,
-  useItem, useSkill,
+  protectedUid, useItem, useSkill,
 } from './battle-engine.js';
 import {
   backdropClass, createEffectsPlayer, enemyRestState, eventSpriteStates, getBarrierArt, getBattleArt, getIcon, heroRestState,
@@ -41,18 +41,21 @@ const payoffUnlocked = (state, kind) => SKILLS[PAYOFF_SKILL[kind]].tier <= state
 const HIDDEN_UNTIL_PAYOFF = { comboReady: 'combo', opening: 'opening' };
 const eventShown = (state, event) => !HIDDEN_UNTIL_PAYOFF[event.type] || payoffUnlocked(state, HIDDEN_UNTIL_PAYOFF[event.type]);
 
-function statusBadges(enemy, openingUid) {
+function statusBadges(enemy, openingUid, state) {
   const badges = [];
   if (enemy.phase === 2) badges.push(status('angry', 'heavy', 'ANGRY!'));
   if (enemy.guarding) badges.push(status('guard', 'guard', 'Guarding'));
   if (enemy.charging) badges.push(status('charge', 'charge', 'Charging!'));
   if (enemy.tired) badges.push(status('tired', 'rest', 'Tired!'));
   if (enemy.uid === openingUid) badges.push(status('opening', 'opening', 'OPENING!'));
+  const protectors = state.enemies.filter((unit) => unit.hp > 0 && ENEMIES[unit.id].protector);
+  if (enemy.hp > 0 && protectors.some((orc) => protectedUid(state, orc.uid) === enemy.uid)) badges.push(status('protected', 'guard', 'まもられている'));
+  if (enemy.hp > 0 && ENEMIES[enemy.id].protector && protectedUid(state, enemy.uid) !== null) badges.push(status('protected', 'guard', 'まもっている'));
   return badges.join('');
 }
 
 const INTENT_ICON = { attack: 'attack', guard: 'guard', heal: 'heal', summon: 'summon', charge: 'charge', heavy: 'heavy', rest: 'rest', drain: 'drain' };
-const INTENT_TONE = { heavy: ' battle-intent--heavy', charge: ' battle-intent--charge', heal: ' battle-intent--support', summon: ' battle-intent--support' };
+const INTENT_TONE = { heavy: ' battle-intent--heavy', boom: ' battle-intent--heavy', call: ' battle-intent--call', charge: ' battle-intent--charge', heal: ' battle-intent--support', summon: ' battle-intent--support' };
 
 function intentMarkup(state, enemy, hidden = false) {
   if (hidden || state.turn !== 'player' || enemy.hp <= 0) return '';
@@ -63,12 +66,17 @@ function intentMarkup(state, enemy, hidden = false) {
     guard: 'GUARD',
     heal: 'HEAL',
     summon: 'SUMMON',
-    charge: 'POWERING UP',
+    call: '📯 CALLING HELP! なかまを よぶ！',
+    fuse: `💣 ${enemy.fuse}`,
+    boom: `💣 BOOM! ${data.boom}`,
+    charge: data.chargeLabel ? `${data.chargeLabel} ${data.chargeLabelJa || ''}`.trim() : 'POWERING UP',
     heavy: `${data.heavy} BIG ATTACK · ${data.heavyName}`,
     rest: 'REST',
     drain: `${data.attack} DRAIN`,
   };
-  return `<span class="battle-intent${INTENT_TONE[intent] || ''}">${getIcon(INTENT_ICON[intent] || 'attack')}${esc(labels[intent] || intent)}</span>`;
+  const icon = ['call', 'fuse', 'boom'].includes(intent) ? '' : getIcon(INTENT_ICON[intent] || 'attack');
+  const label = intent === 'call' ? '<span>📯 CALLING HELP!</span><span>なかまを よぶ！</span>' : esc(labels[intent] || intent);
+  return `<span class="battle-intent${INTENT_TONE[intent] || ''}${intent === 'charge' && data.chargeLabel ? ' battle-intent--labeled' : ''}">${icon}${label}</span>`;
 }
 
 function heroStatuses(hero, recovering, state) {
@@ -99,6 +107,10 @@ export function eventMessage(event) {
     case 'charge': return `⚠️ ${event.heavyName || 'Big attack'} NEXT TURN!`;
     case 'rest': return 'The enemy is tired!';
     case 'summon': return event.target == null ? 'Nothing happened.' : 'Another enemy appeared!';
+    case 'call': return event.targets.length ? 'なかまを よんだ！ Reinforcements!' : 'だれも こない！';
+    case 'explode': return 'BOOM!';
+    case 'fuse':
+    case 'protected': return '';
     case 'comboReady': return 'COMBO READY!';
     case 'combo': return 'COMBO!';
     case 'counterReady': return 'COUNTER READY!';
@@ -107,10 +119,12 @@ export function eventMessage(event) {
     case 'opening-hit': return 'OPENING!';
     case 'break': return 'BREAK!';
     case 'ap': return event.reason === 'recover' ? `RECOVERING… +${event.amount} AP`
-      : event.reason === 'wave' ? `アクション・コア チャージ！ +${event.amount} AP` : `+${event.amount} AP!`;
+      : event.reason === 'wave' ? `アクション・コア チャージ！ +${event.amount} AP`
+      : event.reason === 'interrupt' ? `STOP! よぶのを とめた！ +${event.amount} AP` : `+${event.amount} AP!`;
     case 'recover': return 'RECOVERING… / ひとやすみ…';
     case 'barrierUp': return 'Barrier up!';
     case 'chain': return 'CHAIN!';
+    case 'interrupt': return 'STOP THE CALL! よぶのを とめた！';
     case 'enrage': return event.message;
     case 'defeat': return 'Enemy defeated!';
     case 'victory': return 'VICTORY!';
@@ -129,9 +143,15 @@ export function eventMessage(event) {
 export function battleHint(state, onboarding = null) {
   if (state.turn !== 'player') return null;
   const living = state.enemies.filter((enemy) => enemy.hp > 0);
+  if (living.some((enemy) => enemy.intent === 'boom')) return { skill: 'defense', text: '💣 BOOM NEXT! たおすか まもろう！' };
   if (living.some((enemy) => enemy.intent === 'heavy')) return { skill: 'defense', text: '🔥 BIG ATTACK NEXT! まもろう！' };
   const potion = availableItems(state)[0];
   if (potion?.usable && state.hero.hp <= state.hero.maxHp * DANGER_HP) return { item: true, text: 'HP がピンチ！ ポーションをつかおう' };
+  if (living.some((enemy) => enemy.intent === 'call')) {
+    const protectedCall = living.some((enemy) => ENEMIES[enemy.id].protector
+      && living.some((caller) => caller.intent === 'call' && caller.uid === protectedUid(state, enemy.uid)));
+    return { text: protectedCall ? '🛡 オークを さきに たおそう！ BREAK THE GUARD!' : '📯 よぶ まえに たおそう！ STOP THE CALL!' };
+  }
   if (living.some((enemy) => enemy.intent === 'charge') && state.ap >= 1) return { keep: true, text: '⚡ BIG ATTACK SOON — AP を 1 のこそう！' };
   return payoffHint(state) || onboarding;
 }
@@ -306,7 +326,7 @@ export function createBattleView(container, {
         <span class="battle-enemy__name">${esc(data.name)}<small>${esc(data.jaName)}</small></span>
         ${hpBar(enemy.hp, enemy.maxHp, data.name)}
       </span>
-      <span class="battle-cues">${intentMarkup(currentState, current, playing)}${statusBadges(enemy, payoffUnlocked(currentState, 'opening') ? (display?.hero ?? currentState.hero).openingUid : null)}</span>
+      <span class="battle-cues">${intentMarkup(currentState, current, playing)}${statusBadges(enemy, payoffUnlocked(currentState, 'opening') ? (display?.hero ?? currentState.hero).openingUid : null, display ? { ...currentState, enemies: [...display.enemies.values()] } : currentState)}</span>
       <span class="battle-art-wrap">${art}</span>
     </button>`;
   }
@@ -454,14 +474,19 @@ export function createBattleView(container, {
       if (event.type === 'damage') shiftHp(event.target, -event.amount);
       if (event.type === 'heal') shiftHp(event.target, event.amount);
       if (event.type === 'defend' || event.type === 'barrierUp') display.hero.defense = event.defense;
-      if (event.type === 'summon' && event.target != null) {
-        const added = currentState.enemies.find((enemy) => enemy.uid === event.target);
+      const arrivals = event.type === 'call' ? event.targets : event.type === 'summon' && event.target != null ? [event.target] : [];
+      for (const uid of arrivals) {
+        const added = currentState.enemies.find((enemy) => enemy.uid === uid);
         if (added) display.enemies.set(added.uid, { ...added });
-        container.querySelector(`[data-enemy-uid="${event.target}"]`)?.classList.remove('battle-enemy--pending');
+        container.querySelector(`[data-enemy-uid="${uid}"]`)?.classList.remove('battle-enemy--pending');
+      }
+      if (event.type === 'fuse') {
+        const bomb = display.enemies.get(event.target);
+        if (bomb) bomb.fuse = event.fuse;
       }
     }
     const message = container.querySelector('.battle-message');
-    if (message) message.textContent = eventMessage(event);
+    if (message && !['fuse', 'protected'].includes(event.type)) message.textContent = eventMessage(event);
     for (const [target, spriteState] of eventSpriteStates(event)) setSpriteState(target, spriteState);
     const wanted = effects.play(event, currentState);
     switch (event.type) {
@@ -469,6 +494,7 @@ export function createBattleView(container, {
       case 'heal': addFloater(event.target, `+${event.amount} HP`, 'battle-floater--heal'); break;
       case 'defend': addFloater('hero', event.defense === 'dodge' ? 'READY!' : event.defense === 'barrier' ? 'BARRIER!' : 'GUARD!', 'battle-floater--shield'); break;
       case 'guard': addFloater(event.target, 'GUARD!', 'battle-floater--shield'); break;
+      case 'protected': addFloater(event.target, '🛡 ORC!', 'battle-floater--shield'); break;
       case 'comboReady': addFloater('hero', 'COMBO READY!', 'battle-floater--status'); break;
       case 'combo': addFloater('hero', 'COMBO!', 'battle-floater--status'); break;
       case 'counterReady': addFloater('hero', 'COUNTER READY!', 'battle-floater--status'); break;
@@ -479,6 +505,7 @@ export function createBattleView(container, {
       case 'ap': addFloater('hero', `+${event.amount} AP`, 'battle-floater--power'); setAp(event.ap); break;
       case 'barrierUp': addFloater('hero', 'BARRIER!', 'battle-floater--shield'); break;
       case 'chain': addFloater(event.target, 'CHAIN!', 'battle-floater--status'); break;
+      case 'interrupt': addFloater(event.target, 'STOP!', 'battle-floater--break'); break;
       case 'enrage': addFloater(event.target, 'ENRAGED!', 'battle-floater--status'); break;
       case 'waveClear': showBanner('WAVE CLEAR!', 'やった！', 'clear'); break;
       case 'waveStart': if (display) beginWave(event); break;

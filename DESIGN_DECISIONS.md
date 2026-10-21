@@ -662,3 +662,135 @@ and proves the regional framework with one full city (Sakai).
   A pending credit settles once if a screen re-renders early, so the quiz
   gains no delay and AP cannot be lost or doubled. Reduced motion skips travel
   and applies AP with sound at impact; the segment flashes without scaling.
+
+## 2026-10-22 — Slice 2: Yao and station defence
+
+- Reinforcement calls use the existing intent ordering: choose at the end of
+  an enemy phase, show CALLING HELP during the player's turn, resolve next
+  phase. The opening call is shown when a wave begins. Killing the caller
+  cancels the call and charges the Action Core +1 AP (see the correction below).
+  Reinforcements are summoned enemies, give no XP, respect the living cap,
+  and wait until the next enemy phase before acting.
+- Armored Orc protection is passive: each living Orc protects the next living
+  caller or boss in UID order, halving incoming damage and stacking with guard.
+  Matching status badges identify both ends; killing the Orc ends protection
+  immediately. This leaves its ordinary turns free to attack.
+- Bomb Slimes count down through intents, then explode through the heavy-hit
+  defence rules and give no XP when they explode. Shadow Archer uses the
+  existing charge/heavy cadence with AIMING labels. Warcaller changes its
+  reinforcement roster and call cadence at half HP.
+- Horde Shaman is deferred. Yao teaches callers, countdowns and protection
+  using the six controller-provided enemies and no ally; Sakai retains the
+  Osaka Defender.
+- Stage Clear's BATTLE! opens the controller-provided station defence map
+  before every Matsubara, Sakai and Yao battle. DEFEND! starts immediately;
+  missing locations fall through to battle. A defeat retry skips the map so
+  another attempt needs no repeated location introduction.
+- Yao keeps the existing save shape, city checkpoints and retry assist.
+  Balance measures both threat-priority targeting and first-living targeting
+  with ordinary competent skill/defence choices; target priority helps but
+  is not required to clear the city with retry assistance.
+- **Balance correction (controller, same day).** The first tuning cut Yao
+  stats far below their roles (Orc 9 HP / 1 attack, Warcaller 30 / 2) yet
+  yao-3/4 stayed 0% at AP5–7 and ~100% at AP10, and threat-priority play lost
+  to first-target play. Measured (30 seeds, AP5): every loss was hero death —
+  none hit the 200-turn cap — and reinforcements averaged ~1, so the call
+  snowball was not the cause. The cause is the AP economy: an AP-starved hero
+  recovers every other turn and deals ~2 damage a turn; Sakai survives that
+  through the Osaka Defender's 3 damage a turn, Yao has no ally. Fixes:
+  - **Stopping a call charges the Action Core: +1 AP** (`BALANCE.interruptAp`)
+    when the player defeats an enemy whose CALLING HELP is showing. Yao's
+    lesson pays out in the resource the student understands, and gives the
+    solo hero part of the economy Sakai's ally provides.
+  - **Per-wave call budget** (`callBudget`, default 3; 2 in Yao 3–4), calls
+    need fewer than 3 living enemies, and no caller ever calls another caller
+    (Warcaller: goblin → wolf + Bomb Slime in phase 2).
+  - **A protected caller points at the Orc:** the hint becomes
+    `🛡 オークを さきに たおそう！ BREAK THE GUARD!`, and the priority bot follows it.
+  - **Smaller Yao 3–4 line-ups instead of tiny stats:** Horn Call wave 1 is
+    Horn Goblin + Goblin; Signal Captain wave 2 is Orc + Captain; Warcaller
+    wave 1 is Archer + Horn Goblin, wave 2 Orc + Warcaller. Final stats: Horn
+    Goblin 9 HP / 2; Orc 12 HP / 2 (halves damage to its ward); Captain 24 /
+    2, heavy 12, rests; Archer 8 / 3, heavy 10; Warcaller 28 / 3, heavy 12
+    (effectively 56 while the Orc stands, enrages at half).
+  - Result (report seeds): both bots complete Yao 100% at AP 0–10; mean
+    first-try with priority targeting across heroes is yao-3 37/75/100% and
+    yao-4 22/100/100% at AP5/7/10; priority targeting beats first-target
+    play on average where the lesson is taught. Retries per city at AP5
+    (2.3–4.3) are in Sakai's range (2.8). The assertions in
+    test/balance.test.js check the hero-mean thresholds and advantage (single
+    cells are too noisy at 20 seeds) and were shown to fail with a 42-HP
+    Warcaller. Rejected: shrinking stats until AP5 wins (an AP10 player then
+    meets no resistance) and giving Yao the ally (Sakai owns it).
+  Matsubara and Sakai numbers remain untouched.
+
+## 2026-10-22 — Station-defence maps before every city battle
+
+- **What:** Stage Clear's BATTLE! now opens a local map of the station being
+  defended (Matsubara, Sakai and Yao, stages 1–4), then まもる！/ DEFEND! starts
+  the battle. A retry after defeat goes straight back into the battle.
+- **Style:** the same look as the Osaka campaign map — its palette, dithered
+  green land, blue sea with dashed waves and a cream shore, dark-green lines,
+  the same hill triangles — and labelled the same way: the station under attack
+  is a red alarm pin with a dark plate (駅名 / きけん！), neighbouring stations
+  are grey pins with plates, landmarks are plates, river and hill names are
+  plain shadowed text like びわ湖. (The first draft used a beige town style; the
+  user asked for the Osaka map's style and labelling.)
+- **Geography:** stations, neighbours and landmarks are placed from real
+  latitude/longitude (Wikipedia / OpenStreetMap, checked 2026-10-22) through
+  one projection per map, so directions between stations are true, as the
+  cities' are on the Osaka map. A neighbour inside the frame gets its own pin;
+  one outside gets an edge plate pointing the true way (dropped if it would
+  cover a nearer station). Landmarks appear only where their position was
+  verified (Hannan University, Nunose Shrine, Sakai City Hall, the old Sakai
+  lighthouse, Ohama Park, Hamadera Park, Yao Airport, Mt. Takayasu, the
+  Yamato River); unverifiable sides (Matsubara City Hall at Takaminosato) go in
+  the note line instead. No roads are drawn — none were verified.
+- **Atmosphere:** houses near the Horde's approach routes burn (pixel flames),
+  small monsters roam by the fires, and one marching unit per approach has a red
+  arrow to the station. Decoration only: the map is not interactive and nothing
+  waits for an animation.
+- **Rejected:** embedding map tiles/screenshots (licensing, runtime service),
+  a tactical/movement map (out of scope), a separate screen function per
+  station (data in `src/battle-locations.js`, one renderer in
+  `src/station-map.js`), station-specific battle backdrops (deferred — the maps
+  carry the sense of place; the backdrop system is unchanged).
+
+## 2026-10-22 — Yao enemy art
+
+Six sprites on the shaded rig, each role readable from its silhouette: Horn
+Goblin (war horn + red signal flag; `cast` is the call, horn to the mouth with
+sound rings — the telegraph is visible on the sprite itself), Bomb Slime (dark
+iron slime with a lit fuse; `charge` glows red before BOOM), Shadow Archer
+(hooded, violet bow; `charge` is the drawn bow with a glowing arrow), Armored
+Orc (tusked orc with a tower shield bearing the Horde's black star), Signal
+Captain (the captain rig recoloured with a smoking beacon banner; `cast` raises
+the sword to signal) and the Warcaller boss (orc warlord, horned helm, giant war
+horn, Horde banner; angry variant has red eyes and steam). Rejected: plain
+recolours of existing enemies for every role — a new role needs a new shape.
+
+## 2026-10-22 — City campaign identities (locked roadmap)
+
+One memorable tactical idea per city, old enemies mixed with new specialists,
+difficulty from behaviour rather than HP:
+
+- **Matsubara — Learn:** AP, attack/defence, intents, skills, target selection
+  (first multi-enemy fight teaches it), bosses.
+- **Sakai — Survive:** waves, Shield Goblin, Healer, the Osaka Defender ally,
+  Shadow Commander.
+- **Yao — Prioritize:** reinforcement callers telegraphed a turn ahead; kill the
+  dangerous target first (Horn Goblin, Bomb Slime, Shadow Archer, Armored Orc,
+  Signal Captain, Warcaller).
+- **Higashiosaka — Protect (future, not built):** a visible Action Core with
+  its own HP; enemies choose hero or Core. Saboteur (goes for the Core), Siege
+  Golem (big charged Core attack; boss), Engineer Goblin (repairs/supports
+  machines), Sniper (strong targeted damage), Guardian Construct (protects
+  attackers).
+- **Osaka City — Master everything (future, not built):** "The Invasion" —
+  combinations of waves, priority, allies, callers, support enemies and the Core
+  objective; no new subsystems for the finale. Multi-phase final boss (Shadow
+  General / Black Star Avatar / Horde King — name TBD): minions → special
+  mechanic → direct fight; earlier allies may cameo as scripted support, never
+  party management.
+- Still out of scope: gold, shops, equipment, inventory, skill trees, free
+  roaming, grid tactics, timed reflex attacks, Verb Rush, multiplayer.

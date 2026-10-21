@@ -59,7 +59,7 @@
 @keyframes station-march { to { background-position-x: 15px; } }
 
 /* Flames on burning houses: a three-frame pixel flicker. */
-.station-fire { --n: 3; --px: 2.4; position: absolute; z-index: 2; translate: -50% -78%; pointer-events: none; animation: station-flicker .42s steps(3) infinite; animation-delay: calc(var(--i, 0) * -.13s); }
+.station-fire { --n: 3; --last: 2; --px: 2.4; position: absolute; z-index: 2; translate: -50% -78%; pointer-events: none; animation: station-flicker .42s steps(3) infinite; animation-delay: calc(var(--i, 0) * -.13s); }
 @container (min-width: 820px) { .station-map > .station-fire { --px: 3.2; } }
 @keyframes station-flicker { to { background-position-x: calc(var(--fw) * var(--n) * var(--px) * -1px); } }
 
