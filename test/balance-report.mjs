@@ -7,6 +7,7 @@ import {
   YAO_POLICIES, simulateYaoCampaign, yaoEncounters, yaoEntryCampaign, step, seeded,
   measureHigashiosaka, HIGASHIOSAKA_ENCOUNTER_IDS, HIGASHIOSAKA_POLICIES,
   HIGASHIOSAKA_FIRST_APS, HIGASHIOSAKA_CAMPAIGN_APS,
+  measureOsakaCity, OSAKA_CITY_ENCOUNTER_IDS, OSAKA_CITY_POLICIES,
 } from './balance-sim.js';
 
 const seeds = Number(process.argv[2] || 20);
@@ -59,6 +60,23 @@ function reportHigashiosaka() {
     }, { hero: 0, core: 0, turnCap: 0 });
     console.log(`${name.padEnd(10)} first-try AP5-10: ${causes.hero} / ${causes.core} / ${causes.turnCap}; campaign AP0-10: ${campaign.hero} / ${campaign.core} / ${campaign.turnCap}`);
   }
+}
+
+if (process.argv[3] === 'osaka-trace') {
+  const heroId = process.argv[4] || 'fighter';
+  const policy = OSAKA_CITY_POLICIES[process.argv[7] || 'priority'];
+  const rng = seeded(Number(process.argv[8] || 65554));
+  let state = createBattle({ heroId, encounterId: process.argv[5] || 'osk-4', level: 5,
+    ap: Number(process.argv[6] || 7), heroHp: Math.ceil(heroMaxHp(heroId, 5) * .85), potions: 2, rng });
+  for (let turn = 0; turn < 100 && state.turn === 'player'; turn += 1) {
+    const choice = policy(state);
+    console.log(turn, 'wave', state.wave, 'hero', state.hero.hp, 'Core', state.core?.hp, 'AP', state.ap,
+      state.enemies.filter((enemy) => enemy.hp > 0).map((enemy) => [enemy.id, enemy.hp, enemy.intent]), choice);
+    state = step(state, choice, rng).state;
+    if (state.turn === 'enemy') state = resolveEnemyPhase(state, rng).state;
+  }
+  console.log('result', state.turn, 'HP', state.hero.hp, 'Core', state.core?.hp);
+  process.exit(0);
 }
 
 if (process.argv[3] === 'yao-trace') {
@@ -131,6 +149,11 @@ if (process.argv[3] === 'detail') {
     });
     console.log(`${heroId.padEnd(8)} ${encounter.id.padEnd(22)} ${name.padEnd(10)} ${cells.join('')}`);
   }
+  process.exit(0);
+}
+
+if (process.argv[3] === 'osaka') {
+  reportOsakaCity();
   process.exit(0);
 }
 
@@ -264,3 +287,52 @@ for (const heroId of heroes) for (const name of Object.keys(YAO_POLICIES)) {
 }
 
 reportHigashiosaka();
+
+function reportOsakaCity() {
+const osaka = measureOsakaCity(seeds);
+console.log('\nOsaka City after Higashiosaka (real progression, 70/85/100% HP, 2 potions)');
+console.log(`hero     encounter policy     ${HIGASHIOSAKA_FIRST_APS.map((ap) => `AP${ap}`.padStart(5)).join(' ')}`);
+for (const heroId of heroes) for (const encounterId of OSAKA_CITY_ENCOUNTER_IDS) for (const name of Object.keys(OSAKA_CITY_POLICIES)) {
+  const rows = osaka.firstTry.filter((row) => row.heroId === heroId && row.encounterId === encounterId && row.name === name);
+  console.log(`${heroId.padEnd(8)} ${encounterId.padEnd(9)} ${name.padEnd(10)} ${rows.map((row) => pct(row.rate).padStart(5)).join(' ')}`);
+}
+console.log('\nOsaka City three-hero first-try means AP5 / AP7 / AP10; defeats AP5-10 (hero / Core / turn cap)');
+for (const encounterId of OSAKA_CITY_ENCOUNTER_IDS) for (const name of Object.keys(OSAKA_CITY_POLICIES)) {
+  const rows = osaka.firstTry.filter((row) => row.encounterId === encounterId && row.name === name);
+  const means = [5, 7, 10].map((ap) => `${(100 * rows.filter((row) => row.ap === ap).reduce((sum, row) => sum + row.rate, 0) / heroes.length).toFixed(1)}%`);
+  const causes = rows.reduce((sum, row) => {
+    for (const cause of Object.keys(sum)) sum[cause] += row.defeats[cause];
+    return sum;
+  }, { hero: 0, core: 0, turnCap: 0 });
+  const varied = rows.filter((row) => Math.abs(row.rate * 3 - Math.round(row.rate * 3)) > 1e-9).length;
+  console.log(`${encounterId} ${name.padEnd(10)} ${means.join(' / ')}; defeats ${causes.hero} / ${causes.core} / ${causes.turnCap}; seed-varied cells ${varied}`);
+}
+for (const encounterId of ['osk-2', 'osk-4']) {
+  const mean = (name) => osaka.firstTry.filter((row) => row.encounterId === encounterId && row.name === name && row.ap <= 7).reduce((sum, row) => sum + row.rate, 0) / 9;
+  console.log(`${encounterId} priority gain AP5-7: ${(100 * (mean('priority') - mean('naive'))).toFixed(1)} points`);
+}
+const finaleLosses = osaka.firstTry.filter((row) => row.encounterId === 'osk-4' && row.name === 'naive')
+  .reduce((sum, row) => ({ core: sum.core + row.defeats.core,
+    total: sum.total + Object.values(row.defeats).reduce((a, b) => a + b, 0) }), { core: 0, total: 0 });
+console.log(`osk-4 naive Core-broken share of first-try defeats AP5-10: ${(100 * finaleLosses.core / finaleLosses.total).toFixed(1)}% (${finaleLosses.core}/${finaleLosses.total})`);
+console.log(`osk-4 priority per-hero AP7: ${heroes.map((heroId) => `${heroId} ${(100 * osaka.firstTry.find((row) => row.heroId === heroId && row.encounterId === 'osk-4' && row.name === 'priority' && row.ap === 7).rate).toFixed(1)}%`).join(', ')}`);
+for (const name of Object.keys(OSAKA_CITY_POLICIES)) {
+  const turns = osaka.firstTry.filter((row) => row.encounterId === 'osk-4' && row.name === name && row.ap === 7).reduce((sum, row) => sum + row.turns, 0) / 3;
+  console.log(`${name} osk-4 mean player turns AP7: ${turns.toFixed(2)}`);
+}
+console.log('\nOsaka City campaign completion / mean retries (post-Higashiosaka, at most 6 attempts per battle)');
+console.log(`hero     policy     ${HIGASHIOSAKA_CAMPAIGN_APS.map((ap) => `AP${ap} done/retries`.padStart(16)).join(' ')}`);
+for (const heroId of heroes) for (const name of Object.keys(OSAKA_CITY_POLICIES)) {
+  const rows = osaka.campaigns.filter((row) => row.heroId === heroId && row.name === name);
+  console.log(`${heroId.padEnd(8)} ${name.padEnd(10)} ${rows.map((row) => `${pct(row.rate)} / ${row.retries.toFixed(1)}`.padStart(16)).join(' ')}`);
+}
+for (const name of Object.keys(OSAKA_CITY_POLICIES)) {
+  const retries = osaka.campaigns.filter((row) => row.name === name && row.ap === 5).reduce((sum, row) => sum + row.retries, 0) / 3;
+  const causes = osaka.campaigns.filter((row) => row.name === name).reduce((sum, row) => {
+    for (const cause of Object.keys(sum)) sum[cause] += row.defeats[cause];
+    return sum;
+  }, { hero: 0, core: 0, turnCap: 0 });
+  console.log(`${name} AP5 mean city retries: ${retries.toFixed(2)}; campaign defeats AP0-10: ${causes.hero} / ${causes.core} / ${causes.turnCap}`);
+}
+}
+reportOsakaCity();

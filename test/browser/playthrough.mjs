@@ -368,6 +368,148 @@ async function higashiosakaBattleFlow(page, baseUrl) {
   await page.screenshot({ path: path.join(evidenceDir, 'higashiosaka-guarded-core.png') });
 }
 
+async function osakaCityFlow(page, baseUrl) {
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.goto(`${baseUrl}/?debug=map&preset=higashiosaka`);
+  const city = page.locator('.osaka-city[data-city="osakaCity"]');
+  await city.waitFor();
+  if (await city.isDisabled() || !(await city.getAttribute('class')).includes('osaka-city--danger')) throw new Error('Saving Higashiosaka should unlock Osaka City');
+  await page.getByRole('button', { name: /GO TO OSAKA CITY/i }).click();
+  await page.locator('.story--osakaCity-intro').waitFor();
+  await page.getByRole('button', { name: /^Skip/i }).click();
+  await page.locator('.rpg-quiz.stage-1').waitFor();
+  const checkpoint = await page.evaluate(() => JSON.parse(localStorage.getItem('esl-verbs-region-v1')).checkpoint);
+  if (checkpoint?.cityId !== 'osakaCity' || checkpoint.stage !== 1) throw new Error('Osaka City should checkpoint stage 1');
+  await assertNoPageScroll(page, 'Osaka City quiz');
+  await answerTenTypedQuestions(page);
+  await page.getByText(/STAGE\s*1\s*CLEAR/i).waitFor();
+  await assertNoPageScroll(page, 'Osaka City Stage Clear');
+  await page.getByRole('button', { name: /BATTLE!/i }).click();
+  await page.locator('.station-card').waitFor();
+  if (!(await page.locator('.station-card').innerText()).includes('天王寺')) throw new Error('Osaka City stage 1 must defend Tennoji');
+  if (await page.locator('.battle-view').count()) throw new Error('Osaka City must show Tennoji before battle');
+  await assertNoPageScroll(page, 'Osaka City Tennoji map');
+  await page.screenshot({ path: path.join(evidenceDir, 'osaka-city-tennoji.png') });
+  await page.getByRole('button', { name: /DEFEND!/i }).click();
+  await page.locator('.battle-view').waitFor();
+  await page.locator('[data-enemy-id="hornGoblin"]').waitFor();
+  if (await page.locator('.battle-core').count()) throw new Error('The Invasion should have no Core');
+  await assertNoPageScroll(page, 'Osaka City Invasion battle');
+  await page.screenshot({ path: path.join(evidenceDir, 'osaka-city-invasion.png') });
+
+  for (const wave of [2, 3]) {
+    await page.goto(`${baseUrl}/?debug=battle`);
+    await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
+    await page.getByLabel(/^Hero/i).first().selectOption('fighter');
+    await page.getByLabel(/^Encounter/i).first().selectOption('osk-4');
+    await page.getByLabel(/^Start wave/i).selectOption(String(wave));
+    await page.getByLabel(/^Level/i).selectOption('5');
+    await page.getByLabel(/^AP/i).first().fill('10');
+    await page.getByRole('button', { name: /START BATTLE/i }).click();
+    await page.locator('.battle-core').waitFor({ state: 'visible' });
+    await page.locator(`[data-enemy-id="${wave === 2 ? 'blackStarAvatar' : 'blackStarTrue'}"]`).waitFor();
+    if (!(await page.locator('.battle-wave').innerText()).includes(`${wave} / 3`)) throw new Error(`Osaka finale debug should start at wave ${wave}`);
+    if (wave === 2 && await page.locator('.battle-ally').count()) throw new Error('The ally should wait until the true form');
+    if (wave === 3) {
+      await page.locator('.battle-ally').waitFor({ state: 'visible' });
+      const boxes = await page.evaluate(() => {
+        const box = (selector) => {
+          const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        return { core: box('.battle-core'), ally: box('.battle-ally') };
+      });
+      const { core, ally } = boxes;
+      if (core.x < ally.x + ally.width && core.x + core.width > ally.x && core.y < ally.y + ally.height && core.y + core.height > ally.y) {
+        throw new Error(`Osaka finale Core and ally boxes overlap: ${JSON.stringify(boxes)}`);
+      }
+      for (const box of [core, ally]) if (box.x < 0 || box.y < 0 || box.x + box.width > 1024 || box.y + box.height > 600) throw new Error('Osaka finale Core or ally is outside the viewport');
+    }
+    await assertNoPageScroll(page, `Osaka finale wave ${wave}`);
+    await page.screenshot({ path: path.join(evidenceDir, `osaka-city-finale-wave-${wave}.png`) });
+  }
+
+  // The dev jump starts an ordinary Adventure finale. Replay the deterministic
+  // priority bot's decisions through actual controls to exercise the save flow.
+  await page.keyboard.press('Control+Alt+Shift+KeyD');
+  await page.locator('.dev-panel [title="Higashiosaka stage 1 battle"]').waitFor();
+  await page.locator('.dev-panel [title="Osaka City stage 4 battle"]').waitFor();
+  await page.evaluate(() => { Math.random = () => .99; });
+  await page.locator('.dev-panel [title="Osaka City stage 4 battle"]').click();
+  await page.getByText(/STAGE\s*4\s*CLEAR/i).waitFor();
+  await page.getByRole('button', { name: /BATTLE!/i }).click();
+  await page.locator('.station-card').waitFor();
+  if (!(await page.locator('.station-card').innerText()).includes('大阪城公園')) throw new Error('The dev jump must reach the Osaka Castle finale');
+  await page.getByRole('button', { name: /DEFEND!/i }).click();
+  await page.locator('[data-enemy-id="shadowGuard"]').waitFor();
+  const actions = await page.evaluate(async () => {
+    globalThis.osakaTransformationSeen = false;
+    globalThis.osakaBannerObserver = new MutationObserver(() => {
+      if (document.querySelector('.battle-banner strong')?.textContent === 'しんの すがた！ TRUE FORM!') globalThis.osakaTransformationSeen = true;
+    });
+    // Observe the body: the battle view re-renders and replaces .battle-view between turns.
+    globalThis.osakaBannerObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const { createBattle, resolveEnemyPhase } = await import('/src/battle-engine.js');
+    const { OSAKA_CITY_POLICIES, step } = await import('/test/balance-sim.js');
+    const rng = () => .99;
+    let state = createBattle({ heroId: 'fighter', encounterId: 'osk-4', level: 5, ap: 10, potions: 2, rng });
+    const plan = [];
+    for (let turn = 0; state.turn === 'player' && turn < 200; turn += 1) {
+      const choice = OSAKA_CITY_POLICIES.priority(state);
+      if (!choice.recover) plan.push({ ...choice, wave: state.wave, round: state.round, ap: state.ap });
+      state = step(state, choice, rng).state;
+      if (state.turn === 'enemy') state = resolveEnemyPhase(state, rng).state;
+    }
+    if (state.turn !== 'won') throw new Error('The deterministic Osaka browser plan did not win');
+    return plan;
+  });
+  for (const action of actions) {
+    await page.locator('.battle-skill:not(:disabled)').first().waitFor();
+    const turn = (await page.locator('.battle-round').last().innerText()).trim();
+    if (turn !== `TURN ${action.round}` || await apMeterValue(page) !== action.ap) throw new Error(`Osaka browser battle diverged at wave ${action.wave}, ${turn}, AP ${await apMeterValue(page)}; expected turn ${action.round}, AP ${action.ap}`);
+    if (action.itemId) {
+      await page.locator('[data-item-menu]:not(:disabled)').click();
+      await page.locator(`[data-item-id="${action.itemId}"]:not(:disabled)`).click();
+    } else {
+      if (action.target != null) await page.locator(`[data-select-uid="${action.target}"]`).click();
+      await page.locator(`[data-skill-id="${action.skillId}"]:not(:disabled)`).click();
+    }
+  }
+  await page.locator('.victory-card--final').waitFor();
+  if (!(await page.evaluate(() => {
+    globalThis.osakaBannerObserver.disconnect();
+    return globalThis.osakaTransformationSeen;
+  }))) throw new Error('The finale did not display its transformation banner');
+  const saved = await page.evaluate(() => ({
+    region: JSON.parse(localStorage.getItem('esl-verbs-region-v1')),
+    records: JSON.parse(localStorage.getItem('esl-verbs-adventure-records-v1')),
+  }));
+  if (JSON.stringify(saved.region.savedCities) !== JSON.stringify(['matsubara', 'sakai', 'yao', 'higashiosaka', 'osakaCity']) || saved.region.checkpoint !== null) throw new Error('The Osaka finale did not save all five cities');
+  if (!saved.records?.heroes?.fighter?.fullCampaignCompleted) throw new Error('The Osaka finale did not record full campaign completion');
+  await page.getByRole('button', { name: /^NEXT/i }).click();
+  await page.locator('.story--osakaCity-ending').waitFor();
+  await assertNoPageScroll(page, 'Osaka City ending');
+  await page.getByRole('button', { name: /^Skip/i }).click();
+  await page.locator('.city-results').waitFor();
+  await assertNoPageScroll(page, 'Osaka City results');
+  await page.getByRole('button', { name: /BACK TO OSAKA MAP/i }).click();
+  await page.locator('.osaka-map__final').waitFor();
+  if (await page.locator('.osaka-city--saved').count() !== 5) throw new Error('The final map must show five saved cities');
+  if (!(await page.locator('.osaka-map__final').innerText()).includes('OSAKA IS SAFE!')) throw new Error('The final map must show the Osaka victory banner');
+  await assertNoPageScroll(page, 'Osaka five cities saved');
+  await page.screenshot({ path: path.join(evidenceDir, 'osaka-city-all-saved.png') });
+  await page.getByRole('button', { name: /Main Menu/i }).click();
+  await page.getByRole('button', { name: /CONTINUE ADVENTURE/i }).waitFor();
+  await page.getByRole('button', { name: /START NEW ADVENTURE/i }).waitFor();
+  await assertNoPageScroll(page, 'Completed campaign menu');
+  await page.getByRole('button', { name: /CONTINUE ADVENTURE/i }).click();
+  await page.locator('.osaka-city[data-city="osakaCity"]').click();
+  await page.locator('.story--osakaCity-intro').waitFor();
+  await page.getByRole('button', { name: /^Skip/i }).click();
+  await page.locator('.rpg-quiz.stage-1').waitFor();
+  if (!(await page.evaluate(() => JSON.parse(localStorage.getItem('esl-verbs-adventure-records-v1')).heroes.fighter.fullCampaignCompleted))) throw new Error('Replaying a saved city lost the full completion record');
+}
+
 async function targetDiscovery(page, baseUrl) {
   await page.goto(`${baseUrl}/?debug=battle`);
   await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
@@ -479,12 +621,13 @@ try {
   await debugBattleFlow(page, baseUrl);
   await yaoBattleFlow(page, baseUrl);
   await higashiosakaBattleFlow(page, baseUrl);
+  await osakaCityFlow(page, baseUrl);
   await targetDiscovery(page, baseUrl);
   await soundSettings(page, baseUrl);
   await studyFlow(page, baseUrl);
 
   if (browserErrors.length) throw new Error(`Browser errors:\n${browserErrors.join('\n')}`);
-  console.log('Browser playthrough passed: Adventure station defence, Osaka regional continuation/checkpoint, 0-AP recovery battle, Yao call telegraph/reinforcements and final boss, Higashiosaka unlock/checkpoint and Ishikiri/Core flow, guarded Siege Blast, target discovery, sound settings, and Study mode 1.');
+  console.log('Browser playthrough passed: Adventure station defence, Osaka regional continuation/checkpoint, 0-AP recovery battle, Yao call telegraph/reinforcements and final boss, Higashiosaka unlock/checkpoint and Ishikiri/Core flow, guarded Siege Blast, Osaka City unlock/Tennoji, finale Core/ally layout, dev jump, ending/completion/five saved cities and menu/replay, target discovery, sound settings, and Study mode 1.');
 } catch (error) {
   console.error(error?.stack || error);
   process.exitCode = 1;

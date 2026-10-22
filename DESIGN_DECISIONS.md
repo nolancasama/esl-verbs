@@ -962,3 +962,141 @@ Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
   It lives in `osakaMapView.reveal()`, so the last save needs no new wiring.
 - Long story lines from the spec are split at phrase breaks (~17 characters
   per line at 1024×600); the text itself is unchanged.
+
+## 2026-10-22 — Osaka City O1: final campaign wiring and ending
+
+- Saving Higashiosaka unlocks Osaka City. Four existing quiz modes lead to
+  osk-1..4 through the same checkpoints, resume, retry assistance, station
+  cards, city results and saved-city replay flow as Higashiosaka. Osaka City
+  combines familiar roles; it adds no engine system and does not change the
+  H1 Core contract or earlier cities' data.
+- The Osaka Castle finale uses three encounter waves: the Shadow Guard
+  escort, the Black Star avatar attacking the Core, then its True Form.
+  The Core survives all wave changes and resets on retry. The Osaka Defender
+  joins Shadow Generals at wave 2 and the finale at wave 3 through the
+  existing `ally.joinsAtWave` field.
+- The only wave presentation addition is optional data `banner`, carried on
+  the existing `waveStart` event and displayed by the existing banner UI.
+  Finale wave 3 supplies `しんの すがた！ TRUE FORM!`; other waves retain their
+  existing text. Both boss forms keep their existing half-HP phase rules,
+  with the True Form announcing `★ THE BLACK STAR IS FADING!`.
+- Story cards use the exact section 10 phrase breaks, including the returning
+  ally's 「やったな！」. The ending plays the existing `finale` track. Saving
+  Osaka City passes `justSaved: 'osakaCity'` into the normal map flow, so
+  O0's reveal supplies the five saved cities and OSAKA IS SAFE! banner without
+  changing the map implementation or CSS.
+- Full completion reuses `recordCompletion` and the existing Adventure
+  records save key. An optional per-hero `fullCampaignCompleted` field marks
+  the Osaka City ending; Matsubara's title/best-score and completion behavior
+  remain intact, and parsing accepts records without the new field. Existing
+  menu choices, regional continue and replay of saved cities remain available.
+- Unit coverage includes encounter/region/story wiring, ally arrival waves,
+  Core persistence and retry reset, the transformation banner, caller
+  protection, both boss phase changes, completion records and stage resumes.
+  Browser checks are written for unlock → Tennoji → battle, debug finale
+  waves 2 and 3, Core/ally geometry without page scroll at 1024×600, five saved
+  cities and the final map banner, and the dev jump to osk-4. The worker does
+  not run the browser suite; the controller runs it and Claude makes the
+  final aesthetic judgment. No new visual evidence is claimed by this entry.
+
+## 2026-10-22 — Osaka City O1: measured balance and finale attrition
+
+- Measurement matches Higashiosaka: 20 seeds, all three heroes, actual
+  post-Higashiosaka progression and city rest, 70/85/100% entry HP, two
+  potions, carried campaign resources and six attempts per battle. Both
+  bots reuse the Higashiosaka skill/resource plan; priority also recognizes
+  Core targets and protects the Core. In osk-4 only, both Fighter bots now
+  use affordable Power Slash to BREAK a heavy before defence or a potion.
+  No previous city's bot, enemy or encounter numbers changed; osk-1..3
+  still use their original policies and numbers.
+- Before numerical tuning, first-try outcomes already varied within HP
+  samples: across both bots, osk-1/2/3/4 had 20/2/14/21 cells outside
+  0/33/67/100%. Existing goblin, Engineer and Commander guard rolls, random
+  call choices and the Shadow Guard's role-appropriate 25% guard intent
+  provide seed variety. Fixed heavy telegraphs remain fixed.
+- Initial first-try defeats (hero/Core/turn cap) were overwhelmingly hero
+  deaths. osk-4 was naive 698/3/0 and priority 971/22/0; osk-2 was naive
+  4/0/0 and priority 0/0/0. Traces showed AP starvation and reinforcement
+  attrition, especially Ninja spending AP on Core defence and arriving at
+  the True Form exhausted. The initial priority finale averaged 19.57
+  player turns at AP7 because many runs died early; it was not a turn-cap
+  problem. Final first-try and campaign cause counts are saved in
+  `.ai/osaka-balance-after.txt`; the earlier-city baseline is retained in
+  `.ai/osaka-balance-before.txt`.
+- Final line-ups shrink the combinations before cutting boss HP: osk-1's
+  second wave keeps the Healer and drops the Shield Goblin; osk-3's first
+  wave keeps Signal Captain and drops the Orc; osk-4's escort keeps Shadow
+  Guard + Horn Goblin and drops the Healer. Other waves retain the spec
+  line-ups, including the Engineer beside the avatar and the solo True Form.
+  Call budgets stay 3 except avatar wave 2, which uses 1. This leaves each
+  lesson present without a long support/caller attrition loop.
+- Fighter AP inversion was traced at AP5/AP7 with matching seeds 65554 and
+  131091 under both policies. In seed 131091, naive AP5 won with 1 HP while
+  AP7 died in wave 3. AP7 affords a second escort Cleave and reaches wave 2
+  at player turn 3 instead of 6. Its retained combo makes Power Slash hit
+  for 14 instead of 10, crossing Avatar's half-HP threshold and calling a
+  wolf instead of a goblin. At charge/AP1, Slash leaves zero AP for Guard
+  on Star Fall; voluntary recovery is illegal. Core 36→22→18 then shuts
+  off periodic AP (strictly above half HP), extending recovery attrition.
+  This is real phase/resource timing, compounded by both bots overlooking
+  affordable nonlethal Fighter BREAK. The shared finale-only BREAK fix
+  removes that oversight; Avatar HP36 avoids the immediate combo phase
+  crossing, and Core HP24 makes two ignored Star Falls lethal. The
+  remaining AP1 timing rule and H1 Core contract are unchanged.
+- Final new-enemy numbers: Shadow Guard HP12/attack3/25% guard, protecting
+  callers; Avatar HP36/attack1/heavy14, call every3, heavy every3/rest,
+  at half HP wolf/bat calls and heavy every2; True Form HP32/attack3/heavy16,
+  heavy every2/no rest, then every1/rest at half HP. Each form gives 70 XP.
+  The avatar's ordinary damage is small because its threats are calls and
+  Star Fall at the Core. Core HP is osk-2 **18**, osk-4 **24**, charging
+  every3 turns strictly above half HP. Lowering the raid Core creates real
+  pressure when the protected Saboteur is ignored; the H1 contract is intact.
+- Final hero-mean first-try percentages at AP5/AP7/AP10:
+
+  | Encounter | Naive | Priority |
+  |---|---|---|
+  | osk-1 | 100/100/100 | 100/100/100 |
+  | osk-2 | 48.3/95.0/100 | 100/100/100 |
+  | osk-3 | 28.9/86.7/100 | 74.4/98.3/100 |
+  | osk-4 | 20.0/64.4/98.9 | 52.8/97.8/100 |
+
+  Priority gains **24.4** and **42.6** points over naive at AP5–7 in osk-2
+  and osk-4. Both bots complete **100% at every AP0–10**; AP5 mean city
+  retries are naive **3.75**, priority **1.25**. Finale AP7 mean length is
+  naive **18.12**, priority **20.57** player turns (all sampled attempts).
+  Priority AP7 rates are Fighter **95.0%**, Mage **100%**, Ninja **98.3%**.
+  Both bots' AP5→7→10 means increase. The AP5 priority mean is below 60%
+  and osk-3's 74.4%, making the finale the measured climax.
+- Final first-try defeat counts (hero/Core/turn cap): osk-1 both 0/0/0;
+  osk-2 naive 0/135/0, priority 0/0/0; osk-3 naive 260/0/0, priority 89/0/0;
+  osk-4 naive 240/140/0, priority 1/93/0. Core breakage is **36.8%** of
+  naive finale first-try defeats, so guarding Star Fall matters. Across
+  campaign AP0–10 attempts: naive 2166/1075/0, priority 1610/301/0.
+  No measured loss hits the turn cap.
+- All 31 balance threshold tests, including the finale ceiling, osk-3
+  comparison, per-hero AP7 floors, both bots' monotonic means, Core-defeat
+  share and both AP7 turn ceilings, were demonstrated failing with floors
+  1.01, ceilings -1, a comparison margin of 2, monotonic slack -2 and
+  1,000,000 required varied cells, then restored
+  (`.ai/osaka-assertion-proof.txt`). That run also exposed O0's existing
+  112×132 Avatar frame exceeding the old generic 128-pixel boss limit;
+  the art test now checks that exact frame without changing any sprite.
+  Final `npm test`: **237/237 pass**; `npm run balance`: pass. All output
+  for Matsubara, Sakai, Yao and Higashiosaka is byte-identical to the saved
+  pre-change report (**30,554 bytes**, including its encoding).
+
+## 2026-10-22 — Osaka City acceptance fixes (controller)
+
+- With the Core and the ally on a boss field, the ally stands at a fixed
+  142px (clear of the Core's 150px plate at scale .8): the H0 offset scaled
+  with sprite size and put the Osaka Defender on top of the Core in the
+  finale, where boss sprites are drawn smaller. Caught by the new browser
+  check; verified at 1024×600 and 1366×768.
+- After the last city is saved the map shows ALL CITIES SAVED with a MAIN
+  MENU button instead of "more cities coming soon"; the OSAKA IS SAFE!
+  banner is smaller and sits low on the map, where it covers no city at the
+  real card size (the O0 mock used a different size).
+- Known and accepted: at AP5 the priority bot wins the finale first try only
+  3% as the Mage (naive 47%); from AP6 the Mage wins ~100%, the three-hero
+  targets hold and city retries stay low. Left after two balance passes;
+  watch Mage at low quiz scores in class.

@@ -456,6 +456,109 @@ export function measureHigashiosaka(seeds = 20) {
   return { seeds, firstTry, campaigns, defeats };
 }
 
+export const OSAKA_CITY_ENCOUNTER_IDS = Object.freeze(['osk-1', 'osk-2', 'osk-3', 'osk-4']);
+// Both finale bots know Fighter's visible BREAK; target priority still differs.
+// Keep earlier encounters on their recorded policy, including osk-1..3.
+function osakaAction(state, priority) {
+  if (state.encounterId === 'osk-4' && state.heroId === 'fighter' && skill(state, 'powerSlash')) {
+    const target = priority
+      ? alive(state).find((enemy) => enemy.intent === 'heavy')
+      : alive(state)[0];
+    if (target?.intent === 'heavy') return { skillId: 'powerSlash', target: target.uid };
+  }
+  return HIGASHIOSAKA_POLICIES[priority ? 'core-aware' : 'naive'](state);
+}
+export const OSAKA_CITY_POLICIES = Object.freeze({
+  naive: (state) => osakaAction(state, false),
+  priority: (state) => osakaAction(state, true),
+});
+const osakaCityEntries = new Map();
+
+/** Actual Higashiosaka completion, then the existing next-city resource rest. */
+export function osakaCityEntryCampaign({ heroId, ap, seed = 1 }) {
+  const key = `${heroId}:${ap}:${seed}`;
+  if (!osakaCityEntries.has(key)) {
+    const previous = simulateHigashiosakaCampaign({ heroId, ap, seed, maxAttempts: 6 });
+    if (!previous.completed) throw new Error(`${heroId} AP${ap}: could not reach Osaka City`);
+    osakaCityEntries.set(key, chapterRest(createCampaign(heroId, {
+      cityId: 'osakaCity', level: previous.campaign.level, xp: previous.campaign.xp,
+    })));
+  }
+  return osakaCityEntries.get(key);
+}
+
+export function simulateOsakaCityCampaign({ heroId, ap, policy = OSAKA_CITY_POLICIES.priority, seed = 1, maxAttempts = 6 }) {
+  const rng = seeded(seed);
+  let campaign = osakaCityEntryCampaign({ heroId, ap, seed });
+  const entryCampaign = campaign;
+  const stages = [];
+  const defeats = { hero: 0, core: 0, turnCap: 0 };
+  for (const [index, encounterId] of OSAKA_CITY_ENCOUNTER_IDS.entries()) {
+    campaign = recordStage(campaign, {
+      mode: index + 1, items: Array.from({ length: 10 }, (_, q) => ({ id: `osk-${index + 1}-q${q}` })),
+      correctCount: ap, bestStreak: ap, missedIds: new Set(),
+    }, encounterId);
+    const entryHp = campaign.heroHp;
+    const entryPotions = campaign.potions;
+    let attempts = 0;
+    let result;
+    while (attempts < maxAttempts) {
+      attempts += 1;
+      result = simulateBattle({ ...battleSetup(campaign), policy, rng });
+      if (result.won) break;
+      defeats[result.defeatCause] += 1;
+      campaign = recordDefeat(campaign);
+    }
+    stages.push({ stage: index + 1, encounterId, attempts, won: result.won, entryHp, entryPotions,
+      hpLeft: result.hp, potionsLeft: result.state.potions, turns: result.turns, defeatCause: result.defeatCause });
+    if (!result.won) return { campaign, entryCampaign, stages, defeats, completed: false };
+    campaign = applyVictory(campaign, result.state).campaign;
+  }
+  return { campaign, entryCampaign, stages, defeats, completed: true };
+}
+
+/** Identical seed transforms and HP samples to the preceding city's report. */
+export function measureOsakaCity(seeds = 20) {
+  const heroes = ['fighter', 'mage', 'ninja'];
+  const firstTry = [];
+  const campaigns = [];
+  for (const heroId of heroes) for (const encounterId of OSAKA_CITY_ENCOUNTER_IDS) {
+    for (const [name, policy] of Object.entries(OSAKA_CITY_POLICIES)) for (const ap of HIGASHIOSAKA_FIRST_APS) {
+      let wins = 0;
+      let turns = 0;
+      const defeats = { hero: 0, core: 0, turnCap: 0 };
+      for (let seed = 1; seed <= seeds; seed += 1) {
+        const battleSeed = seed * 65537 + 17;
+        const entry = osakaCityEntryCampaign({ heroId, ap, seed: battleSeed });
+        for (const fraction of [.7, .85, 1]) {
+          const result = simulateBattle({ heroId, encounterId, ap, level: entry.level,
+            heroHp: Math.ceil(heroMaxHp(heroId, entry.level) * fraction), potions: entry.potions,
+            policy, seed: battleSeed });
+          wins += result.won ? 1 : 0;
+          turns += result.turns;
+          if (!result.won) defeats[result.defeatCause] += 1;
+        }
+      }
+      firstTry.push({ heroId, encounterId, name, ap, rate: wins / (seeds * 3), turns: turns / (seeds * 3), defeats });
+    }
+  }
+  for (const heroId of heroes) for (const [name, policy] of Object.entries(OSAKA_CITY_POLICIES)) {
+    for (const ap of HIGASHIOSAKA_CAMPAIGN_APS) {
+      let completed = 0;
+      let retries = 0;
+      const defeats = { hero: 0, core: 0, turnCap: 0 };
+      for (let seed = 1; seed <= seeds; seed += 1) {
+        const run = simulateOsakaCityCampaign({ heroId, ap, policy, seed: seed * 8191 + 23, maxAttempts: 6 });
+        completed += run.completed ? 1 : 0;
+        retries += run.stages.reduce((sum, stage) => sum + stage.attempts - 1, 0);
+        for (const cause of Object.keys(defeats)) defeats[cause] += run.defeats[cause];
+      }
+      campaigns.push({ heroId, name, ap, rate: completed / seeds, retries: retries / seeds, defeats });
+    }
+  }
+  return { seeds, firstTry, campaigns };
+}
+
 /** Level at which each stage is fought in a normal campaign. */
 export const STAGE_LEVEL = Object.freeze({ 1: 1, 2: 2, 3: 3, 4: 4 });
 

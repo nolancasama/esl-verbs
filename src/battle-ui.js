@@ -134,7 +134,7 @@ export function eventMessage(event) {
     case 'lost': return event.reason === 'core' ? 'アクション・コアが こわれた！ THE CORE IS BROKEN!' : 'DEFEATED...';
     case 'rejected': return REJECTED[event.reason] || 'That action is unavailable.';
     case 'waveClear': return 'WAVE CLEAR!';
-    case 'waveStart': return `WAVE ${event.wave}! まだ くる！`;
+    case 'waveStart': return event.banner ?? `WAVE ${event.wave}! まだ くる！`;
     case 'allyJoin': return 'なかまが きた！ 大阪の まもりびと！';
     case 'allyAttack': return 'ALLY! なかまの こうげき！';
     case 'allyProtect': return 'まもりびとが まもってくれる！';
@@ -479,7 +479,7 @@ export function createBattleView(container, {
     const chip = container.querySelector('.battle-wave');
     if (chip) chip.textContent = `WAVE ${event.wave} / ${event.waveCount}`;
     fitPx = null; // the new wave may need a different scale; the settled render refits
-    showBanner(`WAVE ${event.wave} / ${event.waveCount}`, event.wave === event.waveCount ? 'さいごの なみ！' : 'まだ くる！', event.wave === event.waveCount ? 'final' : '');
+    showBanner(event.banner ?? `WAVE ${event.wave} / ${event.waveCount}`, event.banner ? `WAVE ${event.wave} / ${event.waveCount}` : event.wave === event.waveCount ? 'さいごの なみ！' : 'まだ くる！', event.wave === event.waveCount ? 'final' : '');
   }
 
   function allyJoins(event) {

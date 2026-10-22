@@ -63,6 +63,21 @@ export const ENDING_STORY = Object.freeze([
 
 // Short intro and ending for each regional city campaign.
 export const CITY_STORIES = Object.freeze({
+  osakaCity: Object.freeze({
+    intro: Object.freeze([
+      { mood: 'danger', monsters: 'near', music: 'ominous', sfx: 'alarm', ...card(['{大阪|おおさか}{市|し}に ホードの {大|だい}ぐん！'], { big: 0, hold: true, en: 'THE INVASION!' }), ms: 2000 },
+      card(['ブラックスターが あらわれた！']),
+      { hero: 'idle', ...card(['いままでの ちからを', 'ぜんぶ つかおう！']) },
+    ]),
+    ending: Object.freeze([
+      { mood: 'danger', monsters: 'near', hero: 'idle', cut: true, ms: 800 },
+      { mood: 'safe', monsters: 'gone', hero: 'victory', citizens: true, music: 'finale', title: { ja: 'おおさかを まもった！', en: 'OSAKA IS SAFE!' }, ms: 3000 },
+      { ally: 'victory', ...card(['大阪の まもりびと：', '「やったな！」']) },
+      card(['ブラックスターの やみは きえた。']),
+      card(['まつばら、さかい、やお、', 'ひがしおおさか…', 'みんなの まちが ひかっている。']),
+      card(['きみは おおさかの ヒーローだ！'], { en: "YOU ARE OSAKA'S HERO!" }),
+    ]),
+  }),
   higashiosaka: Object.freeze({
     intro: Object.freeze([
       { mood: 'danger', monsters: 'near', music: 'ominous', sfx: 'alarm', ...card(['ひがしおおさかが あぶない！'], { big: 0, hold: true, en: 'HIGASHIOSAKA IS IN DANGER!' }), ms: 2000 },

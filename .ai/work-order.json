@@ -1,26 +1,26 @@
 {
-  "task": "Correct the Higashiosaka H2 balance in the current working tree (uncommitted H2 implementation). Two problems found in controller review: (1) every Higashiosaka first-try cell is exactly 0/33/67/100% although each cell runs 20 seeds x 3 HP levels, so the seed changes nothing and only the HP level matters; (2) hig-1, hig-2 and hig-3 are 100% first-try at every AP5-10 for BOTH bots, so the naive bot that ignores the Core never loses them and the city's lesson ('watch what the enemy aims at, protect the Core') is only tested by hig-4.",
+  "task": "Correct the Osaka City finale balance (osk-4) in the current working tree (uncommitted O1 implementation). Controller review found: (1) the finale is easier than osk-3 — priority three-hero first-try at AP5 is 93.9% vs osk-3's 74.4%, and Mage/Ninja win osk-4 ~100% at every AP; (2) the phase-2 lesson is missing — the naive bot has 0 Core-broken defeats in osk-4 (131 hero deaths), so guarding the Core against Star Fall never matters; (3) Fighter's osk-4 first-try falls as AP rises (naive 63/47/7/72% at AP5-8, priority 87/72/72/100%), which looks like a bot or encounter artifact.",
   "requirements": [
-    "Inspect the existing diff first. Preserve what is correct (enemy data, encounters, region, story, campaign, tests, report sections, browser checks, docs); change only what this correction needs. Do not start over.",
-    "Diagnose (1) before tuning: find out why seeds do not vary Higashiosaka outcomes (is the seed/rng reaching createBattle, resolveEnemyPhase and the bot? do these enemies have any random intent choice? compare with how measureYao gets non-trivial rates like 25% / 97%). Report the cause in the summary. If the sim fails to pass the rng, fix the sim. If the battles are genuinely deterministic, give enemies the same kind of intent variety the existing enemies use (e.g. the goblin/wolf data patterns) only where that fits their role, so first-try rates are measured over real variation.",
-    "Then tune so that Core pressure is real in hig-2 and hig-3, not only hig-4. New targets (in addition to every section 8 target in .ai/higashiosaka-spec.md, which must still hold): naive first-try three-hero mean at AP5 on hig-2 <= 85% and on hig-3 <= 75%; core-aware beats naive by >= 10 points on average over AP5-7 on each of hig-2 and hig-3; Core-broken defeats are >= 40% of naive defeats over hig-2..4 first tries; hig-1 stays a gentle tutorial (core-aware AP5 mean >= 85%). Report the per-encounter three-hero means at AP5/7/10 for both bots and the defeat-cause split, before and after.",
-    "Tune only numbers marked tune in the spec: enemy HP/attack/heavy/repair, Core hp, coreChargeEvery/coreChargeAbove per encounter (it may differ by stage, e.g. every 3 early and every 2 for the boss), wave line-ups within the section 4 rosters. Keep the H1 engine contract unchanged.",
-    "Encode the new targets as assertions in test/balance.test.js next to the existing Higashiosaka ones; show each new assertion fails once with a deliberately impossible threshold, then restore.",
-    "Matsubara, Sakai and Yao report lines must stay byte-identical (diff against the saved pre-change output).",
-    "Update the DESIGN_DECISIONS.md Higashiosaka balance entry (cause of the determinism, final numbers and why) and the CURRENT_STATE.md balance lines; revise, do not append logs."
+    "Inspect the existing diff first. Preserve everything that is correct (data, wiring, story, ending, records, tests, browser checks, docs, osk-1..3 numbers); change only osk-4 tuning, its enemy numbers, and the balance assertions/report for it. Do not start over.",
+    "Diagnose (3) before tuning: trace a few Fighter osk-4 runs at AP5 vs AP7 (same seeds) and explain why more AP loses more often (e.g. AP spending order skips Guard before a telegraphed heavy, the extra AP triggers a different wave timing, a Power Slash/BREAK interaction). If it is a bot policy flaw, fix the bot for both policies consistently (do not change earlier cities' report lines); if it is real game behaviour, report it and tune around it. Put the explanation in the summary.",
+    "Then tune osk-4 (only numbers marked tune: Black Star forms' HP/attack/heavy/heavyEvery/callEvery, Core hp, wave line-ups within the section 2 rosters, call budgets) so the finale is the climax: priority three-hero first-try mean at AP5 <= 60% and lower than osk-3's AP5 mean; still >= 10% / 60% / 90% at AP5 / 7 / 10; every hero's priority rate at AP7 >= 40%; three-hero means non-decreasing from AP5 to AP7 to AP10 for both bots (small noise <= 5 points allowed); Core-broken defeats >= 25% of naive osk-4 first-try defeats (phase 2 must threaten the Core); priority beats naive by >= 10 points on average at AP5-7; osk-4 mean length <= 45 player turns at AP7; city mean retries at AP5 <= 5 for the priority bot; both bots still complete the city at every AP 0-10.",
+    "Encode these as assertions in test/balance.test.js next to the existing Osaka ones (replace any now-wrong ones); show each new assertion fails once with an impossible threshold, then restore.",
+    "Matsubara, Sakai, Yao and Higashiosaka report lines byte-identical (diff against the saved pre-change output).",
+    "Delete the intermediate .ai/osaka-balance-tuning*.txt, .ai/osaka-balance-initial.txt and .ai/osaka-tests-final.txt scratch files; keep only .ai/osaka-balance-before.txt and an updated .ai/osaka-balance-after.txt (and the assertion proof).",
+    "Update the DESIGN_DECISIONS.md Osaka balance entry (the Fighter cause, final numbers and why) and the CURRENT_STATE.md balance lines; revise, do not append logs."
   ],
   "constraints": [
-    "Do not edit sprite drawing code (src/pixel-*.js), src/station-map.js, src/battle-locations.js, rpg.css, src/battle-engine.js core contract, or Matsubara/Sakai/Yao data.",
+    "Do not change osk-1..osk-3, earlier cities, sprite code, maps, osaka-map.js, the H1 Core contract or the story/ending/records wiring.",
     "Do not touch test/browser/playthrough.mjs; the controller runs the browser acceptance after this correction.",
     "Edit source with structured edit tools; on the first shell quoting/escaping failure switch to file edit tools.",
-    "Do not commit. Do not delete .ai files."
+    "Do not commit. Do not delete other .ai files."
   ],
   "startingPoints": [
     "test/balance-sim.js",
     "test/balance-report.mjs",
     "test/balance.test.js",
     "src/battle-data.js",
-    ".ai/higashiosaka-spec.md"
+    ".ai/osaka-city-spec.md"
   ],
   "validation": [
     "npm test",
@@ -28,7 +28,7 @@
   ],
   "behavioralAcceptance": {
     "owner": "controller",
-    "description": "Controller runs the browser playthrough and Higashiosaka screenshots after the correction."
+    "description": "Controller runs the browser playthrough and Osaka City screenshots after the correction."
   },
   "category": "bugfix",
   "complexity": "medium",

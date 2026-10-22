@@ -9,8 +9,8 @@ export const CITIES = Object.freeze({
   matsubara: { id: 'matsubara', name: 'Matsubara', jaName: 'まつばら', map: { x: 52, y: 60 }, campaignId: 'matsubara', unlocks: ['sakai'] },
   sakai: { id: 'sakai', name: 'Sakai', jaName: 'さかい', map: { x: 34, y: 64 }, campaignId: 'sakai', requires: ['matsubara'], unlocks: ['yao'] },
   yao: { id: 'yao', name: 'Yao', jaName: 'やお', map: { x: 64, y: 54 }, campaignId: 'yao', requires: ['sakai'], unlocks: ['higashiosaka'] },
-  higashiosaka: { id: 'higashiosaka', name: 'Higashiosaka', jaName: 'ひがしおおさか', map: { x: 57, y: 31 }, campaignId: 'higashiosaka', requires: ['yao'] },
-  osakaCity: { id: 'osakaCity', name: 'Osaka City', jaName: 'おおさか市', map: { x: 40, y: 30 }, campaignId: null, requires: ['higashiosaka'] },
+  higashiosaka: { id: 'higashiosaka', name: 'Higashiosaka', jaName: 'ひがしおおさか', map: { x: 57, y: 31 }, campaignId: 'higashiosaka', requires: ['yao'], unlocks: ['osakaCity'] },
+  osakaCity: { id: 'osakaCity', name: 'Osaka City', jaName: 'おおさか市', map: { x: 40, y: 30 }, campaignId: 'osakaCity', requires: ['higashiosaka'] },
 });
 
 export const CITY_CAMPAIGNS = Object.freeze({
@@ -37,6 +37,13 @@ export const CITY_CAMPAIGNS = Object.freeze({
     stages: [
       { mode: 1, encounterId: 'hig-1' }, { mode: 2, encounterId: 'hig-2' },
       { mode: 3, encounterId: 'hig-3' }, { mode: 4, encounterId: 'hig-4' },
+    ],
+  },
+  osakaCity: {
+    id: 'osakaCity', cityId: 'osakaCity',
+    stages: [
+      { mode: 1, encounterId: 'osk-1' }, { mode: 2, encounterId: 'osk-2' },
+      { mode: 3, encounterId: 'osk-3' }, { mode: 4, encounterId: 'osk-4' },
     ],
   },
 });

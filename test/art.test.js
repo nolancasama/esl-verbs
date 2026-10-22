@@ -17,8 +17,8 @@ const bounds = (g) => {
 // A city's art lands before its battle data (controller art slice → worker data
 // slice: Osaka City O0 → O1 now); the data slice empties this list, so art
 // without data never goes unnoticed.
-const ART_AHEAD_OF_DATA = ['shadowGuard', 'blackStarAvatar', 'blackStarTrue'];
-const BOSS_ART_AHEAD = new Set(['blackStarAvatar', 'blackStarTrue']);
+const ART_AHEAD_OF_DATA = [];
+const BOSS_ART_AHEAD = new Set();
 
 test('every hero and enemy has a complete sprite sheet with one row per state', () => {
   for (const id of [...Object.keys(HEROES), ...Object.keys(ENEMIES), ...ART_AHEAD_OF_DATA, 'actionCore']) {
@@ -35,7 +35,7 @@ test('every hero and enemy has a complete sprite sheet with one row per state', 
   assert.deepEqual([...ART_IDS.enemies].sort(), [...Object.keys(ENEMIES), ...ART_AHEAD_OF_DATA.filter((id) => !ENEMIES[id])].sort());
 });
 
-test('sprite sizes follow the late-16-bit targets: heroes ~64-72, bosses 96-128', () => {
+test('sprite sizes follow the late-16-bit targets and the O0 Avatar frame', () => {
   for (const id of Object.keys(HEROES)) {
     const sheet = spriteSheet(id);
     assert.equal(sheet.fw, 72); assert.equal(sheet.fh, 72);
@@ -45,7 +45,11 @@ test('sprite sizes follow the late-16-bit targets: heroes ~64-72, bosses 96-128'
   for (const id of Object.keys(ENEMIES)) {
     const sheet = spriteSheet(id);
     const { height } = bounds(sheet.grids[0][0]);
-    if (ENEMIES[id].boss) assert.ok(sheet.fh >= 96 && sheet.fh <= 128 && height >= 90, `${id} boss ${sheet.fw}x${sheet.fh}, ${height} tall`);
+    // O0's crowned Avatar includes four extra rows; keep the old bounds for every other boss.
+    if (id === 'blackStarAvatar') {
+      assert.deepEqual([sheet.fw, sheet.fh], [112, 132]);
+      assert.ok(height >= 90, `${id} idle is ${height}px tall`);
+    } else if (ENEMIES[id].boss) assert.ok(sheet.fh >= 96 && sheet.fh <= 128 && height >= 90, `${id} boss ${sheet.fw}x${sheet.fh}, ${height} tall`);
     else assert.ok(sheet.fh >= 36 && sheet.fh <= 96, `${id} ${sheet.fw}x${sheet.fh}`);
   }
 });

@@ -37,17 +37,19 @@ export function parseRecords(raw, heroIds) {
   for (const id of heroIds) {
     const entry = data.heroes?.[id];
     const best = Number.isFinite(entry?.bestCorrect) ? Math.max(0, Math.floor(entry.bestCorrect)) : 0;
-    records.heroes[id] = entry?.completed === true ? { completed: true, bestCorrect: best, bestTitle: heroTitle(best).en } : emptyHero();
+    records.heroes[id] = entry?.completed === true ? { completed: true, bestCorrect: best, bestTitle: heroTitle(best).en,
+      ...(entry.fullCampaignCompleted === true ? { fullCampaignCompleted: true } : {}) } : emptyHero();
   }
   if (Array.isArray(data.discoveredBosses)) records.discoveredBosses = FINAL_BOSSES.filter((id) => data.discoveredBosses.includes(id));
   return records;
 }
 
 /** A finished campaign. Returns the new records and whether this was a new best. */
-export function recordCompletion(records, heroId, totalCorrect, bossId) {
+export function recordCompletion(records, heroId, totalCorrect, bossId, { fullCampaign = false } = {}) {
   const previous = records.heroes[heroId] ?? emptyHero();
   const improved = !previous.completed || totalCorrect > previous.bestCorrect;
-  const hero = improved ? { completed: true, bestCorrect: totalCorrect, bestTitle: heroTitle(totalCorrect).en } : previous;
+  const hero = { ...(improved ? { completed: true, bestCorrect: totalCorrect, bestTitle: heroTitle(totalCorrect).en } : previous),
+    ...(fullCampaign || previous.fullCampaignCompleted ? { fullCampaignCompleted: true } : {}) };
   const discoveredBosses = FINAL_BOSSES.includes(bossId) && !records.discoveredBosses.includes(bossId)
     ? FINAL_BOSSES.filter((id) => id === bossId || records.discoveredBosses.includes(id))
     : records.discoveredBosses;

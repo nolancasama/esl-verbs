@@ -2,36 +2,66 @@
 
 ## Status (2026-10-22)
 
-Higashiosaka H2 is implemented on top of H0 art/stations and the H1 Action Core:
-saving Yao unlocks four quiz/battle stages, six machine-campaign enemies and
-the specified city story. Checkpoints, resume, retry assist, city results and
-the map save animation use the existing city flow; Osaka City stays locked.
-Every Higashiosaka battle has a fresh Core, two waves and no ally. Core HP is
-30/30/22/30, charging +1 AP every 3/2/2/2 player turns above half HP.
-Engineer and Construct use the existing 25% random guard intent; repair has
-priority. Hig-2 wave 2 adds a Construct before the Sniper/Saboteur. Other
-enemy numbers and waves, the Core engine, art and earlier cities are unchanged.
+The whole five-city campaign is implemented: Matsubara → Sakai → Yao →
+Higashiosaka → Osaka City. Saving Higashiosaka unlocks Osaka City's four
+quiz/battle stages, combining the earlier cities' waves, callers, supports,
+protectors, Action Core and ally. No new combat system was added. The final
+Osaka Castle battle has three waves: the Shadow Guard escort, Black Star
+attacking the Core, then the True Form with the Osaka Defender joining at
+wave 3. Core HP persists through the waves and resets on retry; the final
+wave has the data-driven 「しんの すがた！ TRUE FORM!」 banner.
 
-Verified 2026-10-22: `npm test` 193/193; `npm run balance` reports both bots
-completing Higashiosaka 100% at every AP0–10 within six attempts per battle.
-Core-aware hero-mean first-try rates at AP5/7/10: hig-1 and hig-2 100/100/100%,
-hig-3 91.7/92.8/96.1%, hig-4 60/100/100%. Naive: hig-1 100/100/100%,
-hig-2 8.3/90/100%, hig-3 57.8/63.9/77.8%, hig-4 12.2/31.1/100%.
-AP5 city retries are aware 0.80 / naive 3.83. Awareness gains 42.2 and 31.5
-points at AP5–7 in hig-2 and hig-3; all original section 8 targets still pass.
-Naive hig-2..4 first-try defeats: hero/Core/turn cap 0/1093/0 (100% Core);
-campaigns: 44/2448/0, so hero deaths remain represented. Seeded RNG was
-already wired correctly; deterministic enemy intents and harmless variation
-caused the old 0/33/67/100% cells. New guard choices vary outcomes in hig-2..4.
-All seven correction assertions failed with impossible thresholds, then passed
-after restoration. Matsubara/Sakai/Yao output is byte-identical to the saved
-`.ai/hig-balance-before.txt`; final report: `.ai/hig-balance-after.txt`.
+Osaka City's exact spec story cards use the existing finale track for its
+ending. Saving the city returns through the usual results and map flow; O0's
+existing reveal shows all five cities saved and OSAKA IS SAFE! The hero's
+existing Adventure record gains `fullCampaignCompleted`, with no new save
+key. Old saves still parse, checkpoints/resume work at every city stage, and
+new adventure, continue and replaying saved cities remain available.
 
-Browser checks now cover Higashiosaka unlock/checkpoint, the dev jump entry,
-Stage Clear → Ishikiri → visible Core, and guarded Siege Blast via debug wave 2,
-including 1024×600 no-scroll checks and screenshot capture paths. They were
-not run in H2: this order permits only `npm test` and `npm run balance`.
-No new visual evidence was produced; final browser/layout review remains open.
+Verified O1: `npm test` **237/237 pass**; `npm run balance` passes all targets.
+Both bots complete Osaka City 100% at every AP0–10 within six attempts per
+battle. Priority first-try means at AP5/7/10: osk-1 and osk-2 100/100/100%,
+osk-3 74.4/98.3/100%, osk-4 52.8/97.8/100%. Priority gains 24.4 points on
+osk-2 and 42.6 on osk-4 at AP5–7. AP5 city retries are priority 1.25 / naive
+3.75; finale length averages priority 20.57 / naive 18.12 player turns at
+AP7. Priority finale AP7 rates: Fighter 95.0%, Mage 100%, Ninja 98.3%.
+Both bots' finale AP5→7→10 means increase; naive means are 20.0/64.4/98.9%.
+Core breakage causes 36.8% (140/380) of naive finale first-try defeats.
+All 31 balance thresholds were shown failing once with impossible values, then
+restored. Earlier cities' report output is byte-identical (30,554 bytes):
+`.ai/osaka-balance-before.txt` / `.ai/osaka-balance-after.txt`.
+
+Final Osaka Core HP is 18 (raid) / 24 (finale), both charging every3 turns
+above half HP. Shadow Guard is HP12/attack3 with 25% guard; Avatar HP36/
+attack1/heavy14; True Form HP32/attack3/heavy16. Smaller line-ups remove the
+Shield Goblin in osk-1 wave 2, the Orc in osk-3 wave 1 and the Healer in
+osk-4 wave 1; the avatar's wave has call budget1, all others3. Phase roles,
+telegraphs and ally arrival waves follow the spec. Initial defeats were
+mostly hero attrition, not turn caps; final campaign defeats (hero/Core/cap)
+are naive 2166/1075/0, priority 1610/301/0. Both finale Fighter bots now
+BREAK affordable heavies before generic defence/potions. The AP inversion
+was traced to earlier wave arrival, a combo-triggered wolf call, and AP1
+charge timing disabling Core AP generation; Avatar HP36 and Core HP24 tune
+around that real timing. Detailed reasoning is in DESIGN_DECISIONS.md.
+
+Higashiosaka retains its H2 numbers and behavior: fresh Core HP 30/30/22/30,
+charge intervals 3/2/2/2 above half HP, two waves and no ally in every battle.
+Engineer and Construct keep their 25% guard chance, repair retains priority,
+and hig-2 wave 2 retains its Construct before the Sniper/Saboteur. Earlier
+cities and the H1 Core contract are unchanged. H2's previous verification was
+`npm test` 193/193; its balance evidence remains in
+`.ai/hig-balance-before.txt` and `.ai/hig-balance-after.txt`.
+
+Browser checks are extended for Osaka City unlock → Tennoji → battle, the
+dev jump to osk-4, debug waves 2 and 3 with the Core and ally, and the final
+map with five saved cities. They include 1024×600 no-scroll and Core/ally
+geometry checks. Verified 2026-10-22 by the controller: the full browser
+playthrough passes (Osaka City unlock → Tennoji → battle, finale waves 2–3
+with Core and ally apart, TRUE FORM banner, ending, completion record, five
+saved cities, ALL CITIES SAVED → main menu, replay); the Core/ally check was
+seen failing before the layout fix. Screenshots in `.tmp/browser/osaka-city-*`.
+Known: the priority bot's Mage wins the finale first try only 3% at AP5
+(100% from AP6); watch low-score Mage students in class.
 
 2026-10-17: Adventure Stage 4 now uses the same learning format as Stage 3 —
 visible Japanese prompt (spoken with ja-JP TTS) → spoken English answer. There
@@ -46,9 +76,9 @@ answering, ja-JP TTS of the shown word, recognition en-US, 10 AP → Stage Clear
 BATTLE! opens the battle) and both fallbacks (no recognition API; three
 recognition errors) with choices under the still-visible Japanese.
 
-The Osaka expansion is implemented on `master`: the Osaka campaign map,
-regional saves, and Sakai as the first full post-Matsubara city (40 questions,
-four battles with Horde waves and the Osaka Defender ally). The 2026-10-01 pass
+The Osaka expansion includes the Osaka campaign map, regional saves and all
+four post-Matsubara cities (40 questions and four battles per city). Sakai was
+the first, introducing Horde waves and the Osaka Defender ally. The 2026-10-01 pass
 moved the story lore from the opening to the Matsubara ending and rebuilt the
 Adventure quiz as a hero / word / dummy scene; a follow-up polish pass the same
 day (lower-third intro titles, shorter lore, centred word, larger stage banner,
@@ -80,7 +110,7 @@ What a player sees now:
   stage backdrop with the nameplate on the floor under them → the AP meter
   (the only AP display here; no topbar, no score line, no enemy list) → the
   AP note (EN / JA lines; the rest text at 0 AP) → BATTLE! → the stage's station
-  defence map → DEFEND! → battle. This applies to Matsubara, Sakai, Yao and Higashiosaka;
+  defence map → DEFEND! → battle. This applies to all five cities;
   retries go directly to battle.
 - Matsubara ending (~26 s auto-play, every card tap-to-advance): victory
   (darkness clears with MATSUBARA CITY IS SAFE!, YOU PROTECTED THE CITY!) →
@@ -88,7 +118,7 @@ What a player sees now:
   it attacked; the Action Core, then the short 「きみだ！」 beat) → Osaka reveal
   (the Horde has spread, then 大阪を まもれ！ / SAVE OSAKA!) → results with `つづける つぎの まちへ！`
   → Osaka map (Matsubara ★, Sakai きけん！; saving Sakai unlocks playable Yao).
-  Saving Yao unlocks Higashiosaka; Osaka City remains locked.
+  Saving Yao unlocks Higashiosaka; saving Higashiosaka unlocks Osaka City.
 - Sakai: short intro → quiz modes 1–4 (fresh random words) → battles
   First Assault / Horde Battle (2 waves) / Defenders Overwhelmed (the Osaka
   Defender joins at wave 2) / Final Sakai Defense (ally from the start, the
@@ -108,6 +138,13 @@ What a player sees now:
   Engineers and Foreman repair damaged machines, and Constructs protect Core
   attackers. Keeping the Core above half HP keeps its AP charge active.
   Checkpoints/resume/retries work like Yao, with a full Core on each attempt.
+- Osaka City: THE INVASION! intro → quiz modes 1–4 → The Invasion / Core Raid /
+  Shadow Generals / The Black Star, defending Tennoji / Namba / Osaka-Umeda /
+  Osaka Castle. Shadow Generals brings back the Osaka Defender at wave 2;
+  The Black Star has the Core across all three waves and the ally at wave 3.
+  The finale ending celebrates all five cities, records full completion for
+  the hero, and returns to the map's OSAKA IS SAFE! reveal. Existing stage
+  checkpoints, retries, continue and saved-city replay use the same city flow.
 - Battle targeting: select with ←/→ or tap anywhere on an enemy; selection
   never attacks. The selected enemy has a larger marker, gold plate, stepped
   ground ring and warm sprite backing, plus an accessible target announcement.
@@ -216,7 +253,7 @@ Verified 2026-09-30:
 - `src/osaka-map.js` — map view (markers, save animation); art in
   `pixel-effects.js` `osakaMapImage()`.
 - Battles: one engine with optional `waves` / `ally` on encounters
-  (`src/battle-data.js` ALLIES, sakai-1..4, yao-1..4, hig-1..4). Calls and bombs use the
+  (`src/battle-data.js` ALLIES, sakai-1..4, yao-1..4, hig-1..4, osk-1..4). Calls and bombs use the
   intent system; reinforcements wait until the next phase and give no XP.
   `battle-ui.js` presents waves and the ally from the display snapshot;
   `fx-player.js` has ally and reinforcement effects.
@@ -224,25 +261,26 @@ Verified 2026-09-30:
   card before each Adventure battle; the app mounts the controller-owned card.
 - Art: Osaka Defender on the hero rig (`ALLY_IDS`), training dummy
   (`PROP_ART`), Shadow Commander (recoloured Goblin Captain), ground tiles;
-  H0's six Higashiosaka enemies and Action Core now all have matching battle data.
+  H0's six Higashiosaka enemies and Action Core, plus O0's Shadow Guard and
+  both Black Star forms, all have matching battle data. Art-ahead lists are empty.
 - Dev jump: **Ctrl+Alt+Shift+D** on any screen opens a panel (hero, quiz score,
   then Quiz / Battle 1–4 or Map for each playable city); it rewrites this
   browser's regional save (earlier cities saved, later progress cleared).
-- Debug: `?debug=quiz&stage=N&hero=X`, `?debug=map&preset=fresh|matsubara|sakai|yao|higashiosaka[&justSaved=id]`
+- Debug: `?debug=quiz&stage=N&hero=X`, `?debug=map&preset=fresh|matsubara|sakai|yao|higashiosaka|osakaCity[&justSaved=id]`
   (writes the regional save), `?debug=battle` (city encounters, start wave),
   `?debug=art` (Sakai intro / ending / city results previews).
 
 ## Next Steps
 
-1. Classroom check of Sakai, Yao and Higashiosaka difficulty, story length,
+1. Classroom checks of the complete five-city campaign: difficulty, story length,
    call telegraphs, bomb countdowns, Orc protection and the → コア / GUARD THE
    CORE telegraphs (hig-2 at low AP is deliberately harsh when the Core is
-   ignored); check station-map pacing between rounds.
-2. **Osaka City O1 is next** (worker: data, encounters, region, story, ending,
-   balance, browser checks) following `.ai/osaka-city-spec.md`; O0 is done
-   (spec §10: Shadow Guard and both Black Star forms, four traced station
-   maps, the final OSAKA IS SAFE! map banner, story line splits).
-   Higashiosaka H0–H2 are done and browser-verified.
+   ignored); check station-map pacing between rounds. In Osaka City, check
+   whether students combine those lessons and understand the three finale
+   phases, the returning ally and the final ending.
+2. Controller browser/layout review of the written Osaka City checks at
+   1024×600, followed by Claude's final aesthetic judgment. The worker has
+   not run this browser suite or produced new screenshots.
 3. Not heard yet (no audio device): the new strike/impact/AP-gain sfx and the
    12% defaults on Chromebook speakers.
 4. Optional: a Sakai-specific skyline for its intro/ending (it reuses the
@@ -266,6 +304,9 @@ Verified 2026-09-30:
   and protection badges clear, and can first-target play recover through retries.
 - Higashiosaka: do students notice Core aim and protect its AP charge; check
   repaired machines, protected attackers and the Siege Golem's angry phase.
+- Osaka City: do callers and Core threats still read clearly together; can
+  students follow the three Black Star phases, notice the ally arriving in
+  the True Form fight, and read the finale cards and all-cities-saved map.
 - Earlier open items: real mic grant/denial, IME Enter, sprite build time and
   effect smoothness on a real school Chromebook.
 

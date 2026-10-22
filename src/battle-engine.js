@@ -181,7 +181,8 @@ function beginNextWave(state, events, rng) {
     hero: { ...state.hero, defense: null, exhausted: false, openingUid: null, protected: false },
   };
   next = { ...next, enemies: next.enemies.map((enemy) => withEnemyIntent(next, enemy, rng)) };
-  events.push({ type: 'waveStart', wave, waveCount: state.waveCount, targets: enemies.map((enemy) => enemy.uid) });
+  events.push({ type: 'waveStart', wave, waveCount: state.waveCount, targets: enemies.map((enemy) => enemy.uid),
+    ...(waves[wave - 1].banner ? { banner: waves[wave - 1].banner } : {}) });
   if (!state.ally && encounter.ally?.joinsAtWave === wave) {
     next = { ...next, ally: { id: encounter.ally.id } };
     events.push({ type: 'allyJoin', allyId: encounter.ally.id });

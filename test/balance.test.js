@@ -11,6 +11,7 @@ import {
   POLICIES, STAGE_LEVEL, encountersForTier, sakaiEncounters, simulateBattle, simulateCampaign, simulateSakaiCampaign,
   YAO_POLICIES, simulateYaoCampaign, yaoEntryCampaign, yaoEncounters,
   HIGASHIOSAKA_POLICIES, higashiosakaEntryCampaign, simulateHigashiosakaCampaign, measureHigashiosaka,
+  OSAKA_CITY_POLICIES, measureOsakaCity, osakaCityEntryCampaign,
 } from './balance-sim.js';
 
 const heroes = Object.keys(HEROES);
@@ -387,4 +388,99 @@ test('Higashiosaka: Core breakage causes at least 20% of naive defeats', () => {
 });
 test('Higashiosaka: hero death also causes naive defeats', () => {
   assert.ok(naiveHigDefeats.hero / naiveHigLosses >= HIG_TARGETS.heroDefeatShare, JSON.stringify(naiveHigDefeats));
+});
+
+// Every threshold uses the same three-hero mean and samples as npm run balance.
+const OSAKA_TARGETS = {
+  completion: 1, maxRetries: 5, advantage: .10, maxTurns: 45, variedCells: 1,
+  finaleMaxAp5: .60, climaxMargin: 0, heroMinAp7: .40, coreDefeatShare: .25, monotonicSlack: .05,
+  firstTry: {
+    'osk-1': { 5: .30, 7: .70, 10: .95 },
+    'osk-2': { 5: .30, 7: .70, 10: .95 },
+    'osk-3': { 5: .30, 7: .70, 10: .95 },
+    'osk-4': { 5: .10, 7: .60, 10: .90 },
+  },
+};
+const osakaReport = measureOsakaCity(20);
+const osakaRate = (name, encounterId, ap) => average(osakaReport.firstTry.filter((row) => row.name === name && row.encounterId === encounterId && row.ap === ap));
+
+test('Osaka City: both finale Fighter bots BREAK an affordable heavy before defence or a potion', () => {
+  const battle = createBattle({ heroId: 'fighter', encounterId: 'osk-4', startWave: 3, level: 5, ap: 2, heroHp: 10, potions: 2, rng: () => .9 });
+  const state = { ...battle, enemies: battle.enemies.map((enemy) => ({ ...enemy, intent: 'heavy', charging: true })) };
+  for (const policy of Object.values(OSAKA_CITY_POLICIES)) {
+    assert.deepEqual(policy(state), { skillId: 'powerSlash', target: state.enemies[0].uid });
+  }
+});
+
+test('Osaka City enters after real Higashiosaka completion with the normal rest', () => {
+  for (const heroId of heroes) {
+    const previous = simulateHigashiosakaCampaign({ heroId, ap: 7, seed: 23 });
+    const entry = osakaCityEntryCampaign({ heroId, ap: 7, seed: 23 });
+    assert.ok(previous.completed);
+    assert.equal(entry.cityId, 'osakaCity');
+    assert.equal(entry.level, previous.campaign.level);
+    assert.equal(entry.xp, previous.campaign.xp);
+    assert.equal(entry.heroHp, heroMaxHp(heroId, entry.level));
+    assert.equal(entry.potions, 2);
+    assert.deepEqual(entry.stageResults, []);
+  }
+});
+for (const name of Object.keys(OSAKA_CITY_POLICIES)) {
+  test(`Osaka City: ${name} completes 100% at every AP0-10 within six attempts`, () => {
+    for (let ap = 0; ap <= 10; ap += 1) {
+      const rate = average(osakaReport.campaigns.filter((row) => row.name === name && row.ap === ap));
+      assert.ok(rate >= OSAKA_TARGETS.completion, `${name} AP${ap}: completion ${rate}`);
+    }
+  });
+  test(`Osaka City: ${name} AP5 mean city retries stay at most five`, () => {
+    const retries = average(osakaReport.campaigns.filter((row) => row.name === name && row.ap === 5), 'retries');
+    assert.ok(retries <= OSAKA_TARGETS.maxRetries, `${name}: retries ${retries}`);
+  });
+}
+for (const [encounterId, thresholds] of Object.entries(OSAKA_TARGETS.firstTry)) for (const [ap, threshold] of Object.entries(thresholds)) {
+  test(`Osaka City: priority ${encounterId} AP${ap} meets the first-try target`, () => {
+    const rate = osakaRate('priority', encounterId, Number(ap));
+    assert.ok(rate + 1e-9 >= threshold, `${encounterId} AP${ap}: ${rate} < ${threshold}`);
+  });
+}
+for (const encounterId of ['osk-2', 'osk-4']) {
+  test(`Osaka City: priority gains ten points on ${encounterId} at AP5-7`, () => {
+    const gain = [5, 6, 7].reduce((sum, ap) => sum + osakaRate('priority', encounterId, ap) - osakaRate('naive', encounterId, ap), 0) / 3;
+    assert.ok(gain + 1e-9 >= OSAKA_TARGETS.advantage, `${encounterId}: priority gain ${gain}`);
+  });
+}
+for (const name of Object.keys(OSAKA_CITY_POLICIES)) test(`Osaka City: ${name} osk-4 AP7 mean length stays within 45 player turns`, () => {
+  const turns = average(osakaReport.firstTry.filter((row) => row.name === name && row.encounterId === 'osk-4' && row.ap === 7), 'turns');
+  assert.ok(turns <= OSAKA_TARGETS.maxTurns, `finale turns ${turns}`);
+});
+test('Osaka City: priority finale AP5 first-try mean stays at most 60%', () => {
+  const rate = osakaRate('priority', 'osk-4', 5);
+  assert.ok(rate <= OSAKA_TARGETS.finaleMaxAp5, `finale AP5 ${rate}`);
+});
+test('Osaka City: priority finale is harder than osk-3 at AP5', () => {
+  const finale = osakaRate('priority', 'osk-4', 5);
+  const generals = osakaRate('priority', 'osk-3', 5);
+  assert.ok(finale + OSAKA_TARGETS.climaxMargin < generals, `finale ${finale}, generals ${generals}`);
+});
+for (const heroId of heroes) test(`Osaka City: priority ${heroId} finale AP7 first-try rate is at least 40%`, () => {
+  const row = osakaReport.firstTry.find((row) => row.heroId === heroId && row.name === 'priority' && row.encounterId === 'osk-4' && row.ap === 7);
+  assert.ok(row.rate >= OSAKA_TARGETS.heroMinAp7, `${heroId} AP7 ${row.rate}`);
+});
+for (const name of Object.keys(OSAKA_CITY_POLICIES)) for (const [lower, upper] of [[5, 7], [7, 10]]) {
+  test(`Osaka City: ${name} finale mean does not fall from AP${lower} to AP${upper} beyond five points`, () => {
+    const before = osakaRate(name, 'osk-4', lower);
+    const after = osakaRate(name, 'osk-4', upper);
+    assert.ok(after + OSAKA_TARGETS.monotonicSlack + 1e-9 >= before, `${name} AP${lower} ${before}, AP${upper} ${after}`);
+  });
+}
+test('Osaka City: Core breakage causes at least 25% of naive finale first-try defeats', () => {
+  const losses = osakaReport.firstTry.filter((row) => row.name === 'naive' && row.encounterId === 'osk-4')
+    .reduce((sum, row) => ({ core: sum.core + row.defeats.core,
+      total: sum.total + Object.values(row.defeats).reduce((a, b) => a + b, 0) }), { core: 0, total: 0 });
+  assert.ok(losses.total > 0 && losses.core / losses.total >= OSAKA_TARGETS.coreDefeatShare, JSON.stringify(losses));
+});
+test('Osaka City: first-try outcomes vary with the seed in the combined Core encounters', () => {
+  const failures = ['osk-2', 'osk-4'].filter((encounterId) => osakaReport.firstTry.filter((row) => row.encounterId === encounterId
+    && Math.abs(row.rate * 3 - Math.round(row.rate * 3)) > 1e-9).length < OSAKA_TARGETS.variedCells);
+  assert.deepEqual(failures, []);
 });

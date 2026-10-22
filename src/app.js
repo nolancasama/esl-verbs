@@ -549,7 +549,7 @@ function battleEnded(state, options) {
     const final = options.stage === stageCount(campaign.cityId);
     if (final) {
       saveRegion(markCitySaved(readRegion(), campaign.cityId, campaign));
-      if (campaign.cityId === 'matsubara') saveCampaignOutcome();
+      if (['matsubara', 'osakaCity'].includes(campaign.cityId)) saveCampaignOutcome();
     }
     adventureVictory(options.stage, rewards);
   } else {
@@ -703,7 +703,7 @@ function campaignBoss(from = campaign) {
 /** Store the finished campaign's result once, when the final boss falls. */
 function saveCampaignOutcome() {
   const { totalCorrect } = campaignSummary(campaign);
-  const result = recordCompletion(readRecords(), campaign.heroId, totalCorrect, campaignBoss());
+  const result = recordCompletion(readRecords(), campaign.heroId, totalCorrect, campaignBoss(), { fullCampaign: campaign.cityId === 'osakaCity' });
   saveRecords(result.records);
   campaignOutcome = { ...result, heroId: campaign.heroId };
 }
@@ -770,7 +770,7 @@ function campaignResults() {
   queueMicrotask(() => continueAdventure.focus());
 }
 
-/** Results for a non-origin city: regional progress, without Matsubara's hero titles or records. */
+/** Results for a non-origin city: regional progress and review. */
 function cityResults() {
   clearScreen(); rpgScreen(); screen = 'city-results'; audio.play('title');
   const summary = campaignSummary(campaign); const hero = HEROES[campaign.heroId]; const city = CITIES[campaign.cityId];
@@ -833,6 +833,12 @@ function osakaMapScreen({ justSaved = null } = {}) {
     go.append(element('span', '', resume ? `▶ ${city.jaName}の つづき！  STAGE ${region.checkpoint.stage}` : `▶ ${city.jaName}へ いく！`), element('small', '', resume ? `CONTINUE ${city.name.toUpperCase()}` : `GO TO ${city.name.toUpperCase()}`));
     go.onclick = () => startCityCampaign(target); actions.append(go);
     queueMicrotask(() => go.focus());
+  } else if (Object.keys(CITIES).every((id) => region.savedCities.includes(id))) {
+    // The whole campaign is complete: no next city, so the way on is the main menu.
+    const menu = element('button', 'px-button map-go');
+    menu.append(element('span', '', 'ぜんぶの 町を まもった！  MAIN MENU'), element('small', '', 'ALL CITIES SAVED'));
+    menu.onclick = mainMenu; actions.append(menu);
+    queueMicrotask(() => menu.focus());
   } else actions.append(element('p', 'map-soon', 'つぎの 町は じゅんびちゅう…  MORE CITIES COMING SOON'));
   card.append(top, heading, status, view.node, actions); app.append(card);
   if (justSaved) {
@@ -1097,6 +1103,7 @@ function debugQuiz(params) {
 const MAP_PRESETS = {
   fresh: [], matsubara: ['matsubara'], sakai: ['matsubara', 'sakai'],
   yao: ['matsubara', 'sakai', 'yao'], higashiosaka: ['matsubara', 'sakai', 'yao', 'higashiosaka'],
+  osakaCity: ['matsubara', 'sakai', 'yao', 'higashiosaka', 'osakaCity'],
 };
 function debugMap(params) {
   const saved = MAP_PRESETS[params.get('preset')] ?? MAP_PRESETS.matsubara;

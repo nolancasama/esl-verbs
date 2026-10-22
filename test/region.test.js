@@ -43,9 +43,10 @@ test('a checkpoint alone never marks a city saved', () => {
   assert.deepEqual(region.savedCities, ['matsubara']);
 });
 
-test('future cities with no campaign are always locked', () => {
+test('all five saved cities remain saved and playable', () => {
   const region = { ...fresh(), savedCities: Object.keys(CITIES) };
-  assert.equal(cityStatus(region, 'osakaCity'), 'locked');
+  assert.equal(cityStatus(region, 'osakaCity'), 'saved');
+  assert.ok(cityPlayable(region, 'osakaCity'));
 });
 
 test('saved cities are de-duplicated and restored in CITIES order', () => {
@@ -180,7 +181,7 @@ test('Higashiosaka checkpoints resume every stage and victory saves the city', (
     assert.equal(saved.checkpoint, null);
     assert.equal(cityStatus(saved, 'higashiosaka'), 'saved');
     assert.equal(cityPlayable(saved, 'higashiosaka'), true, 'saved Higashiosaka can be replayed');
-    assert.equal(cityStatus(saved, 'osakaCity'), 'locked');
+    assert.equal(cityStatus(saved, 'osakaCity'), 'danger');
   }
 });
 
