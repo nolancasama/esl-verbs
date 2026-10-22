@@ -82,7 +82,7 @@ export const CITY_STORIES = Object.freeze({
     intro: Object.freeze([
       { mood: 'danger', monsters: 'near', music: 'ominous', sfx: 'alarm', ...card(['ひがしおおさかが あぶない！'], { big: 0, hold: true, en: 'HIGASHIOSAKA IS IN DANGER!' }), ms: 2000 },
       card(['ものづくりの まちに きかいの てきが きた！']),
-      { hero: 'idle', ...card(['アクション・コアが ねらわれている！ まもりぬけ！']) },
+      { hero: 'idle', ...card(['アクション・コアが ねらわれている！', 'まもりぬけ！']) },
     ]),
     ending: Object.freeze([
       { mood: 'danger', monsters: 'near', hero: 'idle', cut: true, ms: 800 },

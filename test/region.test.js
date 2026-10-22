@@ -204,7 +204,7 @@ test('Higashiosaka story uses the specified danger, protection and Osaka City be
   assert.deepEqual([intro[0].mood, intro[0].music, intro[0].sfx], ['danger', 'ominous', 'alarm']);
   assert.deepEqual(intro[1].card.lines, ['ものづくりの まちに きかいの てきが きた！']);
   assert.equal(intro[2].hero, 'idle');
-  assert.deepEqual(intro[2].card.lines, ['アクション・コアが ねらわれている！ まもりぬけ！']);
+  assert.deepEqual(intro[2].card.lines, ['アクション・コアが ねらわれている！', 'まもりぬけ！']);
   assert.deepEqual(ending[1].title, { ja: 'ひがしおおさかを まもった！', en: 'HIGASHIOSAKA IS SAFE!' });
   assert.deepEqual(ending[2].card.lines, ['コアの ひかりが まちを てらす。']);
   assert.deepEqual(ending[3].card.lines, ['さいごは おおさか市だ！']);
