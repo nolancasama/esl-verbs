@@ -1,39 +1,37 @@
 {
-  "task": "Repair and complete the PARTIAL Yao correction (section 2D of .ai/pass-spec.md) left in the working tree after the previous worker hit a usage limit: 4 tests fail and Yao stats were pushed to absurd values (Orc attack 0, Warcaller attack 1, callBudget 1). Diagnose why the naive bot still loses Yao 3-4 (real losses vs 200-turn timeouts), then finish the correction with sensible stats.",
+  "task": "Higashiosaka slice H1: implement the Action Core battle system (spec section 2) and its battle UI (spec section 5) in the existing battle engine, with generic engine/UI tests on a test-only encounter. No Higashiosaka enemy data, encounters, region or story yet (that is H2).",
   "requirements": [
-    "Inspect the existing diff first. Preserve what is correct (callBudget engine support, living<3 rule, Warcaller goblin calls, protected-caller hint, two-line call label, browser test additions); repair or revert what is wrong; then complete and validate. Do not continue blindly from the previous worker's numbers.",
-    "Measure before tuning: for losing yao-3/yao-4 runs at AP5 report how many end by hero death vs the 200-turn cap, turns, recoveries and reinforcements; fix the cause (e.g. a stalemate) rather than shrinking enemy stats.",
-    "Enemies must keep role-appropriate stats: no enemy with attack 0 except a pure support; Armored Orc attack >= 3, Signal Captain attack >= 4, Warcaller attack >= 4 and heavy >= 12; callBudget >= 2 per caller wave unless a measurement shows why not.",
-    "The working tree already holds the first Slice 2 implementation (uncommitted). Inspect the existing diff first; preserve what is correct (station-map flow, region/story, engine mechanics, UI, tests) and change only what section 2D requires. Do not start over.",
-    "Implement every bullet of section 2D in .ai/pass-spec.md: callBudget per wave (default 3), calls need living < 3, Warcaller callIds goblin -> wolf+bombSlime, the protected-caller hint and matching priority-bot policy, two-line nowrap call label, restored stats (Orc >= 18 HP, Captain >= 26 HP, Warcaller >= 40 HP).",
-    "Before tuning, confirm the snowball diagnosis with a quick measurement (e.g. count reinforcements and turns per lost yao-3/yao-4 run at AP5 before and after the budget) and report the numbers in the summary.",
-    "Meet the 2D balance targets in the Yao section of npm run balance and encode them as assertions in test/balance.test.js. Matsubara and Sakai report lines must stay byte-identical.",
-    "Engine tests: the budget stops calls once spent and resets per wave; no call when living >= 3; a call adds at most the remaining budget; the hint names the Orc when the caller is protected.",
-    "Re-run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser and report the result.",
-    "Update the DESIGN_DECISIONS.md Yao entry (budget, no caller-calls-callers, protected-caller rule, final stats) and the CURRENT_STATE.md balance lines."
+    "Read .ai/higashiosaka-spec.md sections 2, 5, 9 and 11 first (section 11 = what H0 already built: the actionCore sprite prop, the frozen Core plate markup and CSS in rpg.css, the .battle-intent__aim tag). Read DESIGN_DECISIONS.md (Yao balance correction, H0 entry).",
+    "Freeze and implement exactly: encounter `core: { hp }` -> state.core = { hp, maxHp } (null when absent); persists across waves of one battle, full on every new battle and retry; not saved in checkpoints.",
+    "enemy.aim = 'hero' | 'core' chosen together with each intent from enemy data (`aim: 'core'` -> every damaging intent aims at the Core; `heavyAim: 'core'` -> charge and heavy aim at the Core, normal attacks at the hero; default hero; always hero when there is no Core). The aim never changes between telegraph and action.",
+    "resolveEnemyPhase: an attack/heavy aimed at the Core subtracts defendedDamage(amount, action) from core.hp (hero Guard/Barrier reduce, Dodge follows its normal rules), event { type: 'damage', target: 'core', source, amount }; the ally protect rule does not apply; a Core-aimed heavy met by Guard/Barrier refunds AP exactly like a heavy on the hero (existing once-per-phase defense refund).",
+    "core.hp reaching 0 loses the battle immediately, even mid-phase: { type: 'lost', reason: 'core' }, message 'アクション・コアが こわれた！ THE CORE IS BROKEN!'. Hero death still loses as before. Retry assist unchanged; Core full on each attempt.",
+    "Core charge: at the start of every coreChargeEvery-th player turn (default 3) when core.hp > coreChargeAbove * maxHp (default 0.5) the hero gains +1 AP via gainAp(..., 'core') with message 'アクション・コア チャージ！ +1 AP'. Export pure helpers coreThreats(state) and coreChargeDue(state).",
+    "Generalise the Yao protector rule to data: `protects: 'callers'` (Armored Orc, behaviour byte-identical) or `protects: 'coreAttackers'` (first living enemy with aim 'core' or heavyAim 'core', else a boss). Existing Orc data must keep working (default to 'callers' if absent).",
+    "Repair: ai.support 'repair' chooses `repair` when a living `machine: true` enemy other than itself is damaged; resolving heals it by data.repair; event { type: 'repair', source, target, amount }; telegraphed like heal ('🔧 REPAIR / なおす'). Ninja Strike's OPENING list gains 'repair'. Sprite hooks: repair intent rests in 'cast'; eventSpriteStates repair -> [[source, 'cast']].",
+    "UI (src/battle-ui.js): render the Core with the exact markup documented in the rpg.css 'Action Core' comment and spec section 11 (.battle-field--core, .battle-core--{idle|hit|charge|broken|low}, plate with hpBar + battle-hp--core, battleArt('actionCore', row) where broken uses the 'tired' row). Hit state on core damage events, charge state on the core AP gain, low below 35%, broken on core loss. Core damage floater on the Core. Core-aimed intents append <span class=\"battle-intent__aim\">→ コア</span>. Hints in battleHint after the existing heavy/boom/low-HP checks: Core-aimed heavy -> '🛡 コアが ねらわれている！ まもろう！ GUARD THE CORE!' (highlights defence); a living aim:'core' enemy -> 'コアを こわす てきを さきに たおそう！'; Core below 35% -> 'コアが ピンチ！ まもろう！'. repair event message '🔧 なおした！'. Defeat by Core: the defeat screen says 'アクション・コアが こわれた… / The Core broke…' instead of the HP line. Add CSS only if needed beyond the frozen block, without changing the frozen look.",
+    "Tests (new test/core.test.js and/or core-ui test): no Core -> identical behaviour (all existing suites untouched and passing); aim chosen with the intent and stable; core damage uses hero defence (Guard/Barrier reduce, Dodge rules, AP refund on a core heavy); Core at 0 loses with reason 'core' even mid-phase; Core full on retry; waves keep Core HP; charge every 3rd turn only above half; protector protects a core attacker then a boss; repair heals only damaged machines and is telegraphed; Power Slash breaks a core-aimed heavy; UI: the → コア tag, the Core plate, the GUARD THE CORE hint, the Core defeat message. Use a test-only encounter and test-only enemy data defined inside the tests (do not add Higashiosaka enemies to src/battle-data.js).",
+    "Add a `?debug=battle` way to see the Core: either a debug-only encounter in the debug launcher or a 'Core' checkbox that adds core: { hp: 30 } to the chosen encounter. Keep it out of Adventure.",
+    "Append a dated DESIGN_DECISIONS.md entry for any decision taken while implementing; revise the CURRENT_STATE.md Next Steps line for H1 (done) instead of appending logs."
   ],
   "constraints": [
-    "Do not edit src/station-map.js, src/battle-locations.js, station-map.css or sprite drawing code in src/pixel-enemies.js.",
-    "Do not change Matsubara or Sakai numbers or behaviour.",
-    "Keep the telegraph rule: a call is shown a full player turn ahead and never resolves if the caller died.",
+    "Do not edit sprite drawing code (src/pixel-enemies.js, pixel-*.js), src/station-map.js, src/battle-locations.js, or the frozen 'Action Core' CSS block in rpg.css beyond additive rules.",
+    "Matsubara, Sakai and Yao behaviour and numbers unchanged: npm run balance output must be byte-identical to before your change (save it first).",
+    "Static ES modules, no build step, no framework, no new dependency. Chromebook first: 1024x600 battle with no page scroll.",
     "Edit source with structured edit tools; on the first shell quoting/escaping failure switch to file edit tools.",
     "Do not commit. Do not delete .ai files."
   ],
-  "notes": [
-    "Current (first-run) Yao stats in src/battle-data.js were cut far below the spec (hornGoblin 7 HP, armoredOrc 9 HP atk 1, signalCaptain 18 HP, warcaller 30 HP atk 2) while yao-3/4 stayed 0% at AP5-7 — that is why the controller suspects a structural snowball (uncapped Warcaller calls of Horn Goblins that call again, field refilling to 4).",
-    "Report numbers before the correction (from the current tree) are in the scratch copy the controller took; regenerate them yourself with npm run balance before changing code."
-  ],
   "startingPoints": [
-    ".ai/pass-spec.md",
-    "src/battle-data.js",
+    ".ai/higashiosaka-spec.md",
     "src/battle-engine.js",
+    "src/battle-data.js",
     "src/battle-ui.js",
+    "src/battle-art.js",
+    "src/app.js",
     "rpg.css",
-    "test/balance-sim.js",
-    "test/balance-report.mjs",
-    "test/balance.test.js",
     "test/yao.test.js",
-    "test/yao-ui.test.js"
+    "test/yao-ui.test.js",
+    "test/art.test.js"
   ],
   "validation": [
     "npm test",
@@ -41,13 +39,13 @@
   ],
   "behavioralAcceptance": {
     "owner": "worker",
-    "description": "Run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser and report pass/fail; refresh the .tmp/browser/ Yao screenshots."
+    "description": "Run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser (must still pass). Then with a scratch Playwright script (python -m http.server on a free port) open ?debug=battle with the Core enabled at 1024x600 and save screenshots to .tmp/browser/: core idle with a → コア intent, a core-aimed heavy telegraphed with the GUARD THE CORE hint, core charge (+1 AP), core low, and the Core-broken defeat screen; report page scroll (must be 0) and console errors."
   },
-  "category": "bugfix",
-  "complexity": "medium",
+  "category": "feature",
+  "complexity": "hard",
   "composition": "atomic",
   "bounded": true,
   "exploration": "local",
   "risk": "medium",
-  "expectedCost": "medium"
+  "expectedCost": "large"
 }

@@ -110,7 +110,7 @@ export function cityClass(mood) {
 /** Sprite row for an enemy's standing condition. A defeated enemy is not drawn at all. */
 export function enemyRestState(enemy) {
   if (enemy.hp <= 0) return 'gone';
-  if (enemy.intent === 'call') return 'cast';
+  if (['call', 'repair'].includes(enemy.intent)) return 'cast';
   if (enemy.intent === 'boom') return 'charge';
   if (enemy.charging) return 'charge';
   if (enemy.tired) return 'tired';
@@ -137,6 +137,7 @@ export function eventSpriteStates(event) {
     case 'attack': return event.source ? [[event.source, 'attack']] : [['hero', HERO_ACTION[event.skillId] || 'attack']];
     case 'damage': return [[event.target, event.amount === 0 ? 'dodge' : 'hit']];
     case 'heal': return event.source ? [[event.source, 'cast']] : event.target === 'hero' ? [] : [[event.target, 'cast']];
+    case 'repair': return [[event.source, 'cast']];
     case 'item': return [['hero', 'heal']];
     case 'recover': return [['hero', 'tired']];
     case 'defend': return [['hero', event.defense]];

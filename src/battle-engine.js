@@ -6,6 +6,7 @@ const cloneState = (state, changes = {}) => ({
   ...state,
   ...changes,
   hero: changes.hero || { ...state.hero },
+  core: state.core ? { ...state.core } : null,
   enemies: changes.enemies || state.enemies.map((enemy) => ({ ...enemy })),
 });
 const damageAmount = (amount, target) => Math.ceil(amount * (target.guarding ? BALANCE.enemyGuardMultiplier : 1) * (target.tired ? BALANCE.tiredMultiplier : 1));
@@ -40,7 +41,7 @@ function enemyState(id, uid, summoned = false) {
   const enemy = ENEMIES[id];
   if (!enemy) throw new Error(`Unknown enemy: ${id}`);
   return {
-    uid, id, hp: enemy.maxHp, maxHp: enemy.maxHp, phase: 1, intent: null, cadence: 0,
+    uid, id, hp: enemy.maxHp, maxHp: enemy.maxHp, phase: 1, intent: null, aim: 'hero', cadence: 0,
     guarding: false, tired: false, charging: false, summoned,
     callWait: enemy.ai?.firstCall ?? 0, calls: 0, fuse: enemy.fuse ?? null,
   };
@@ -63,19 +64,35 @@ function canCall(state, enemy, ai) {
     && state.callBudget > 0 && state.enemies.filter(living).length < 3;
 }
 
-/** One caller/boss per living protector, in UID order. Optional UID selects that Orc. */
+/** One distinct ward per living protector, in UID order. */
 export function protectedUid(state, protectorUid) {
   const protectors = state.enemies.filter((enemy) => living(enemy) && ENEMIES[enemy.id].protector).sort((a, b) => a.uid - b.uid);
-  const index = protectorUid == null ? 0 : protectors.findIndex((enemy) => enemy.uid === protectorUid);
-  if (index < 0 || !protectors[index]) return null;
-  const candidates = state.enemies.filter((enemy) => living(enemy) && !ENEMIES[enemy.id].protector
-    && (ENEMIES[enemy.id].ai?.support === 'call' || ENEMIES[enemy.id].boss)).sort((a, b) => a.uid - b.uid);
-  return candidates[index]?.uid ?? null;
+  const wanted = protectorUid ?? protectors[0]?.uid;
+  const wards = new Set();
+  for (const protector of protectors) {
+    const coreAttackers = ENEMIES[protector.id].protects === 'coreAttackers';
+    const candidates = state.enemies.filter((enemy) => living(enemy) && !ENEMIES[enemy.id].protector && !wards.has(enemy.uid))
+      .sort((a, b) => a.uid - b.uid);
+    const ward = coreAttackers
+      ? candidates.find((enemy) => ENEMIES[enemy.id].aim === 'core' || ENEMIES[enemy.id].heavyAim === 'core')
+        ?? candidates.find((enemy) => ENEMIES[enemy.id].boss)
+      : candidates.find((enemy) => ENEMIES[enemy.id].ai?.support === 'call' || ENEMIES[enemy.id].boss);
+    if (protector.uid === wanted) return ward?.uid ?? null;
+    if (ward) wards.add(ward.uid);
+  }
+  return null;
+}
+
+function repairTarget(state, source) {
+  return state.enemies.filter((enemy) => living(enemy) && enemy.uid !== source.uid
+    && ENEMIES[enemy.id].machine && enemy.hp < enemy.maxHp)
+    .sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp) || a.uid - b.uid)[0];
 }
 
 function chooseNormalIntent(state, enemy, ai, rng) {
   const data = ENEMIES[enemy.id];
   const alive = state.enemies.filter(living);
+  if (ai.support === 'repair' && repairTarget(state, enemy)) return 'repair';
   if (ai.support === 'call' && canCall(state, enemy, ai)) return 'call';
   if (ai.support === 'summon' && canSummon(state, enemy, ai)) return 'summon';
   if (ai.support === 'heal' && alive.length > 1 && alive.some((candidate) => candidate.hp < candidate.maxHp)) return 'heal';
@@ -95,6 +112,32 @@ export function chooseEnemyIntent(state, enemy, rng = Math.random) {
   if (enemy.intent === 'rest') return chooseNormalIntent(state, enemy, ai, rng);
   if (ai.heavyEvery && enemy.cadence >= ai.heavyEvery) return 'charge';
   return chooseNormalIntent(state, enemy, ai, rng);
+}
+
+// Store aim with the telegraph; resolution never reads aim from enemy data again.
+function withEnemyIntent(state, enemy, rng) {
+  const intent = chooseEnemyIntent(state, enemy, rng);
+  const data = ENEMIES[enemy.id];
+  const aimsAtCore = (data.aim === 'core' && ['attack', 'heavy', 'drain', 'boom', 'charge'].includes(intent))
+    || (data.heavyAim === 'core' && ['charge', 'heavy'].includes(intent));
+  return { ...enemy, intent, aim: state.core && aimsAtCore ? 'core' : 'hero' };
+}
+
+/** Living enemies whose current telegraph aims at the Core. */
+export function coreThreats(state) {
+  return state.core ? state.enemies.filter((enemy) => living(enemy) && enemy.aim === 'core') : [];
+}
+
+/** Whether this player turn receives the Core's periodic charge. */
+export function coreChargeDue(state) {
+  const encounter = ENCOUNTERS[state.encounterId];
+  return Boolean(state.core && state.turn === 'player' && state.round > 0
+    && state.round % (encounter.coreChargeEvery ?? 3) === 0
+    && state.core.hp > 0 && state.core.hp > (encounter.coreChargeAbove ?? 0.5) * state.core.maxHp);
+}
+
+function chargeCore(state, events) {
+  return coreChargeDue(state) ? gainAp(state, 1, 'core', events) : state;
 }
 
 export function getEnemyIntent(state, uid) {
@@ -137,16 +180,17 @@ function beginNextWave(state, events, rng) {
     round: state.round + 1,
     hero: { ...state.hero, defense: null, exhausted: false, openingUid: null, protected: false },
   };
-  next = { ...next, enemies: next.enemies.map((enemy) => ({ ...enemy, intent: chooseEnemyIntent(next, enemy, rng) })) };
+  next = { ...next, enemies: next.enemies.map((enemy) => withEnemyIntent(next, enemy, rng)) };
   events.push({ type: 'waveStart', wave, waveCount: state.waveCount, targets: enemies.map((enemy) => enemy.uid) });
   if (!state.ally && encounter.ally?.joinsAtWave === wave) {
     next = { ...next, ally: { id: encounter.ally.id } };
     events.push({ type: 'allyJoin', allyId: encounter.ally.id });
   }
-  return next;
+  return chargeCore(next, events);
 }
 
 function finish(state, events, rng = Math.random) {
+  if (state.core?.hp <= 0) return { state: { ...state, turn: 'lost' }, events: [...events, { type: 'lost', reason: 'core' }] };
   if (state.enemies.every((enemy) => !living(enemy))) {
     if (state.wave < state.waveCount) {
       events.push({ type: 'waveClear', wave: state.wave });
@@ -199,7 +243,7 @@ function damageEnemy(state, uid, amount, events) {
  * level drives max HP, the skill tier and the class passive; skillTier overrides the tier (debug).
  * heroHp defaults to full; potions defaults to 0.
  */
-export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier, heroHp, potions = 0, startWave = 1, rng = Math.random }) {
+export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier, heroHp, potions = 0, startWave = 1, core = ENCOUNTERS[encounterId]?.core, rng = Math.random }) {
   const heroData = HEROES[heroId];
   const encounter = ENCOUNTERS[encounterId];
   if (!heroData) throw new Error(`Unknown hero: ${heroId}`);
@@ -215,6 +259,7 @@ export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier
     ap: clampAp(Math.floor(ap) || 0), potions: Math.max(0, Math.floor(potions) || 0), turn: 'player', round: 1,
     wave, waveCount: waves.length, callBudget: waves[wave - 1].callBudget ?? 3,
     ally: encounter.ally?.joinsAtWave <= wave ? { id: encounter.ally.id } : null,
+    core: core ? { hp: core.hp, maxHp: core.hp } : null,
     clearedXp: waves.slice(0, wave - 1).reduce((sum, priorWave) => sum + waveXp(priorWave), 0),
     hero: {
       hp: Math.max(0, Math.min(heroHp ?? maxHp, maxHp)), maxHp, defense: null,
@@ -222,8 +267,8 @@ export function createBattle({ heroId, encounterId, ap = 0, level = 1, skillTier
     },
     enemies, selectedUid: enemies[0]?.uid ?? null, nextUid: firstUid + enemies.length,
   };
-  state = { ...state, enemies: state.enemies.map((enemy) => ({ ...enemy, intent: chooseEnemyIntent(state, enemy, rng) })) };
-  return state;
+  state = { ...state, enemies: state.enemies.map((enemy) => withEnemyIntent(state, enemy, rng)) };
+  return chargeCore(state, []);
 }
 
 export function availableSkills(state) {
@@ -277,7 +322,7 @@ export function mustRecover(state) {
 }
 
 export function isVictory(state) { return state.wave >= state.waveCount && state.enemies.every((enemy) => !living(enemy)); }
-export function isDefeat(state) { return state.hero.hp <= 0; }
+export function isDefeat(state) { return state.hero.hp <= 0 || Boolean(state.core && state.core.hp <= 0); }
 
 /** XP for a battle: every non-summoned enemy that has been defeated. */
 export function battleXp(state) {
@@ -378,7 +423,7 @@ export function useSkill(state, skillId, targetUid = state.selectedUid, rng = Ma
     if (skillId === 'magicBolt' && (targetBefore?.charging || targetBefore?.tired)) {
       next = gainAp(next, BALANCE.exploitAp, 'exploit', events);
     }
-    if (skillId === 'strike' && targetBefore && (targetBefore.charging || targetBefore.guarding || targetBefore.tired || ['heal', 'summon', 'call'].includes(targetBefore.intent))) {
+    if (skillId === 'strike' && targetBefore && (targetBefore.charging || targetBefore.guarding || targetBefore.tired || ['heal', 'repair', 'summon', 'call'].includes(targetBefore.intent))) {
       if (next.enemies.some((enemy) => enemy.uid === target && living(enemy))) {
         next.hero = { ...next.hero, openingUid: target };
         events.push({ type: 'opening', target });
@@ -430,6 +475,7 @@ export function recover(state) {
 
 export function resolveEnemyPhase(state, rng = Math.random) {
   if (state.turn !== 'enemy') return rejected(state, 'not-enemy-turn');
+  if (state.core?.hp <= 0) return finish(state, [], rng);
   const passive = passiveEffect(state);
   let next = cloneState(state);
   let dodgedNormal = false;
@@ -452,7 +498,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     }
   }
 
-  const defendedDamage = (amount, action) => {
+  const defendedDamage = (amount, action, target = 'hero') => {
     let defended;
     if (next.hero.exhausted) defended = Math.ceil(amount * BALANCE.exhaustedMultiplier);
     else if (next.hero.defense === 'dodge') {
@@ -464,7 +510,15 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     else if (next.hero.defense === 'guard') defended = Math.ceil(amount * (passive.guardMultiplier ?? BALANCE.guardMultiplier));
     else if (next.hero.defense === 'barrier') defended = Math.ceil(amount * BALANCE.barrierMultiplier);
     else defended = amount;
-    return next.hero.protected ? Math.ceil(defended * ALLIES[next.ally.id].protectMultiplier) : defended;
+    return target === 'hero' && next.hero.protected ? Math.ceil(defended * ALLIES[next.ally.id].protectMultiplier) : defended;
+  };
+
+  const damageTarget = (enemy, amount, action) => {
+    const target = next.core && enemy.aim === 'core' ? 'core' : 'hero';
+    const damage = defendedDamage(amount, action, target);
+    next[target] = { ...next[target], hp: Math.max(0, next[target].hp - damage) };
+    events.push({ type: 'damage', target, source: enemy.uid, amount: damage });
+    return damage;
   };
 
   // Only enemies present when the phase starts act; a summon waits until the next phase.
@@ -480,10 +534,8 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     if (['attack', 'heavy', 'drain'].includes(action)) {
       if (action === 'heavy') enemy.cadence = 0;
       else enemy.cadence += 1;
-      const amount = defendedDamage(action === 'heavy' ? data.heavy : data.attack, action);
-      events.push({ type: 'attack', source: enemy.uid, action });
-      next.hero = { ...next.hero, hp: Math.max(0, next.hero.hp - amount) };
-      events.push({ type: 'damage', target: 'hero', source: enemy.uid, amount });
+      events.push({ type: 'attack', source: enemy.uid, action, ...(next.core && enemy.aim === 'core' ? { target: 'core' } : {}) });
+      const amount = damageTarget(enemy, action === 'heavy' ? data.heavy : data.attack, action);
       if (action === 'drain') {
         const healed = Math.min(amount, data.drainHeal ?? amount, enemy.maxHp - enemy.hp);
         enemy.hp += healed;
@@ -493,9 +545,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
       enemy.fuse -= 1;
       events.push({ type: 'fuse', target: enemy.uid, fuse: enemy.fuse });
     } else if (action === 'boom') {
-      const amount = defendedDamage(data.boom, 'heavy');
-      next.hero = { ...next.hero, hp: Math.max(0, next.hero.hp - amount) };
-      events.push({ type: 'damage', target: 'hero', source: enemy.uid, amount });
+      damageTarget(enemy, data.boom, 'heavy');
       enemy.hp = 0;
       enemy.exploded = true;
       if (next.hero.openingUid === enemy.uid) next.hero = { ...next.hero, openingUid: null };
@@ -529,6 +579,13 @@ export function resolveEnemyPhase(state, rng = Math.random) {
       if (hurt?.uid === enemy.uid) enemy.hp += amount;
       else if (hurt) next.enemies = next.enemies.map((candidate) => candidate.uid === hurt.uid ? { ...candidate, hp: candidate.hp + amount } : candidate);
       events.push({ type: 'heal', source: enemy.uid, target: hurt?.uid ?? enemy.uid, amount });
+    } else if (action === 'repair') {
+      const hurt = repairTarget(next, enemy);
+      if (hurt) {
+        const amount = Math.min(data.repair, hurt.maxHp - hurt.hp);
+        next.enemies = next.enemies.map((candidate) => candidate.uid === hurt.uid ? { ...candidate, hp: candidate.hp + amount } : candidate);
+        events.push({ type: 'repair', source: enemy.uid, target: hurt.uid, amount });
+      }
     } else if (action === 'summon') {
       const ai = effectiveAi(enemy);
       if (canSummon(next, enemy, ai)) {
@@ -541,6 +598,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
     }
 
     next.enemies = next.enemies.map((candidate) => candidate.uid === enemy.uid ? enemy : candidate);
+    if (next.core?.hp <= 0) return finish(next, events, rng);
     if (['heavy', 'boom'].includes(action) && next.hero.defense && next.hero.hp > 0) {
       if (['guard', 'dodge'].includes(next.hero.defense) && !next.hero.counter) {
         next.hero = { ...next.hero, counter: true };
@@ -555,7 +613,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
   }
 
   next.hero = { ...next.hero, defense: null, exhausted: false, protected: false };
-  next.enemies = next.enemies.map((enemy) => living(enemy) ? { ...enemy, intent: chooseEnemyIntent(next, enemy, rng) } : { ...enemy, intent: null });
+  next.enemies = next.enemies.map((enemy) => withEnemyIntent(next, enemy, rng));
 
   // A bomb can defeat itself and the hero together; it cannot award a victory or next wave.
   if (next.hero.hp <= 0 && events.some((event) => event.type === 'explode')) {
@@ -564,7 +622,7 @@ export function resolveEnemyPhase(state, rng = Math.random) {
 
   const outcome = finish(next, events, rng);
   if (['won', 'lost'].includes(outcome.state.turn) || outcome.events.some((event) => event.type === 'waveStart')) return outcome;
-  return { state: { ...outcome.state, turn: 'player', round: outcome.state.round + 1 }, events: outcome.events };
+  return { state: chargeCore({ ...outcome.state, turn: 'player', round: outcome.state.round + 1 }, events), events: outcome.events };
 }
 
 export function chooseEncounter(tier, rng = Math.random) {

@@ -842,3 +842,29 @@ Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
   tunnel portal because they really tunnel under the Ikoma hills.
 - Art lands before battle data: the art test lists the art-ahead ids
   explicitly (H2 empties the list), instead of loosening the check.
+
+## 2026-10-22 — Higashiosaka H1: generic Action Core contract
+
+- Encounters opt into a fresh `{ hp, maxHp }` Core; it survives wave changes
+  within that battle and resets on retry. Checkpoints continue carrying only
+  campaign resources. The battle debug launcher's Core checkbox passes a
+  30-HP Core override to `createBattle`; Adventure data is unchanged.
+- Core charge counts the existing player-turn round across waves, including
+  the turn opened by clearing a wave. The interval and strict HP threshold
+  come from encounter `coreChargeEvery` / `coreChargeAbove` (defaults 3 / .5).
+  AP remains capped through the existing gain function.
+- Aim is stored with each intent and used through resolution. Core attacks
+  carry their target into animation events too, so playback cannot redirect
+  an old attack using the following turn's telegraph. Guard, Barrier and
+  the phase-wide Dodge sequence cover both hero and Core; ally protection
+  covers only the hero. Core loss immediately ends the phase.
+- Protectors choose distinct wards in UID order. The default caller/boss rule
+  retains Yao behavior; `coreAttackers` prefers enemies whose data can target
+  the Core, then falls back to a boss. Repair follows heal's lowest HP-ratio,
+  then UID ordering, restricted to other living damaged machines.
+- Core-specific hints follow hero-heavy, boom and hero-HP emergencies; the
+  generic heavy hint applies to hero threats so a Core heavy can display
+  GUARD THE CORE. The H0 Core markup and CSS remain the visual contract.
+- Generic tests define temporary encounter/enemy fixtures inside the tests
+  and restore the mutable registry entries afterward. No Higashiosaka enemy,
+  encounter, region or story data is introduced before H2.

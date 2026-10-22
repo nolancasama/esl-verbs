@@ -21,7 +21,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
   let skill = null, hits = 0, enemyAction = null, enemyId = null, lastTarget = null;
 
   const field = () => root.querySelector('.battle-field');
-  const slotOf = (target) => (target === 'hero' || target === 'ally' ? `[data-combatant="${target}"]` : `[data-enemy-uid="${target}"]`);
+  const slotOf = (target) => (['hero', 'ally', 'core'].includes(target) ? `[data-combatant="${target}"]` : `[data-enemy-uid="${target}"]`);
   const spriteOf = (target) => root.querySelector(`${slotOf(target)} .battle-sprite`);
   const wrapOf = (target) => root.querySelector(`${slotOf(target)} .battle-art-wrap`);
   const sfx = (name) => sound?.sfx?.(name);
@@ -204,9 +204,10 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
     const enemy = state.enemies.find((candidate) => candidate.uid === event.source);
     enemyId = enemy?.id ?? null;
     const heavy = event.action === 'heavy';
-    const hero = centre('hero', 0.45);
+    const target = event.target ?? 'hero';
+    const hero = centre(target, 0.45);
     if (!heavy) {
-      if (!ENEMIES[enemyId]?.boss) dash(event.source, 'hero', 0.18, 380);
+      if (!ENEMIES[enemyId]?.boss) dash(event.source, target, 0.18, 380);
       if (event.action === 'drain') { sfx('drain'); light('blood', 500); }
       return 300;
     }
@@ -231,8 +232,8 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
     if (style === 'quake') {
       sfx('charge');
       later(260, () => sfx('quake'));
-      spawn('quakeCrack', groundUnder('hero'), { dur: 700, delay: 260, scale: 1.2 });
-      spawn('debris', groundUnder('hero'), { dur: 560, delay: 300 });
+      spawn('quakeCrack', groundUnder(target), { dur: 700, delay: 260, scale: 1.2 });
+      spawn('debris', groundUnder(target), { dur: 560, delay: 300 });
       spawn('debris', groundUnder(event.source), { dur: 560, delay: 260 });
       shake('l', 260); punch(260);
       return 900;
@@ -257,7 +258,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
       return 820;
     }
     // Tier-2 enemy heavies (Rock Smash, Captain Slash)
-    dash(event.source, 'hero', 0.25, 460);
+    dash(event.source, target, 0.25, 460);
     sfx('charge');
     return 420;
   }
@@ -265,7 +266,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
   function damage(event, state) {
     const at = centre(event.target, event.target === 'hero' ? 0.45 : 0.5);
     if (event.amount === 0) { spawn('poof', at, { dur: 300 }); sfx('guard'); return 320; }
-    if (event.target === 'hero') {
+    if (event.target === 'hero' || event.target === 'core') {
       const heavy = enemyAction === 'heavy';
       if (!BOSS_STYLE[enemyId] || !heavy) spawn(heavy ? 'bigImpact' : 'impact', at, { dur: heavy ? 420 : 320 });
       if (enemyAction === 'drain') {
@@ -312,6 +313,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
     switch (event.type) {
       case 'attack': return event.source ? enemyAttack(event, state) : heroAttack(event, state);
       case 'damage': return damage(event, state);
+      case 'repair':
       case 'heal': {
         const at = centre(event.target, 0.5);
         if (event.target === 'hero') { spawn(skill === 'heal' ? 'healPillar' : 'potionFx', centre('hero', 0.45), { dur: 560 }); sfx('heal'); return 520; }
@@ -366,7 +368,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
       case 'opening':
       case 'opening-hit': spawn('eyeFx', centre(event.target, 0.2), { dur: 300 }); return 320;
       case 'break': spawn('breakFx', centre(event.target, 0.5), { dur: 520 }); sfx('break'); shake('m'); light('white', 200); return 560;
-      case 'ap': spawn('sparkle', centre('hero', 0.2), { dur: 300 }); sfx('apGain'); return 320;
+      case 'ap': spawn('sparkle', centre(event.reason === 'core' ? 'core' : 'hero', 0.2), { dur: 300 }); sfx('apGain'); return 320;
       case 'recover': spawn('recoverFx', centre('hero', 0.5), { dur: 620 }); sfx('recover'); return 700;
       case 'chain': {
         const from = centre(lastTarget, 0.5), to = centre(event.target, 0.5);

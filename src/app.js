@@ -8,7 +8,7 @@ import { battleXp, chooseEncounter, createBattle } from './battle-engine.js';
 import {
   applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, chapterRest, createCampaign, recordDefeat, recordStage, resumeCampaign, retryHp, xpProgress,
 } from './campaign.js';
-import { createBattleView } from './battle-ui.js';
+import { createBattleView, defeatHpLine } from './battle-ui.js';
 import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, getIcon, groundClass, prewarmArt } from './battle-art.js';
 import {
   ADVENTURE_RECORDS_KEY, FINAL_BOSSES, completedHeroes, heroTitle, nextHeroTitle, parseRecords, recordCompletion,
@@ -554,7 +554,7 @@ function battleEnded(state, options) {
     adventureVictory(options.stage, rewards);
   } else {
     campaign = recordDefeat(campaign);
-    adventureDefeat();
+    adventureDefeat(state);
   }
 }
 function heroPose(pose, stage) {
@@ -671,7 +671,7 @@ function playXpSequence(rewards, { fill, levelLabel, levelUps, rest, card }) {
   document.addEventListener('keydown', finish, true);
 }
 
-function adventureDefeat() {
+function adventureDefeat(state) {
   clearScreen(); rpgScreen(); screen = 'battle-result'; audio.play('defeat');
   const card = element('section', 'rpg-card px-panel result-card defeat-card'); const { top, slot } = rpgTopbar(); card.append(top);
   const title = element('h1', 'rpg-title', 'DEFEATED... '); title.append(element('span', 'rpg-ja', 'もういちど！'));
@@ -682,7 +682,7 @@ function adventureDefeat() {
   info.append(rewardLine('power', help > 0 ? `RETRY: ${stageResult.startingAp} AP + ${help} HELP = ${ap} AP` : `RETRY: ${ap} AP`));
   // A city retry can start with more HP than the battle began with (retryHp); say so.
   const retryHeroHp = retryHp(campaign);
-  info.append(rewardLine('heart', `HP ${retryHeroHp}/${campaignMaxHp(campaign)} · ポーション ×${campaign.potions}  ${retryHeroHp > campaign.heroHp ? '(HP UP!)' : '(もとどおり)'}`));
+  info.append(rewardLine('heart', defeatHpLine(state, `HP ${retryHeroHp}/${campaignMaxHp(campaign)} · ポーション ×${campaign.potions}  ${retryHeroHp > campaign.heroHp ? '(HP UP!)' : '(もとどおり)'}`)));
   card.append(info);
   if (campaign.retries >= 2) card.append(element('p', 'rpg-tip', 'TIP: 🔥 BIG ATTACK → 2 (Guard / Barrier / Dodge)!  まもろう！'));
   const retry = element('button', 'px-button', `RETRY BATTLE (${ap} AP)`); retry.onclick = () => startAdventureBattle();
@@ -989,7 +989,8 @@ function debugLauncher() {
   const startWave = selectField('Start wave', [[1, '1']]);
   const hp = numberField('Hero HP (blank = full)', 0, 99, ''); hp.input.value = '';
   const potions = numberField('Potions', 0, CAMPAIGN.maxPotions, CAMPAIGN.startingPotions);
-  const start = element('button', '', 'START BATTLE'); form.append(hero.label, encounterWrap, ap.label, presets, level.label, skill.label, startWave.label, hp.label, potions.label, start);
+  const coreLabel = element('label', '', 'Core (30 HP)'); const core = document.createElement('input'); core.type = 'checkbox'; core.checked = Boolean(debugConfig?.core); coreLabel.append(core);
+  const start = element('button', '', 'START BATTLE'); form.append(hero.label, encounterWrap, ap.label, presets, level.label, skill.label, startWave.label, hp.label, potions.label, coreLabel, start);
   // Encounter tier suggests the campaign level; the level select stays editable.
   const syncEncounter = (selectedWave = 1) => {
     const data = ENCOUNTERS[encounter.value]; const waves = data.waves ?? [{ enemyIds: data.enemyIds }];
@@ -1011,6 +1012,7 @@ function debugLauncher() {
       heroId: hero.select.value, encounterId: encounter.value, ap: Number(ap.input.value), level: Number(level.select.value),
       skillTier: skill.select.value === '' ? undefined : Number(skill.select.value), potions: Number(potions.input.value),
       heroHp: hp.input.value === '' ? undefined : Number(hp.input.value), startWave: Number(startWave.select.value),
+      core: core.checked ? { hp: 30 } : undefined,
     };
     startDebugBattle(debugConfig);
   };
@@ -1071,7 +1073,7 @@ function numberField(name, min, max, value) { const label = element('label', '',
 function startDebugBattle(config) { showBattle(createBattle(config), { kind: 'debug', tier: ENCOUNTERS[config.encounterId].tier, config }); }
 function debugBattleEnd(state, options) {
   clearScreen(); screen = 'debug-result'; audio.play(state.turn === 'won' ? 'victory' : 'defeat'); const card = element('section', 'card centered'); card.append(element('h1', '', state.turn === 'won' ? 'VICTORY!' : 'DEFEATED'));
-  card.append(element('p', '', `Turns: ${state.round} · HP left: ${state.hero.hp}/${state.hero.maxHp} · AP left: ${state.ap} · Potions left: ${state.potions}${state.turn === 'won' ? ` · XP: ${battleXp(state)}` : ''}`));
+  card.append(element('p', '', defeatHpLine(state, `Turns: ${state.round} · HP left: ${state.hero.hp}/${state.hero.maxHp} · AP left: ${state.ap} · Potions left: ${state.potions}${state.turn === 'won' ? ` · XP: ${battleXp(state)}` : ''}`)));
   const retry = element('button', '', 'Retry'); retry.onclick = () => startDebugBattle(options.config); const random = element('button', '', 'Random encounter (same tier)'); random.onclick = () => { const current = ENCOUNTERS[options.config.encounterId]; const config = current.city ? options.config : { ...options.config, encounterId: chooseEncounter(options.tier).id, startWave: 1 }; debugConfig = config; startDebugBattle(config); };
   const back = element('button', 'secondary', 'Back to debug'); back.onclick = debugLauncher; card.append(retry, random, back); app.append(card);
 }
