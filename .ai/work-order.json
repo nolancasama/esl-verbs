@@ -1,51 +1,40 @@
 {
-  "task": "Higashiosaka slice H1: implement the Action Core battle system (spec section 2) and its battle UI (spec section 5) in the existing battle engine, with generic engine/UI tests on a test-only encounter. No Higashiosaka enemy data, encounters, region or story yet (that is H2).",
+  "task": "Correct the Higashiosaka H2 balance in the current working tree (uncommitted H2 implementation). Two problems found in controller review: (1) every Higashiosaka first-try cell is exactly 0/33/67/100% although each cell runs 20 seeds x 3 HP levels, so the seed changes nothing and only the HP level matters; (2) hig-1, hig-2 and hig-3 are 100% first-try at every AP5-10 for BOTH bots, so the naive bot that ignores the Core never loses them and the city's lesson ('watch what the enemy aims at, protect the Core') is only tested by hig-4.",
   "requirements": [
-    "Read .ai/higashiosaka-spec.md sections 2, 5, 9 and 11 first (section 11 = what H0 already built: the actionCore sprite prop, the frozen Core plate markup and CSS in rpg.css, the .battle-intent__aim tag). Read DESIGN_DECISIONS.md (Yao balance correction, H0 entry).",
-    "Freeze and implement exactly: encounter `core: { hp }` -> state.core = { hp, maxHp } (null when absent); persists across waves of one battle, full on every new battle and retry; not saved in checkpoints.",
-    "enemy.aim = 'hero' | 'core' chosen together with each intent from enemy data (`aim: 'core'` -> every damaging intent aims at the Core; `heavyAim: 'core'` -> charge and heavy aim at the Core, normal attacks at the hero; default hero; always hero when there is no Core). The aim never changes between telegraph and action.",
-    "resolveEnemyPhase: an attack/heavy aimed at the Core subtracts defendedDamage(amount, action) from core.hp (hero Guard/Barrier reduce, Dodge follows its normal rules), event { type: 'damage', target: 'core', source, amount }; the ally protect rule does not apply; a Core-aimed heavy met by Guard/Barrier refunds AP exactly like a heavy on the hero (existing once-per-phase defense refund).",
-    "core.hp reaching 0 loses the battle immediately, even mid-phase: { type: 'lost', reason: 'core' }, message 'アクション・コアが こわれた！ THE CORE IS BROKEN!'. Hero death still loses as before. Retry assist unchanged; Core full on each attempt.",
-    "Core charge: at the start of every coreChargeEvery-th player turn (default 3) when core.hp > coreChargeAbove * maxHp (default 0.5) the hero gains +1 AP via gainAp(..., 'core') with message 'アクション・コア チャージ！ +1 AP'. Export pure helpers coreThreats(state) and coreChargeDue(state).",
-    "Generalise the Yao protector rule to data: `protects: 'callers'` (Armored Orc, behaviour byte-identical) or `protects: 'coreAttackers'` (first living enemy with aim 'core' or heavyAim 'core', else a boss). Existing Orc data must keep working (default to 'callers' if absent).",
-    "Repair: ai.support 'repair' chooses `repair` when a living `machine: true` enemy other than itself is damaged; resolving heals it by data.repair; event { type: 'repair', source, target, amount }; telegraphed like heal ('🔧 REPAIR / なおす'). Ninja Strike's OPENING list gains 'repair'. Sprite hooks: repair intent rests in 'cast'; eventSpriteStates repair -> [[source, 'cast']].",
-    "UI (src/battle-ui.js): render the Core with the exact markup documented in the rpg.css 'Action Core' comment and spec section 11 (.battle-field--core, .battle-core--{idle|hit|charge|broken|low}, plate with hpBar + battle-hp--core, battleArt('actionCore', row) where broken uses the 'tired' row). Hit state on core damage events, charge state on the core AP gain, low below 35%, broken on core loss. Core damage floater on the Core. Core-aimed intents append <span class=\"battle-intent__aim\">→ コア</span>. Hints in battleHint after the existing heavy/boom/low-HP checks: Core-aimed heavy -> '🛡 コアが ねらわれている！ まもろう！ GUARD THE CORE!' (highlights defence); a living aim:'core' enemy -> 'コアを こわす てきを さきに たおそう！'; Core below 35% -> 'コアが ピンチ！ まもろう！'. repair event message '🔧 なおした！'. Defeat by Core: the defeat screen says 'アクション・コアが こわれた… / The Core broke…' instead of the HP line. Add CSS only if needed beyond the frozen block, without changing the frozen look.",
-    "Tests (new test/core.test.js and/or core-ui test): no Core -> identical behaviour (all existing suites untouched and passing); aim chosen with the intent and stable; core damage uses hero defence (Guard/Barrier reduce, Dodge rules, AP refund on a core heavy); Core at 0 loses with reason 'core' even mid-phase; Core full on retry; waves keep Core HP; charge every 3rd turn only above half; protector protects a core attacker then a boss; repair heals only damaged machines and is telegraphed; Power Slash breaks a core-aimed heavy; UI: the → コア tag, the Core plate, the GUARD THE CORE hint, the Core defeat message. Use a test-only encounter and test-only enemy data defined inside the tests (do not add Higashiosaka enemies to src/battle-data.js).",
-    "Add a `?debug=battle` way to see the Core: either a debug-only encounter in the debug launcher or a 'Core' checkbox that adds core: { hp: 30 } to the chosen encounter. Keep it out of Adventure.",
-    "Append a dated DESIGN_DECISIONS.md entry for any decision taken while implementing; revise the CURRENT_STATE.md Next Steps line for H1 (done) instead of appending logs."
+    "Inspect the existing diff first. Preserve what is correct (enemy data, encounters, region, story, campaign, tests, report sections, browser checks, docs); change only what this correction needs. Do not start over.",
+    "Diagnose (1) before tuning: find out why seeds do not vary Higashiosaka outcomes (is the seed/rng reaching createBattle, resolveEnemyPhase and the bot? do these enemies have any random intent choice? compare with how measureYao gets non-trivial rates like 25% / 97%). Report the cause in the summary. If the sim fails to pass the rng, fix the sim. If the battles are genuinely deterministic, give enemies the same kind of intent variety the existing enemies use (e.g. the goblin/wolf data patterns) only where that fits their role, so first-try rates are measured over real variation.",
+    "Then tune so that Core pressure is real in hig-2 and hig-3, not only hig-4. New targets (in addition to every section 8 target in .ai/higashiosaka-spec.md, which must still hold): naive first-try three-hero mean at AP5 on hig-2 <= 85% and on hig-3 <= 75%; core-aware beats naive by >= 10 points on average over AP5-7 on each of hig-2 and hig-3; Core-broken defeats are >= 40% of naive defeats over hig-2..4 first tries; hig-1 stays a gentle tutorial (core-aware AP5 mean >= 85%). Report the per-encounter three-hero means at AP5/7/10 for both bots and the defeat-cause split, before and after.",
+    "Tune only numbers marked tune in the spec: enemy HP/attack/heavy/repair, Core hp, coreChargeEvery/coreChargeAbove per encounter (it may differ by stage, e.g. every 3 early and every 2 for the boss), wave line-ups within the section 4 rosters. Keep the H1 engine contract unchanged.",
+    "Encode the new targets as assertions in test/balance.test.js next to the existing Higashiosaka ones; show each new assertion fails once with a deliberately impossible threshold, then restore.",
+    "Matsubara, Sakai and Yao report lines must stay byte-identical (diff against the saved pre-change output).",
+    "Update the DESIGN_DECISIONS.md Higashiosaka balance entry (cause of the determinism, final numbers and why) and the CURRENT_STATE.md balance lines; revise, do not append logs."
   ],
   "constraints": [
-    "Do not edit sprite drawing code (src/pixel-enemies.js, pixel-*.js), src/station-map.js, src/battle-locations.js, or the frozen 'Action Core' CSS block in rpg.css beyond additive rules.",
-    "Matsubara, Sakai and Yao behaviour and numbers unchanged: npm run balance output must be byte-identical to before your change (save it first).",
-    "Static ES modules, no build step, no framework, no new dependency. Chromebook first: 1024x600 battle with no page scroll.",
+    "Do not edit sprite drawing code (src/pixel-*.js), src/station-map.js, src/battle-locations.js, rpg.css, src/battle-engine.js core contract, or Matsubara/Sakai/Yao data.",
+    "Do not touch test/browser/playthrough.mjs; the controller runs the browser acceptance after this correction.",
     "Edit source with structured edit tools; on the first shell quoting/escaping failure switch to file edit tools.",
     "Do not commit. Do not delete .ai files."
   ],
   "startingPoints": [
-    ".ai/higashiosaka-spec.md",
-    "src/battle-engine.js",
+    "test/balance-sim.js",
+    "test/balance-report.mjs",
+    "test/balance.test.js",
     "src/battle-data.js",
-    "src/battle-ui.js",
-    "src/battle-art.js",
-    "src/app.js",
-    "rpg.css",
-    "test/yao.test.js",
-    "test/yao-ui.test.js",
-    "test/art.test.js"
+    ".ai/higashiosaka-spec.md"
   ],
   "validation": [
     "npm test",
     "npm run balance"
   ],
   "behavioralAcceptance": {
-    "owner": "worker",
-    "description": "Run PLAYWRIGHT_PATH=C:/Users/nolan/ui-verify/node_modules/playwright npm run test:browser (must still pass). Then with a scratch Playwright script (python -m http.server on a free port) open ?debug=battle with the Core enabled at 1024x600 and save screenshots to .tmp/browser/: core idle with a → コア intent, a core-aimed heavy telegraphed with the GUARD THE CORE hint, core charge (+1 AP), core low, and the Core-broken defeat screen; report page scroll (must be 0) and console errors."
+    "owner": "controller",
+    "description": "Controller runs the browser playthrough and Higashiosaka screenshots after the correction."
   },
-  "category": "feature",
-  "complexity": "hard",
+  "category": "bugfix",
+  "complexity": "medium",
   "composition": "atomic",
   "bounded": true,
   "exploration": "local",
   "risk": "medium",
-  "expectedCost": "large"
+  "expectedCost": "medium"
 }

@@ -139,7 +139,7 @@ function yaoTarget(state) {
   return alive(state).sort((a, b) => priority(a) - priority(b) || a.hp - b.hp || a.uid - b.uid)[0];
 }
 
-function yaoAction(state, target) {
+function yaoAction(state, target, corePolicy = null) {
   if (mustRecover(state)) return { recover: true };
   // Set up Ninja's chain on the chosen target without spending the AP needed
   // for Shadow Strike. A nonlethal Shadow Strike has no area damage.
@@ -169,10 +169,12 @@ function yaoAction(state, target) {
   if (state.hero.hp <= state.hero.maxHp * 0.35 && potion(state)) return { itemId: 'potion' };
   // Dodge has no AP refund: take a survivable hit to make progress, or cash
   // in a counter, rather than spending every recovered AP on another Dodge.
-  const incoming = alive(state).reduce((sum, enemy) => sum + (enemy.intent === 'boom' ? ENEMIES[enemy.id].boom
+  const threats = alive(state).filter((enemy) => corePolicy === null || enemy.aim !== 'core' || corePolicy === 'aware');
+  const incoming = threats.reduce((sum, enemy) => sum + (enemy.intent === 'boom' ? ENEMIES[enemy.id].boom
     : enemy.intent === 'heavy' ? ENEMIES[enemy.id].heavy : enemy.intent === 'attack' ? ENEMIES[enemy.id].attack : 0), 0);
-  if (alive(state).some((enemy) => ['heavy', 'boom'].includes(enemy.intent)) && defense(state)
-    && (state.heroId !== 'ninja' || (!state.hero.counter && state.hero.hp <= incoming + 4))) {
+  if (threats.some((enemy) => ['heavy', 'boom'].includes(enemy.intent)) && defense(state)
+    && (threats.some((enemy) => enemy.intent === 'heavy' && enemy.aim === 'core')
+      || state.heroId !== 'ninja' || (!state.hero.counter && state.hero.hp <= incoming + 4))) {
     return { skillId: defense(state).id, target: target.uid };
   }
   if (skill(state, 'heal') && state.hero.hp < state.hero.maxHp / 2) return { skillId: 'heal', target: target.uid };
@@ -187,6 +189,21 @@ function yaoAction(state, target) {
 export const YAO_POLICIES = Object.freeze({
   naive: (state) => yaoAction(state, alive(state)[0]),
   competent: (state) => yaoAction(state, yaoTarget(state)),
+});
+
+/** The same Yao skill/resource plan; only targeting and defence aim differ. */
+export const HIGASHIOSAKA_POLICIES = Object.freeze({
+  naive: (state) => yaoAction(state, alive(state)[0], 'naive'),
+  'core-aware': (state) => {
+    const living = alive(state);
+    const target = living.find((enemy) => enemy.id === 'saboteur')
+      || living.find((enemy) => enemy.aim === 'core' && ['charge', 'heavy'].includes(enemy.intent))
+      || yaoTarget(state);
+    if (living.some((enemy) => enemy.aim === 'core' && enemy.intent === 'heavy') && defense(state)) {
+      return { skillId: defense(state).id, target: target.uid };
+    }
+    return yaoAction(state, target, 'aware');
+  },
 });
 
 /** Apply one policy decision. Returns the result of that player step. */
@@ -205,6 +222,7 @@ export function simulateBattle({ policy = competent, seed = 1, rng = seeded(seed
   let heroDamage = 0;
   let allyDamage = 0;
   let reinforcements = 0;
+  let defeatCause = null;
   while (state.turn === 'player' && turns < maxTurns) {
     const choice = policy(state);
     const result = step(state, choice, rng);
@@ -216,6 +234,9 @@ export function simulateBattle({ policy = competent, seed = 1, rng = seeded(seed
     turns += 1;
     if (state.turn === 'enemy') {
       const enemyPhase = resolveEnemyPhase(state, rng);
+      if (enemyPhase.state.turn === 'lost') {
+        defeatCause = enemyPhase.events.some((event) => event.type === 'lost' && event.reason === 'core') ? 'core' : 'hero';
+      }
       reinforcements += enemyPhase.events.filter((event) => event.type === 'call').reduce((sum, event) => sum + event.targets.length, 0);
       if (enemyPhase.events.some((event) => event.type === 'allyAttack')) {
         allyDamage += enemyPhase.events.filter((event) => event.type === 'damage' && event.target !== 'hero').reduce((sum, event) => sum + event.amount, 0);
@@ -223,7 +244,8 @@ export function simulateBattle({ policy = competent, seed = 1, rng = seeded(seed
       state = enemyPhase.state;
     }
   }
-  return { state, won: state.turn === 'won', turns, recoveries, potionsUsed, hp: state.hero.hp, heroDamage, allyDamage, reinforcements };
+  if (state.turn !== 'won' && !defeatCause) defeatCause = state.turn === 'lost' ? 'hero' : 'turnCap';
+  return { state, won: state.turn === 'won', defeatCause, turns, recoveries, potionsUsed, hp: state.hero.hp, heroDamage, allyDamage, reinforcements };
 }
 
 /**
@@ -343,6 +365,95 @@ export function simulateYaoCampaign({ heroId, ap, policy = YAO_POLICIES.competen
     campaign = applyVictory(campaign, result.state).campaign;
   }
   return { campaign, entryCampaign, stages, completed: true };
+}
+
+export const HIGASHIOSAKA_ENCOUNTER_IDS = Object.freeze(['hig-1', 'hig-2', 'hig-3', 'hig-4']);
+export const HIGASHIOSAKA_FIRST_APS = Object.freeze([5, 6, 7, 8, 9, 10]);
+export const HIGASHIOSAKA_CAMPAIGN_APS = Object.freeze(Array.from({ length: 11 }, (_, ap) => ap));
+const higashiosakaEntries = new Map();
+
+/** The real preceding city supplies progression, followed by the normal city rest. */
+export function higashiosakaEntryCampaign({ heroId, ap, seed = 1 }) {
+  const key = `${heroId}:${ap}:${seed}`;
+  if (!higashiosakaEntries.has(key)) {
+    const yao = simulateYaoCampaign({ heroId, ap, seed, maxAttempts: 6 });
+    if (!yao.completed) throw new Error(`${heroId} AP${ap}: could not reach Higashiosaka from Yao`);
+    higashiosakaEntries.set(key, chapterRest(createCampaign(heroId, {
+      cityId: 'higashiosaka', level: yao.campaign.level, xp: yao.campaign.xp,
+    })));
+  }
+  return higashiosakaEntries.get(key);
+}
+
+export function simulateHigashiosakaCampaign({ heroId, ap, policy = HIGASHIOSAKA_POLICIES['core-aware'], seed = 1, maxAttempts = 6 }) {
+  const rng = seeded(seed);
+  let campaign = higashiosakaEntryCampaign({ heroId, ap, seed });
+  const entryCampaign = campaign;
+  const stages = [];
+  const defeats = { hero: 0, core: 0, turnCap: 0 };
+  for (const [index, encounterId] of HIGASHIOSAKA_ENCOUNTER_IDS.entries()) {
+    campaign = recordStage(campaign, {
+      mode: index + 1, items: Array.from({ length: 10 }, (_, q) => ({ id: `hig-${index + 1}-q${q}` })),
+      correctCount: ap, bestStreak: ap, missedIds: new Set(),
+    }, encounterId);
+    const entryHp = campaign.heroHp;
+    const entryPotions = campaign.potions;
+    let attempts = 0;
+    let result;
+    while (attempts < maxAttempts) {
+      attempts += 1;
+      result = simulateBattle({ ...battleSetup(campaign), policy, rng });
+      if (result.won) break;
+      defeats[result.defeatCause] += 1;
+      campaign = recordDefeat(campaign);
+    }
+    stages.push({ stage: index + 1, encounterId, attempts, won: result.won, entryHp, entryPotions,
+      hpLeft: result.hp, potionsLeft: result.state.potions, defeatCause: result.defeatCause });
+    if (!result.won) return { campaign, entryCampaign, stages, defeats, completed: false };
+    campaign = applyVictory(campaign, result.state).campaign;
+  }
+  return { campaign, entryCampaign, stages, defeats, completed: true };
+}
+
+/** One shared sampling contract for the report and balance assertions. */
+export function measureHigashiosaka(seeds = 20) {
+  const heroes = ['fighter', 'mage', 'ninja'];
+  const firstTry = [];
+  const campaigns = [];
+  const defeats = Object.fromEntries(Object.keys(HIGASHIOSAKA_POLICIES).map((name) => [name, { hero: 0, core: 0, turnCap: 0 }]));
+  for (const heroId of heroes) for (const encounterId of HIGASHIOSAKA_ENCOUNTER_IDS) {
+    for (const [name, policy] of Object.entries(HIGASHIOSAKA_POLICIES)) for (const ap of HIGASHIOSAKA_FIRST_APS) {
+      let wins = 0;
+      const causes = { hero: 0, core: 0, turnCap: 0 };
+      for (let seed = 1; seed <= seeds; seed += 1) {
+        const battleSeed = seed * 65537 + 17;
+        const entry = higashiosakaEntryCampaign({ heroId, ap, seed: battleSeed });
+        for (const fraction of [.7, .85, 1]) {
+          const result = simulateBattle({ heroId, encounterId, ap, level: entry.level,
+            heroHp: Math.ceil(heroMaxHp(heroId, entry.level) * fraction), potions: entry.potions,
+            policy, seed: battleSeed });
+          if (result.won) wins += 1;
+          else { causes[result.defeatCause] += 1; defeats[name][result.defeatCause] += 1; }
+        }
+      }
+      firstTry.push({ heroId, encounterId, name, ap, rate: wins / (seeds * 3), defeats: causes });
+    }
+  }
+  for (const heroId of heroes) for (const [name, policy] of Object.entries(HIGASHIOSAKA_POLICIES)) {
+    for (const ap of HIGASHIOSAKA_CAMPAIGN_APS) {
+      let completed = 0;
+      let retries = 0;
+      const causes = { hero: 0, core: 0, turnCap: 0 };
+      for (let seed = 1; seed <= seeds; seed += 1) {
+        const run = simulateHigashiosakaCampaign({ heroId, ap, policy, seed: seed * 8191 + 23, maxAttempts: 6 });
+        completed += run.completed ? 1 : 0;
+        retries += run.stages.reduce((sum, stage) => sum + stage.attempts - 1, 0);
+        for (const cause of Object.keys(causes)) causes[cause] += run.defeats[cause];
+      }
+      campaigns.push({ heroId, name, ap, rate: completed / seeds, retries: retries / seeds, defeats: causes });
+    }
+  }
+  return { seeds, firstTry, campaigns, defeats };
 }
 
 /** Level at which each stage is fought in a normal campaign. */

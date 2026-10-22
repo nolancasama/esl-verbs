@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CAMPAIGN, ENCOUNTERS, HEROES } from '../src/battle-data.js';
 import { chapterRest, createCampaign, resumeCampaign } from '../src/campaign.js';
 import { cityPlayable } from '../src/osaka-map.js';
+import { CITY_STORIES } from '../src/story.js';
 import {
   CITIES, CITY_CAMPAIGNS, REGION_KEY, cityStatus, markCitySaved, parseRegion, serializeRegion,
   stageCheckpoint, stageCount, stageEncounterId, stageMode,
@@ -44,7 +45,7 @@ test('a checkpoint alone never marks a city saved', () => {
 
 test('future cities with no campaign are always locked', () => {
   const region = { ...fresh(), savedCities: Object.keys(CITIES) };
-  for (const id of ['higashiosaka', 'osakaCity']) assert.equal(cityStatus(region, id), 'locked', id);
+  assert.equal(cityStatus(region, 'osakaCity'), 'locked');
 });
 
 test('saved cities are de-duplicated and restored in CITIES order', () => {
@@ -136,7 +137,7 @@ test('Yao checkpoints round-trip and resume with the correct stage and progressi
   assert.equal(saved.checkpoint, null);
   assert.equal(cityStatus(saved, 'yao'), 'saved');
   assert.equal(cityPlayable(saved, 'yao'), true, 'saved Yao can be replayed');
-  assert.equal(cityStatus(saved, 'higashiosaka'), 'locked');
+  assert.equal(cityStatus(saved, 'higashiosaka'), 'danger');
   assert.equal(cityStatus(saved, 'osakaCity'), 'locked');
 });
 
@@ -148,4 +149,63 @@ test('Yao has four mode-matched battles and no Osaka Defender ally', () => {
     assert.equal(id, `yao-${stage}`);
     assert.equal(ENCOUNTERS[id].ally, null);
   }
+});
+
+test('old Yao saves unlock Higashiosaka while Osaka City stays locked', () => {
+  const beforeYao = { ...fresh(), heroId: 'ninja', savedCities: ['matsubara', 'sakai'] };
+  assert.equal(cityStatus(beforeYao, 'higashiosaka'), 'locked');
+  assert.equal(cityPlayable(beforeYao, 'higashiosaka'), false);
+  const region = parseRegion(JSON.stringify({ ...beforeYao, level: 5, xp: 700, savedCities: [...beforeYao.savedCities, 'yao'] }), HERO_IDS);
+  assert.equal(region.checkpoint, null);
+  assert.equal(cityStatus(region, 'higashiosaka'), 'danger');
+  assert.equal(cityPlayable(region, 'higashiosaka'), true);
+  assert.deepEqual(CITIES.yao.unlocks, ['higashiosaka']);
+  assert.equal(CITIES.higashiosaka.campaignId, 'higashiosaka');
+  assert.equal(cityStatus(region, 'osakaCity'), 'locked');
+});
+
+test('Higashiosaka checkpoints resume every stage and victory saves the city', () => {
+  for (let stage = 1; stage <= 4; stage += 1) {
+    const campaign = {
+      ...createCampaign('mage', { cityId: 'higashiosaka', level: 5, xp: 700 }),
+      stage, heroHp: 19, potions: 1,
+      stageResults: Array.from({ length: stage - 1 }, (_, index) => ({ ...stageResult(index + 1), encounterId: `hig-${index + 1}` })),
+    };
+    const checkpoint = stageCheckpoint({ ...fresh(), savedCities: ['matsubara', 'sakai', 'yao'] }, campaign);
+    const region = parseRegion(serializeRegion(checkpoint), HERO_IDS);
+    assert.deepEqual(region, checkpoint);
+    assert.deepEqual(resumeCampaign(region), campaign);
+    assert.equal(cityStatus(region, 'higashiosaka'), 'danger');
+    const saved = markCitySaved(region, 'higashiosaka', campaign);
+    assert.equal(saved.checkpoint, null);
+    assert.equal(cityStatus(saved, 'higashiosaka'), 'saved');
+    assert.equal(cityPlayable(saved, 'higashiosaka'), true, 'saved Higashiosaka can be replayed');
+    assert.equal(cityStatus(saved, 'osakaCity'), 'locked');
+  }
+});
+
+test('Higashiosaka has four mode-matched Core battles without an ally', () => {
+  assert.equal(stageCount('higashiosaka'), 4);
+  for (let stage = 1; stage <= 4; stage += 1) {
+    const campaign = { cityId: 'higashiosaka', stage };
+    assert.equal(stageMode(campaign), stage);
+    const id = stageEncounterId(campaign);
+    assert.equal(id, `hig-${stage}`);
+    assert.equal(ENCOUNTERS[id].ally, null);
+    assert.ok(ENCOUNTERS[id].core.hp > 0);
+  }
+});
+
+test('Higashiosaka story uses the specified danger, protection and Osaka City beats', () => {
+  const { intro, ending } = CITY_STORIES.higashiosaka;
+  assert.deepEqual(intro[0].card.lines, ['ひがしおおさかが あぶない！']);
+  assert.equal(intro[0].card.en, 'HIGASHIOSAKA IS IN DANGER!');
+  assert.deepEqual([intro[0].mood, intro[0].music, intro[0].sfx], ['danger', 'ominous', 'alarm']);
+  assert.deepEqual(intro[1].card.lines, ['ものづくりの まちに きかいの てきが きた！']);
+  assert.equal(intro[2].hero, 'idle');
+  assert.deepEqual(intro[2].card.lines, ['アクション・コアが ねらわれている！ まもりぬけ！']);
+  assert.deepEqual(ending[1].title, { ja: 'ひがしおおさかを まもった！', en: 'HIGASHIOSAKA IS SAFE!' });
+  assert.deepEqual(ending[2].card.lines, ['コアの ひかりが まちを てらす。']);
+  assert.deepEqual(ending[3].card.lines, ['さいごは おおさか市だ！']);
+  assert.equal(ending[3].card.en, 'ON TO OSAKA CITY!');
 });

@@ -1092,9 +1092,12 @@ function debugQuiz(params) {
   startRound(stage, createRound(VOCABULARY), 'adventure');
 }
 
-// ?debug=map&preset=fresh|matsubara|sakai[&hero=ninja][&justSaved=sakai]: write that
+// ?debug=map&preset=fresh|matsubara|sakai|yao|higashiosaka[&hero=ninja][&justSaved=sakai]: write that
 // regional save (it replaces this browser's save) and open the Osaka map.
-const MAP_PRESETS = { fresh: [], matsubara: ['matsubara'], sakai: ['matsubara', 'sakai'] };
+const MAP_PRESETS = {
+  fresh: [], matsubara: ['matsubara'], sakai: ['matsubara', 'sakai'],
+  yao: ['matsubara', 'sakai', 'yao'], higashiosaka: ['matsubara', 'sakai', 'yao', 'higashiosaka'],
+};
 function debugMap(params) {
   const saved = MAP_PRESETS[params.get('preset')] ?? MAP_PRESETS.matsubara;
   const heroId = HEROES[params.get('hero')] ? params.get('hero') : 'fighter';

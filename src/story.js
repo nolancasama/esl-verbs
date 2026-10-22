@@ -63,6 +63,19 @@ export const ENDING_STORY = Object.freeze([
 
 // Short intro and ending for each regional city campaign.
 export const CITY_STORIES = Object.freeze({
+  higashiosaka: Object.freeze({
+    intro: Object.freeze([
+      { mood: 'danger', monsters: 'near', music: 'ominous', sfx: 'alarm', ...card(['ひがしおおさかが あぶない！'], { big: 0, hold: true, en: 'HIGASHIOSAKA IS IN DANGER!' }), ms: 2000 },
+      card(['ものづくりの まちに きかいの てきが きた！']),
+      { hero: 'idle', ...card(['アクション・コアが ねらわれている！ まもりぬけ！']) },
+    ]),
+    ending: Object.freeze([
+      { mood: 'danger', monsters: 'near', hero: 'idle', cut: true, ms: 800 },
+      { mood: 'safe', monsters: 'gone', hero: 'victory', citizens: true, music: 'victory', title: { ja: 'ひがしおおさかを まもった！', en: 'HIGASHIOSAKA IS SAFE!' }, ms: 3000 },
+      card(['コアの ひかりが まちを てらす。']),
+      card(['さいごは おおさか市だ！'], { en: 'ON TO OSAKA CITY!' }),
+    ]),
+  }),
   yao: Object.freeze({
     intro: Object.freeze([
       { mood: 'danger', monsters: 'near', music: 'ominous', sfx: 'alarm', ...card(['やおが あぶない！'], { big: 0, hold: true, en: 'YAO IS IN DANGER!' }), ms: 2000 },

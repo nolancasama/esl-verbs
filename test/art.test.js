@@ -16,8 +16,8 @@ const bounds = (g) => {
 
 // Higashiosaka art lands before its battle data (spec slice H0 → H2); H2 adds the
 // data and empties this list, so art without data never goes unnoticed.
-const ART_AHEAD_OF_DATA = ['saboteur', 'engineerGoblin', 'goblinSniper', 'guardianConstruct', 'ironForeman', 'siegeGolem'];
-const BOSS_ART_AHEAD = new Set(['siegeGolem']);
+const ART_AHEAD_OF_DATA = [];
+const BOSS_ART_AHEAD = new Set();
 
 test('every hero and enemy has a complete sprite sheet with one row per state', () => {
   for (const id of [...Object.keys(HEROES), ...Object.keys(ENEMIES), ...ART_AHEAD_OF_DATA, 'actionCore']) {

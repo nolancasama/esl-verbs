@@ -5,12 +5,61 @@ import { createBattle, heroMaxHp, resolveEnemyPhase } from '../src/battle-engine
 import {
   POLICIES, STAGE_LEVEL, encountersForTier, sakaiEncounters, simulateBattle, simulateCampaign, simulateSakaiCampaign,
   YAO_POLICIES, simulateYaoCampaign, yaoEncounters, yaoEntryCampaign, step, seeded,
+  measureHigashiosaka, HIGASHIOSAKA_ENCOUNTER_IDS, HIGASHIOSAKA_POLICIES,
+  HIGASHIOSAKA_FIRST_APS, HIGASHIOSAKA_CAMPAIGN_APS,
 } from './balance-sim.js';
 
 const seeds = Number(process.argv[2] || 20);
 const heroes = ['fighter', 'mage', 'ninja'];
 const aps = [0, 3, 5, 6, 7, 8, 10];
 const pct = (value) => `${String(Math.round(value * 100)).padStart(3)}%`;
+
+function reportHigashiosaka() {
+  const report = measureHigashiosaka(seeds);
+  console.log('\nHigashiosaka battles after Yao (real progression, 70/85/100% HP, 2 potions)');
+  console.log(`hero     encounter              policy     ${HIGASHIOSAKA_FIRST_APS.map((ap) => `AP${ap}`.padStart(5)).join(' ')}`);
+  for (const heroId of heroes) for (const encounterId of HIGASHIOSAKA_ENCOUNTER_IDS) for (const name of Object.keys(HIGASHIOSAKA_POLICIES)) {
+    const cells = HIGASHIOSAKA_FIRST_APS.map((ap) => pct(report.firstTry.find((row) => row.heroId === heroId && row.encounterId === encounterId && row.name === name && row.ap === ap).rate).padStart(5));
+    console.log(`${heroId.padEnd(8)} ${encounterId.padEnd(22)} ${name.padEnd(10)} ${cells.join(' ')}`);
+  }
+  console.log('\nHigashiosaka three-hero first-try means (AP5 / AP7 / AP10); defeats AP5-10 (hero / Core / turn cap)');
+  for (const encounterId of HIGASHIOSAKA_ENCOUNTER_IDS) for (const name of Object.keys(HIGASHIOSAKA_POLICIES)) {
+    const rows = report.firstTry.filter((row) => row.encounterId === encounterId && row.name === name);
+    const means = [5, 7, 10].map((ap) => `${(100 * rows.filter((row) => row.ap === ap).reduce((sum, row) => sum + row.rate, 0) / heroes.length).toFixed(1)}%`);
+    const causes = rows.reduce((sum, row) => {
+      for (const cause of Object.keys(sum)) sum[cause] += row.defeats[cause];
+      return sum;
+    }, { hero: 0, core: 0, turnCap: 0 });
+    console.log(`${encounterId} ${name.padEnd(10)} ${means.join(' / ')}; defeats ${causes.hero} / ${causes.core} / ${causes.turnCap}`);
+  }
+  for (const encounterId of ['hig-2', 'hig-3']) {
+    const rows = report.firstTry.filter((row) => row.encounterId === encounterId && row.ap <= 7);
+    const mean = (name) => rows.filter((row) => row.name === name).reduce((sum, row) => sum + row.rate, 0) / (heroes.length * 3);
+    console.log(`${encounterId} awareness gain AP5-7: ${(100 * (mean('core-aware') - mean('naive'))).toFixed(1)} points`);
+  }
+  for (const name of Object.keys(HIGASHIOSAKA_POLICIES)) {
+    const rows = report.campaigns.filter((row) => row.name === name && row.ap === 5);
+    console.log(`${name} AP5 mean city retries: ${(rows.reduce((sum, row) => sum + row.retries, 0) / heroes.length).toFixed(2)}`);
+  }
+  console.log('\nHigashiosaka campaign completion / mean retries (post-Yao, resources carried, at most 6 attempts per battle)');
+  console.log(`hero     policy     ${HIGASHIOSAKA_CAMPAIGN_APS.map((ap) => `AP${ap} done/retries`.padStart(16)).join(' ')}`);
+  for (const heroId of heroes) for (const name of Object.keys(HIGASHIOSAKA_POLICIES)) {
+    const cells = HIGASHIOSAKA_CAMPAIGN_APS.map((ap) => {
+      const row = report.campaigns.find((row) => row.heroId === heroId && row.name === name && row.ap === ap);
+      return `${pct(row.rate)} / ${row.retries.toFixed(1)}`.padStart(16);
+    });
+    console.log(`${heroId.padEnd(8)} ${name.padEnd(10)} ${cells.join(' ')}`);
+  }
+  console.log('\nHigashiosaka defeats (hero death / Core broken / turn cap)');
+  for (const name of Object.keys(HIGASHIOSAKA_POLICIES)) {
+    const causes = report.defeats[name];
+    const campaign = report.campaigns.filter((row) => row.name === name).reduce((sum, row) => {
+      for (const cause of Object.keys(sum)) sum[cause] += row.defeats[cause];
+      return sum;
+    }, { hero: 0, core: 0, turnCap: 0 });
+    console.log(`${name.padEnd(10)} first-try AP5-10: ${causes.hero} / ${causes.core} / ${causes.turnCap}; campaign AP0-10: ${campaign.hero} / ${campaign.core} / ${campaign.turnCap}`);
+  }
+}
 
 if (process.argv[3] === 'yao-trace') {
   const heroId = process.argv[4] || 'fighter';
@@ -213,3 +262,5 @@ for (const heroId of heroes) for (const name of Object.keys(YAO_POLICIES)) {
   });
   console.log(`${heroId.padEnd(8)} ${name.padEnd(10)} ${cells.join(' ')}`);
 }
+
+reportHigashiosaka();

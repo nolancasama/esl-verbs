@@ -297,6 +297,77 @@ async function assertNoPageScroll(page, label) {
   if (scrolling.width > scrolling.viewportWidth || scrolling.height > scrolling.viewportHeight) throw new Error(`${label} scrolls at 1024×600: ${JSON.stringify(scrolling)}`);
 }
 
+async function higashiosakaBattleFlow(page, baseUrl) {
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.goto(`${baseUrl}/?debug=map&preset=yao`);
+  const city = page.locator('.osaka-city[data-city="higashiosaka"]');
+  await city.waitFor();
+  if (await city.isDisabled() || !(await city.getAttribute('class')).includes('osaka-city--danger')) throw new Error('Saving Yao should make Higashiosaka playable and under attack');
+  if (!(await page.locator('.osaka-city[data-city="osakaCity"]').isDisabled())) throw new Error('Osaka City should remain locked after Yao');
+  await page.keyboard.press('Control+Alt+Shift+KeyD');
+  await page.locator('.dev-panel [title="Higashiosaka stage 1 battle"]').waitFor();
+  await page.getByRole('button', { name: /^Close$/ }).click();
+  await page.getByRole('button', { name: /GO TO HIGASHIOSAKA/i }).click();
+  await page.locator('.story--higashiosaka-intro').waitFor();
+  await page.getByRole('button', { name: /^Skip/i }).click();
+  await page.locator('.rpg-quiz.stage-1').waitFor();
+  const region = await page.evaluate(() => JSON.parse(localStorage.getItem('esl-verbs-region-v1')));
+  if (region.checkpoint?.cityId !== 'higashiosaka' || region.checkpoint.stage !== 1 || region.checkpoint.stageResults?.length !== 0) throw new Error('Higashiosaka did not store its stage 1 checkpoint');
+  if (JSON.stringify(region.savedCities) !== JSON.stringify(['matsubara', 'sakai', 'yao'])) throw new Error('Starting Higashiosaka changed the saved cities');
+  await assertNoPageScroll(page, 'Higashiosaka quiz');
+  await answerTenTypedQuestions(page);
+  await page.getByText(/STAGE\s*1\s*CLEAR/i).waitFor();
+  await assertNoPageScroll(page, 'Higashiosaka Stage Clear');
+  await page.getByRole('button', { name: /BATTLE!/i }).click();
+  await page.locator('.station-card').waitFor();
+  if (!(await page.locator('.station-card').innerText()).includes('石切')) throw new Error('Higashiosaka stage 1 must defend Ishikiri');
+  if (await page.locator('.battle-view').count()) throw new Error('Higashiosaka must show Ishikiri before battle');
+  await assertNoPageScroll(page, 'Higashiosaka Ishikiri map');
+  await page.screenshot({ path: path.join(evidenceDir, 'higashiosaka-ishikiri.png') });
+  await page.getByRole('button', { name: /DEFEND!/i }).click();
+  await page.locator('.battle-field--core .battle-core').waitFor();
+  if (!(await page.locator('.battle-core__plate').innerText()).includes('アクション・コア')) throw new Error('The Action Core plate must be visible in Higashiosaka');
+  await page.locator('[data-enemy-id="saboteur"] .battle-intent__aim').waitFor();
+  await assertNoPageScroll(page, 'Higashiosaka Core battle');
+  await page.screenshot({ path: path.join(evidenceDir, 'higashiosaka-core-battle.png') });
+
+  await page.goto(`${baseUrl}/?debug=battle`);
+  await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
+  await page.getByLabel(/^Hero/i).first().selectOption('fighter');
+  await page.getByLabel(/^Encounter/i).first().selectOption('hig-4');
+  await page.getByLabel(/^Start wave/i).selectOption('2');
+  await page.getByLabel(/^Level/i).selectOption('5');
+  await page.getByLabel(/^AP/i).first().fill('10');
+  await page.getByRole('button', { name: /START BATTLE/i }).click();
+  const golem = page.locator('[data-enemy-id="siegeGolem"]');
+  await golem.locator('.battle-sprite').waitFor();
+  await page.locator('[data-enemy-id="engineerGoblin"]').waitFor();
+  if (!(await page.locator('.battle-wave').innerText()).includes('2 / 2')) throw new Error('Higashiosaka final boss debug battle should start in wave 2');
+  const guard = page.locator('[data-skill-id="guard"]:not(:disabled)');
+  for (let turn = 0; turn < 10; turn += 1) {
+    await guard.waitFor();
+    if (await golem.locator('.battle-intent--heavy').count()) break;
+    await guard.click();
+  }
+  await golem.locator('.battle-intent--heavy .battle-intent__aim').waitFor();
+  if (!(await golem.locator('.battle-intent--heavy').innerText()).includes('Siege Blast')) throw new Error('The Siege Golem must telegraph Siege Blast before attacking');
+  if (!(await page.locator('.battle-hint').innerText()).includes('GUARD THE CORE!')) throw new Error('A Core-aimed Siege Blast must show GUARD THE CORE');
+  const coreHp = page.locator('.battle-core .battle-hp strong');
+  const before = Number((await coreHp.innerText()).split('/')[0]);
+  const expectedDamage = await page.evaluate(async () => {
+    const { ENEMIES, HEROES } = await import('/src/battle-data.js');
+    return Math.ceil(ENEMIES.siegeGolem.heavy * HEROES.fighter.passive.effect.guardMultiplier);
+  });
+  await assertNoPageScroll(page, 'Higashiosaka Siege Blast telegraph');
+  await page.screenshot({ path: path.join(evidenceDir, 'higashiosaka-siege-telegraph.png') });
+  await guard.click();
+  await guard.waitFor();
+  const after = Number((await coreHp.innerText()).split('/')[0]);
+  if (before - after !== expectedDamage) throw new Error(`Guard did not reduce Siege Blast on the Core: ${before} -> ${after}, expected ${expectedDamage} damage`);
+  await assertNoPageScroll(page, 'Higashiosaka guarded Core');
+  await page.screenshot({ path: path.join(evidenceDir, 'higashiosaka-guarded-core.png') });
+}
+
 async function targetDiscovery(page, baseUrl) {
   await page.goto(`${baseUrl}/?debug=battle`);
   await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
@@ -407,12 +478,13 @@ try {
   await regionalFlow(page, baseUrl);
   await debugBattleFlow(page, baseUrl);
   await yaoBattleFlow(page, baseUrl);
+  await higashiosakaBattleFlow(page, baseUrl);
   await targetDiscovery(page, baseUrl);
   await soundSettings(page, baseUrl);
   await studyFlow(page, baseUrl);
 
   if (browserErrors.length) throw new Error(`Browser errors:\n${browserErrors.join('\n')}`);
-  console.log('Browser playthrough passed: Adventure station defence, Osaka regional continuation/checkpoint, 0-AP recovery battle, Yao call telegraph/reinforcements and final boss, target discovery, sound settings, and Study mode 1.');
+  console.log('Browser playthrough passed: Adventure station defence, Osaka regional continuation/checkpoint, 0-AP recovery battle, Yao call telegraph/reinforcements and final boss, Higashiosaka unlock/checkpoint and Ishikiri/Core flow, guarded Siege Blast, target discovery, sound settings, and Study mode 1.');
 } catch (error) {
   console.error(error?.stack || error);
   process.exitCode = 1;

@@ -90,6 +90,12 @@ export const ALLIES = Object.freeze({
 // Heavy-attack cycles are odd lengths (e.g. attack, attack, charge, heavy, rest)
 // so that a low-AP rest/act rhythm does not always meet the big attack the same way.
 export const ENEMIES = Object.freeze({
+  saboteur: { id: 'saboteur', name: 'Saboteur', jaName: 'こわしや', maxHp: 8, attack: 3, aim: 'core', xp: 16, ai: Object.freeze({}) },
+  engineerGoblin: { id: 'engineerGoblin', name: 'Engineer Goblin', jaName: 'ゴブリンぎし', maxHp: 12, attack: 2, repair: 5, xp: 18, ai: Object.freeze({ support: 'repair', guardChance: 0.25 }) },
+  goblinSniper: { id: 'goblinSniper', name: 'Goblin Sniper', jaName: 'ゴブリンそげきへい', maxHp: 10, attack: 2, heavy: 12, heavyAim: 'core', heavyName: 'Core Shot', chargeLabel: 'AIMING AT CORE!', chargeLabelJa: 'コアを ねらっている！', xp: 18, ai: Object.freeze({ heavyEvery: 3 }) },
+  guardianConstruct: { id: 'guardianConstruct', name: 'Guardian Construct', jaName: 'まもりの からくり', maxHp: 20, attack: 2, machine: true, protector: true, protects: 'coreAttackers', large: true, xp: 24, ai: Object.freeze({ guardChance: 0.25 }) },
+  ironForeman: { id: 'ironForeman', name: 'Iron Foreman', jaName: 'てつの おやかた', maxHp: 26, attack: 3, repair: 6, heavy: 12, heavyAim: 'core', heavyName: 'Wrecking Swing', large: true, xp: 40, ai: Object.freeze({ support: 'repair', heavyEvery: 3, rests: true }) },
+  siegeGolem: { id: 'siegeGolem', name: 'Siege Golem', jaName: 'こうじょう ゴーレム', maxHp: 44, attack: 4, heavy: 16, heavyAim: 'core', heavyName: 'Siege Blast', machine: true, boss: true, xp: 70, ai: Object.freeze({ heavyEvery: 3, rests: true, phase2: Object.freeze({ at: 0.5, message: '💢 SIEGE GOLEM IS ANGRY!', heavyEvery: 2, rests: false }) }) },
   hornGoblin: { id: 'hornGoblin', name: 'Horn Goblin', jaName: 'つのぶえゴブリン', maxHp: 9, attack: 2, xp: 16, ai: Object.freeze({ support: 'call', callIds: Object.freeze(['goblin']), callEvery: 3, firstCall: 0, maxCalls: 2 }) },
   bombSlime: { id: 'bombSlime', name: 'Bomb Slime', jaName: 'ばくだんスライム', maxHp: 12, fuse: 3, boom: 12, xp: 16, ai: Object.freeze({}) },
   shadowArcher: { id: 'shadowArcher', name: 'Shadow Archer', jaName: 'かげの ゆみへい', maxHp: 8, attack: 3, heavy: 10, heavyName: 'Shadow Arrow', chargeLabel: 'AIMING!', chargeLabelJa: 'ねらっている！', xp: 18, ai: Object.freeze({ heavyEvery: 2, rests: true }) },
@@ -115,6 +121,30 @@ export const ENEMIES = Object.freeze({
 });
 
 export const ENCOUNTERS = Object.freeze({
+  'hig-1': Object.freeze({
+    id: 'hig-1', city: 'higashiosaka', stage: 1, name: 'Core Under Attack', jaName: 'コアが ねらわれた', music: 'battle',
+    enemyIds: Object.freeze(['saboteur', 'goblin']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['saboteur', 'goblin']) }), Object.freeze({ enemyIds: Object.freeze(['saboteur', 'wolf', 'slime']) })]),
+    core: Object.freeze({ hp: 30 }), coreChargeEvery: 3, ally: null, reserve: 3,
+  }),
+  'hig-2': Object.freeze({
+    id: 'hig-2', city: 'higashiosaka', stage: 2, name: 'Repair Crew', jaName: 'しゅうりはん', music: 'battle',
+    enemyIds: Object.freeze(['engineerGoblin', 'guardianConstruct', 'bat']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['engineerGoblin', 'guardianConstruct', 'bat']) }), Object.freeze({ enemyIds: Object.freeze(['guardianConstruct', 'goblinSniper', 'saboteur']) })]),
+    core: Object.freeze({ hp: 30 }), coreChargeEvery: 2, ally: null, reserve: 3,
+  }),
+  'hig-3': Object.freeze({
+    id: 'hig-3', city: 'higashiosaka', stage: 3, name: 'Iron Foreman', jaName: 'てつの おやかた', music: 'battle',
+    enemyIds: Object.freeze(['hornGoblin', 'saboteur']),
+    waves: Object.freeze([Object.freeze({ callBudget: 3, enemyIds: Object.freeze(['hornGoblin', 'saboteur']) }), Object.freeze({ enemyIds: Object.freeze(['guardianConstruct', 'ironForeman']) })]),
+    core: Object.freeze({ hp: 22 }), coreChargeEvery: 2, ally: null, reserve: 3,
+  }),
+  'hig-4': Object.freeze({
+    id: 'hig-4', city: 'higashiosaka', stage: 4, name: 'Siege Golem', jaName: 'こうじょう ゴーレム', music: 'boss',
+    enemyIds: Object.freeze(['goblinSniper', 'engineerGoblin', 'saboteur']),
+    waves: Object.freeze([Object.freeze({ enemyIds: Object.freeze(['goblinSniper', 'engineerGoblin', 'saboteur']) }), Object.freeze({ enemyIds: Object.freeze(['engineerGoblin', 'siegeGolem']) })]),
+    core: Object.freeze({ hp: 30 }), coreChargeEvery: 2, ally: null, reserve: 3,
+  }),
   'yao-1': Object.freeze({
     id: 'yao-1', city: 'yao', stage: 1, name: 'Horn Call', jaName: 'つのぶえの あいず', music: 'battle',
     enemyIds: Object.freeze(['slime', 'hornGoblin', 'goblin']),

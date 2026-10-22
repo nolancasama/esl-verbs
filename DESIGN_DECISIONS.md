@@ -868,3 +868,81 @@ Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
 - Generic tests define temporary encounter/enemy fixtures inside the tests
   and restore the mutable registry entries afterward. No Higashiosaka enemy,
   encounter, region or story data is introduced before H2.
+
+## 2026-10-22 — Higashiosaka H2: campaign and measured Core charge
+
+- **Campaign:** Yao now unlocks Higashiosaka (including existing saves); four
+  quiz modes lead to hig-1..4 with the existing checkpoint, retry, city story,
+  results and map-save flow. Osaka City stays locked. The exact spec story
+  reuses city art; H0's Ishikiri, Higashi-Hanazono, Aramoto and Fuse cards are
+  mounted through the existing station flow. Dev jump enumerates the new data;
+  map presets add `yao` and `higashiosaka`. No save migration or Core engine
+  contract change was needed. Art-ahead allowlists are empty again.
+- **Measurement and determinism diagnosis:** 20 seeds per cell, real post-Yao
+  progression, three heroes, 70/85/100% HP and two potions. Campaigns carry
+  victory resources, city retry HP and at most six attempts per battle.
+  `simulateBattle` passes its seeded RNG to `createBattle`, player steps and
+  `resolveEnemyPhase`, including subsequent waves. Both bots use deterministic
+  decisions from visible state; their fixed .9 lookahead avoids consuming the
+  battle RNG. All six new enemies originally had deterministic intents: no
+  guard/drain rolls or random reinforcements. Hig-1's goblin and hig-3's called
+  goblins could guard, but never changed the win/loss result. HP fractions alone
+  therefore produced 0/33/67/100% cells. Yao's goblin guards and random caller
+  reinforcement choices affect close outcomes. No simulator RNG fix was needed.
+- **Final tuning:** Engineer and Construct use the existing goblin-style
+  `guardChance: .25`: the Engineer can defend when no machine needs repair
+  (repair still takes priority), and the Construct can raise its own shield.
+  Saboteur attacks and charged-heavy cadence remain fixed and readable.
+  Hig-1 retains a 30-HP Core and its original waves, charging every 3 turns;
+  hig-2 retains 30 HP/every 2 but adds a Construct before the Sniper/Saboteur
+  in wave 2. This protects the Core attackers while naive spends AP on the
+  first target; awareness kills the Saboteur and guards Core heavies.
+  Hig-3 retains its waves/every 2 charge with Core HP reduced to 22, so ignoring
+  the early Saboteur and protected Foreman can break it. Hig-4 stays 30 HP/every
+  2. All charge thresholds remain strictly above half HP. Enemy numbers remain
+  Saboteur HP8/attack3; Engineer 12/2, repair5; Sniper 10/2, heavy12 every3;
+  Construct 20/2; Foreman 26/3, repair6, heavy12 every3/rest; Golem 44/4,
+  heavy16 every3/rest, at half HP every2/no rest. XP and role flags are unchanged.
+- **Before → after, three-hero first-try means (AP5/AP7/AP10, %):**
+
+  | Encounter | Naive before | Naive after | Core-aware before | Core-aware after |
+  |---|---|---|---|---|
+  | hig-1 | 100/100/100 | 100/100/100 | 100/100/100 | 100/100/100 |
+  | hig-2 | 100/100/100 | 8.3/90.0/100 | 100/100/100 | 100/100/100 |
+  | hig-3 | 100/100/100 | 57.8/63.9/77.8 | 100/100/100 | 91.7/92.8/96.1 |
+  | hig-4 | 11.1/33.3/100 | 12.2/31.1/100 | 66.7/100/100 | 60.0/100/100 |
+
+  Awareness gains at AP5–7 are hig-2 **0 → 42.2 points**, hig-3 **0 → 31.5**.
+  All section 8 targets still pass: both bots complete 100% at every AP0–10;
+  awareness never falls below naive overall at any AP5–10; AP5 city retries
+  are aware **0.67 → 0.80**, naive **2.00 → 3.83**, both within 4.5.
+- **Defeat causes before → after (hero/Core/turn cap):**
+
+  | Encounter, first tries AP5–10 | Naive before | Naive after | Aware before | Aware after |
+  |---|---|---|---|---|
+  | hig-1 | 0/0/0 | 0/0/0 | 0/0/0 | 0/0/0 |
+  | hig-2 | 0/0/0 | 0/231/0 | 0/0/0 | 0/0/0 |
+  | hig-3 | 0/0/0 | 0/352/0 | 0/0/0 | 46/23/0 |
+  | hig-4 | 0/480/0 | 0/510/0 | 0/120/0 | 0/132/0 |
+  | All | 0/480/0 | 0/1093/0 | 0/120/0 | 46/155/0 |
+
+  Core breaks are **100% → 100%** of naive hig-2..4 first-try defeats, now
+  represented in all three encounters. Across campaign AP0–10 attempts,
+  naive changes **168/1359/0 → 44/2448/0**, aware **172/295/0 → 266/285/0**.
+  Hero death remains real in campaigns; the old campaign defeat-share checks
+  remain, alongside the new first-try-only Core-share assertion.
+- **Assertion proof and validation:** seven correction tests cover the six
+  new balance targets and seed-sensitive outcomes in each of hig-2..4.
+  Temporarily using naive ceilings -1, gain/Core-share/tutorial floors 1.01
+  and minimum varied cells 1,000,000 made exactly these seven tests fail
+  (`npm test`: 186 pass / 7 fail). Restoring approved thresholds passes
+  **193/193**. `npm run balance` passes. Original H2 target checks remain.
+  `.ai/hig-balance-before.txt` and `.ai/hig-balance-after.txt` preserve reports;
+  comparison of all output before the Higashiosaka section is byte-identical
+  (10,518 characters, including Matsubara/Sakai/Yao). No H1 contract changed.
+- **Browser scope:** the playthrough now checks unlock/checkpoint, dev jump,
+  Stage Clear → Ishikiri → visible Core, debug hig-4 wave 2, guarded Core-heavy
+  damage with Fighter's LV5 passive, and 1024×600 no scroll. Screenshot paths
+  are prepared, but no browser suite or screenshot capture was run: H2's
+  validation order lists only `npm test` and `npm run balance`. Layout and
+  Claude's final aesthetic review remain open; Osaka City O0 follows H2.

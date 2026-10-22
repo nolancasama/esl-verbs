@@ -191,3 +191,25 @@ test('Yao carries quiz AP and post-Sakai progression through retry and victory',
   assert.equal(won.level, 5);
   assert.ok(won.xp > entered.xp);
 });
+
+test('Higashiosaka carries post-Yao progression and retries with a fresh Core', () => {
+  const entered = createCampaign('fighter', { cityId: 'higashiosaka', level: 5, xp: 700 });
+  const campaign = recordStage({ ...entered, heroHp: 8, potions: 1 }, round(5), 'hig-1');
+  const setup = battleSetup(campaign);
+  assert.equal(setup.ap, 5);
+  assert.equal(setup.heroHp, 8);
+  assert.equal(setup.level, 5);
+  assert.equal(setup.encounterId, 'hig-1');
+  const first = createBattle(setup);
+  first.core.hp = 0;
+  const retry = recordDefeat(recordDefeat(recordDefeat(campaign)));
+  assert.equal(battleSetup(retry).ap, 10);
+  assert.equal(battleSetup(retry).heroHp, heroMaxHp('fighter', 5));
+  assert.deepEqual(createBattle(battleSetup(retry)).core, { hp: ENCOUNTERS['hig-1'].core.hp, maxHp: ENCOUNTERS['hig-1'].core.hp });
+  const { campaign: won } = applyVictory(retry, wonBattle(retry, 10));
+  assert.equal(won.cityId, 'higashiosaka');
+  assert.equal(won.stage, 2);
+  assert.equal(won.retries, 0);
+  assert.equal(won.level, 5);
+  assert.ok(won.xp > entered.xp);
+});

@@ -10,6 +10,7 @@ import { createBattle, heroMaxHp } from '../src/battle-engine.js';
 import {
   POLICIES, STAGE_LEVEL, encountersForTier, sakaiEncounters, simulateBattle, simulateCampaign, simulateSakaiCampaign,
   YAO_POLICIES, simulateYaoCampaign, yaoEntryCampaign, yaoEncounters,
+  HIGASHIOSAKA_POLICIES, higashiosakaEntryCampaign, simulateHigashiosakaCampaign, measureHigashiosaka,
 } from './balance-sim.js';
 
 const heroes = Object.keys(HEROES);
@@ -261,4 +262,129 @@ test('Yao correction: both report bots complete; priority AP7 needs at most 1.5 
     if (name === 'competent' && ap === 7 && retries / YAO_REPORT_SEEDS > 1.5) failures.push(`${heroId} AP7 mean retries ${retries / YAO_REPORT_SEEDS}`);
   }
   assert.deepEqual(failures, []);
+});
+
+test('Higashiosaka enters with real post-Yao progression and the normal city rest', () => {
+  for (const heroId of heroes) {
+    const yao = simulateYaoCampaign({ heroId, ap: 7, seed: 23 });
+    const entry = higashiosakaEntryCampaign({ heroId, ap: 7, seed: 23 });
+    assert.ok(yao.completed);
+    assert.equal(entry.cityId, 'higashiosaka');
+    assert.equal(entry.level, yao.campaign.level);
+    assert.equal(entry.xp, yao.campaign.xp);
+    assert.equal(entry.heroHp, heroMaxHp(heroId, entry.level));
+    assert.equal(entry.potions, 2);
+    assert.deepEqual(entry.stageResults, []);
+    const run = simulateHigashiosakaCampaign({ heroId, ap: 7, seed: 23 });
+    assert.ok(run.completed);
+    assert.deepEqual(run.stages.map((stage) => stage.encounterId), ['hig-1', 'hig-2', 'hig-3', 'hig-4']);
+    assert.equal(run.stages[1].entryHp, Math.min(heroMaxHp(heroId, entry.level),
+      Math.max(run.stages[0].hpLeft + Math.round(heroMaxHp(heroId, entry.level) * .28), Math.ceil(heroMaxHp(heroId, entry.level) * .4))));
+    assert.equal(run.stages[1].entryPotions, Math.min(2, run.stages[0].potionsLeft + 1));
+  }
+});
+
+test('Higashiosaka bots differ in Core targeting and defence, keeping the Yao resource plan', () => {
+  const base = createBattle({ heroId: 'fighter', encounterId: 'hig-4', level: 5, ap: 1, rng: () => .9 });
+  const [sniper, , saboteur] = base.enemies;
+  assert.equal(HIGASHIOSAKA_POLICIES.naive(base).target, sniper.uid);
+  assert.equal(HIGASHIOSAKA_POLICIES['core-aware'](base).target, saboteur.uid);
+  const heavy = { ...base, enemies: base.enemies.map((enemy) => enemy.uid === sniper.uid ? { ...enemy, intent: 'heavy', aim: 'core' } : enemy) };
+  assert.equal(HIGASHIOSAKA_POLICIES['core-aware'](heavy).skillId, 'guard');
+  assert.notEqual(HIGASHIOSAKA_POLICIES.naive(heavy).skillId, 'guard');
+  const heroHeavy = { ...heavy, enemies: heavy.enemies.map((enemy) => enemy.uid === sniper.uid ? { ...enemy, aim: 'hero' } : enemy) };
+  assert.equal(HIGASHIOSAKA_POLICIES.naive(heroHeavy).skillId, 'guard');
+  const noSaboteur = { ...heavy, enemies: heavy.enemies.filter((enemy) => enemy.id !== 'saboteur').map((enemy) => ({ ...enemy, intent: 'charge' })) };
+  assert.equal(HIGASHIOSAKA_POLICIES['core-aware'](noSaboteur).target, sniper.uid);
+});
+
+// Exactly the report's 20 seeds, entry progression, HP samples and retry rules.
+// Keep thresholds together so a deliberately impossible pass can prove every
+// balance assertion before restoring the approved values.
+const HIG_TARGETS = {
+  completion: 1,
+  firstTry: { 'hig-3': { 5: .30, 7: .70, 10: .95 }, 'hig-4': { 5: .15, 7: .70, 10: .95 } },
+  advantage: .05, overallAdvantage: 0, maxRetries: 4.5, coreDefeatShare: .20, heroDefeatShare: .001,
+  naiveAp5: { 'hig-2': .85, 'hig-3': .75 }, stageAdvantage: .10,
+  firstTryCoreShare: .40, tutorial: .85, variedCells: 1,
+};
+const higReport = measureHigashiosaka(20);
+const average = (rows, field = 'rate') => rows.reduce((sum, row) => sum + row[field], 0) / rows.length;
+const higRate = (name, encounterId, ap) => average(higReport.firstTry.filter((row) => row.name === name && row.encounterId === encounterId && row.ap === ap));
+
+for (const encounterId of ['hig-2', 'hig-3']) {
+  test(`Higashiosaka correction: ${encounterId} naive AP5 has real Core pressure`, () => {
+    const rate = higRate('naive', encounterId, 5);
+    assert.ok(rate <= HIG_TARGETS.naiveAp5[encounterId], `${encounterId}: naive AP5 ${rate}`);
+  });
+  test(`Higashiosaka correction: ${encounterId} awareness gains ten points at AP5-7`, () => {
+    const gain = average([5, 6, 7].map((ap) => ({ rate: higRate('core-aware', encounterId, ap) - higRate('naive', encounterId, ap) })));
+    assert.ok(gain + 1e-9 >= HIG_TARGETS.stageAdvantage, `${encounterId}: awareness gain ${gain}`);
+  });
+}
+test('Higashiosaka correction: Core breaks cause at least 40% of naive hig-2..4 first-try defeats', () => {
+  const causes = higReport.firstTry.filter((row) => row.name === 'naive' && row.encounterId !== 'hig-1')
+    .reduce((sum, row) => {
+      for (const cause of Object.keys(sum)) sum[cause] += row.defeats[cause];
+      return sum;
+    }, { hero: 0, core: 0, turnCap: 0 });
+  const losses = Object.values(causes).reduce((sum, count) => sum + count, 0);
+  assert.ok(causes.core / losses >= HIG_TARGETS.firstTryCoreShare, JSON.stringify(causes));
+});
+test('Higashiosaka correction: hig-1 stays a gentle Core-aware AP5 tutorial', () => {
+  assert.ok(higRate('core-aware', 'hig-1', 5) >= HIG_TARGETS.tutorial);
+});
+test('Higashiosaka correction: seeds change outcomes within HP samples in hig-2..4', () => {
+  // Without within-HP variation, three equally weighted HP samples can only
+  // produce 0, 1/3, 2/3 or 1. Require other rates in each pressure encounter.
+  const failures = ['hig-2', 'hig-3', 'hig-4'].filter((encounterId) => {
+    const varied = higReport.firstTry.filter((row) => row.encounterId === encounterId
+      && Math.abs(row.rate * 3 - Math.round(row.rate * 3)) > 1e-9).length;
+    return varied < HIG_TARGETS.variedCells;
+  });
+  assert.deepEqual(failures, []);
+});
+
+for (const name of Object.keys(HIGASHIOSAKA_POLICIES)) {
+  test(`Higashiosaka: ${name} completes 100% at every AP0-10 within six attempts`, () => {
+    for (let ap = 0; ap <= 10; ap += 1) {
+      const rate = average(higReport.campaigns.filter((row) => row.name === name && row.ap === ap));
+      assert.ok(rate >= HIG_TARGETS.completion, `${name} AP${ap}: completed ${rate}`);
+    }
+  });
+  test(`Higashiosaka: ${name} AP5 hero-mean city retries stay at most 4.5`, () => {
+    const retries = average(higReport.campaigns.filter((row) => row.name === name && row.ap === 5), 'retries');
+    assert.ok(retries <= HIG_TARGETS.maxRetries, `${name} AP5: mean retries ${retries}`);
+  });
+}
+for (const [encounterId, thresholds] of Object.entries(HIG_TARGETS.firstTry)) for (const [ap, threshold] of Object.entries(thresholds)) {
+  test(`Higashiosaka: core-aware ${encounterId} AP${ap} meets the hero-mean first-try target`, () => {
+    const rate = higRate('core-aware', encounterId, Number(ap));
+    assert.ok(rate + 1e-9 >= threshold, `${encounterId} AP${ap}: ${rate} < ${threshold}`);
+  });
+}
+test('Higashiosaka: Core awareness wins at least five points at AP5-7 across hig-2..4', () => {
+  const rows = higReport.firstTry.filter((row) => row.encounterId !== 'hig-1' && row.ap <= 7);
+  const gain = average(rows.filter((row) => row.name === 'core-aware')) - average(rows.filter((row) => row.name === 'naive'));
+  assert.ok(gain + 1e-9 >= HIG_TARGETS.advantage, `Core-aware advantage ${gain}`);
+});
+test('Higashiosaka: Core awareness is never below naive overall at any reported AP', () => {
+  for (let ap = 5; ap <= 10; ap += 1) {
+    const rows = higReport.firstTry.filter((row) => row.ap === ap);
+    const gain = average(rows.filter((row) => row.name === 'core-aware')) - average(rows.filter((row) => row.name === 'naive'));
+    assert.ok(gain + 1e-9 >= HIG_TARGETS.overallAdvantage, `AP${ap}: overall advantage ${gain}`);
+  }
+});
+// Defeat composition is over campaign attempts at all AP0-10: first-try-only
+// AP5-10 omits the hero deaths that still occur when arriving with little AP.
+const naiveHigDefeats = higReport.campaigns.filter((row) => row.name === 'naive').reduce((sum, row) => {
+  for (const cause of Object.keys(sum)) sum[cause] += row.defeats[cause];
+  return sum;
+}, { hero: 0, core: 0, turnCap: 0 });
+const naiveHigLosses = Object.values(naiveHigDefeats).reduce((sum, n) => sum + n, 0);
+test('Higashiosaka: Core breakage causes at least 20% of naive defeats', () => {
+  assert.ok(naiveHigDefeats.core / naiveHigLosses >= HIG_TARGETS.coreDefeatShare, JSON.stringify(naiveHigDefeats));
+});
+test('Higashiosaka: hero death also causes naive defeats', () => {
+  assert.ok(naiveHigDefeats.hero / naiveHigLosses >= HIG_TARGETS.heroDefeatShare, JSON.stringify(naiveHigDefeats));
 });
