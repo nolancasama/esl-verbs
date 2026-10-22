@@ -794,3 +794,32 @@ difficulty from behaviour rather than HP:
   party management.
 - Still out of scope: gold, shops, equipment, inventory, skill trees, free
   roaming, grid tactics, timed reflex attacks, Verb Rush, multiplayer.
+
+## 2026-10-22 — Higashiosaka and Osaka City specs frozen
+
+Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
+(not built yet). Key decisions:
+
+- **Higashiosaka's one new system is the Action Core:** an object with its own
+  HP on the field; each enemy intent carries an aim (hero or Core) chosen with
+  the intent, so the threat is always telegraphed. The hero's defence stance
+  covers the Core too (one rule to learn). The Core breaking loses the battle,
+  with the normal retry assist and a full Core on every attempt.
+- **Core charge is the city's AP lever** (Yao showed a solo hero starves on
+  AP): every 3rd turn the Core gives +1 AP while above half HP, so protecting
+  it pays in the resource students understand.
+- Higashiosaka roster: Saboteur (always hits the Core), Engineer Goblin
+  (repairs machines), Goblin Sniper (aimed Core Shot), Guardian Construct
+  (the Orc's protector rule, protecting Core attackers), Iron Foreman
+  (miniboss), Siege Golem (boss). Small two-wave line-ups, no ally.
+- **Osaka City adds no engine systems:** four stages that each combine earlier
+  lessons, the Osaka Defender returning in stages 3–4, and a three-phase
+  finale at Osaka Castle built from three waves (escort → Black Star attacking
+  the Core → the True Form with the ally). Rejected: a new finale mechanic,
+  party management, HP-only difficulty.
+- Stations (real coordinates in the specs): Higashiosaka Ishikiri →
+  Higashi-Hanazono → Aramoto → Fuse (the Horde pushes west from the Ikoma
+  hills); Osaka City Tennoji → Namba → Osaka/Umeda → Osakajōkōen (Osaka Castle).
+- Balance targets carry Yao's lessons: measure how defeats end before tuning,
+  assert hero-mean thresholds, both bots must complete every city at AP 0–10,
+  prove each new assertion can fail.
