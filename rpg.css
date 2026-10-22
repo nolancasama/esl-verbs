@@ -795,6 +795,15 @@
 .osaka-city__burst { position: absolute; left: 50%; top: 17px; z-index: -1; width: 140px; height: 140px; translate: -50% -50%; pointer-events: none; background: radial-gradient(circle, #fff 0 7%, #ffd35acc 8% 22%, #ffd35a00 56%); animation: city-burst 1s ease-out forwards; }
 @keyframes city-burst { from { scale: .2; opacity: 1; } to { scale: 1.7; opacity: 0; } }
 .osaka-map__biwa { position: absolute; left: 91%; top: 19%; translate: -50% 0; display: grid; justify-items: center; font-family: var(--read-font); font-weight: 800; font-size: .8rem; line-height: 1.1; color: #e8d4ff; text-shadow: 2px 2px 0 var(--ink); pointer-events: none; }
+/* All five cities saved: every pin glows gold and the final banner rises over the map. */
+.osaka-map--all-saved .osaka-city--saved .osaka-city__pin { box-shadow: 0 0 0 2px var(--ink), 0 0 14px 4px #ffd35a; }
+.osaka-map__final { position: absolute; left: 50%; top: 13%; z-index: 6; display: grid; justify-items: center; gap: 2px; padding: 10px 26px 12px; translate: -50% -50%; pointer-events: none; background: #0e1024ee; border: var(--b) solid var(--gold); box-shadow: 0 0 0 var(--b) var(--ink), 0 0 30px #ffd35a88; animation: final-banner 1.6s steps(10) .9s both; }
+.osaka-map__final b { font-family: var(--read-font); font-weight: 900; font-size: clamp(1.4rem, 4.4cqi, 2.4rem); color: var(--gold); text-shadow: 3px 3px 0 var(--ink); white-space: nowrap; }
+.osaka-map__final span { font-family: var(--pixel-font); font-size: clamp(12px, 2cqi, 18px); color: #fff; letter-spacing: 1px; }
+.osaka-map__final::before, .osaka-map__final::after { content: '★'; position: absolute; top: 50%; translate: 0 -50%; font-size: 1.6rem; color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
+.osaka-map__final::before { left: 6px; } .osaka-map__final::after { right: 6px; }
+@keyframes final-banner { from { opacity: 0; scale: .6; } 60% { opacity: 1; scale: 1.08; } to { opacity: 1; scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .osaka-map__final { animation: none; } }
 .map-actions { display: flex; justify-content: center; }
 .rpg-card .map-go { min-height: 64px; display: grid; gap: 2px; padding: .4rem 1.6rem; font-family: var(--read-font); font-weight: 900; font-size: 1.4rem; }
 .map-go small { font-family: var(--pixel-font); font-size: 10px; font-weight: 400; }

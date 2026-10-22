@@ -31,6 +31,11 @@ const P = Object.freeze({
   aramoto: [34.67861, 135.6049], nagata: [34.67844, 135.59302], yoshita: [34.68029, 135.62414],
   higashiosakaCityHall: [34.67942, 135.60064],
   fuse: [34.66412, 135.56321], imazato: [34.66468, 135.54966], kawachiEiwa: [34.66429, 135.57321], shuntokumichi: [34.6583, 135.57184],
+  tennoji: [34.64732, 135.51394], teradacho: [34.64788, 135.52337], shinImamiya: [34.65017, 135.50069],
+  abenoHarukas: [34.64577, 135.51401], tsutenkaku: [34.65254, 135.50631],
+  namba: [34.66341, 135.50191], shinsaibashi: [34.67501, 135.50033], daikokucho: [34.65607, 135.4978],
+  osaka: [34.70251, 135.49618], fukushima: [34.69689, 135.48722], tenma: [34.70492, 135.51232], umedaSky: [34.70529, 135.49053],
+  osakajokoen: [34.68776, 135.5344], kyobashi: [34.696, 135.5347], morinomiya: [34.6811, 135.53384], osakaCastle: [34.68718, 135.5254],
 });
 
 const stop = (place, ja, en) => Object.freeze({ at: P[place], ja, en });
@@ -221,6 +226,65 @@ export const BATTLE_LOCATIONS = Object.freeze({
         lines: [line([stop('imazato', 'いまざと', 'Imazato'), stop('fuse', 'ふせ', 'Fuse'), stop('shuntokumichi', 'しゅんとくみち', 'Shuntokumichi')]),
           line([stop('fuse', 'ふせ', 'Fuse'), stop('kawachiEiwa', 'かわちえいわ', 'Kawachi-Eiwa')])],
         threats: [[94, 20], [94, 70], [70, 94]],
+      },
+    }),
+  ]),
+
+  // The whole Horde drives from the south through the city centre to the
+  // castle. Park and river outlines are OpenStreetMap ways traced 2026-10-22
+  // (Tennoji Park 170693374, Osaka Castle Park 35457792, Dotonbori 82725202,
+  // Yodo 82726880 + 135754702, Okawa 82729504 and its Tosabori branch 82720517), simplified for the 192px map.
+  osakaCity: Object.freeze([
+    loc(1, {
+      station: { place: P.tennoji, name: 'Tennoji', jaName: '天王寺', kana: 'てんのうじ', line: 'JR Osaka Loop Line' },
+      note: { ja: 'あべのハルカスの ちかくの えき', en: 'The station by Abeno Harukas' },
+      map: {
+        center: [34.6500, 135.5120], km: 3,
+        parks: [[[34.65362, 135.50964], [34.65385, 135.50825], [34.64902, 135.50666], [34.64783, 135.51204], [34.6479, 135.51281], [34.64854, 135.51307],
+          [34.64885, 135.512], [34.65015, 135.51234], [34.6503, 135.51144], [34.65091, 135.51161], [34.65079, 135.51271], [34.65113, 135.51285],
+          [34.65232, 135.51236], [34.65244, 135.51118], [34.6517, 135.51001], [34.65188, 135.50959]]],
+        lines: [line([stop('shinImamiya', 'しんいまみや', 'Shin-Imamiya'), stop('tennoji', 'てんのうじ', 'Tennoji'), stop('teradacho', 'てらだちょう', 'Teradacho')])],
+        landmarks: [
+          { kind: 'skyscraper', at: P.abenoHarukas, ja: 'あべのハルカス', en: 'Abeno Harukas' },
+          { kind: 'tower', at: P.tsutenkaku, ja: 'つうてんかく', en: 'Tsutenkaku' },
+        ],
+        threats: [[20, 94], [62, 94], [94, 60]],
+      },
+    }),
+    loc(2, {
+      station: { place: P.namba, name: 'Namba', jaName: '難波', kana: 'なんば', line: 'Nankai Main Line / Osaka Metro Midosuji Line' },
+      note: { ja: 'どうとんぼりの ちかくの えき', en: 'The station near Dotonbori' },
+      map: {
+        center: [34.6660, 135.5010], km: 3,
+        // Nankai ends at Namba; the Midosuji subway runs north-south past it.
+        lines: [line([stop('shinImamiya', 'しんいまみや', 'Shin-Imamiya'), stop('namba', 'なんば', 'Namba')], 'terminus'),
+          line([stop('daikokucho', 'だいこくちょう', 'Daikokucho'), stop('shinsaibashi', 'しんさいばし', 'Shinsaibashi')], 'subway')],
+        rivers: [{ points: [[34.66898, 135.51044], [34.66899, 135.49726], [34.66999, 135.48644]], width: 4, ja: 'どうとんぼりがわ', en: 'Dotonbori', label: [34.6704, 135.5080] }],
+        threats: [[10, 94], [58, 94], [94, 80]],
+      },
+    }),
+    loc(3, {
+      station: { place: P.osaka, name: 'Osaka', jaName: '大阪', kana: 'おおさか', line: 'JR Osaka Loop Line' },
+      note: { ja: 'おおさかで いちばん おおきい えき', en: "Osaka's biggest station" },
+      map: {
+        center: [34.7070, 135.4990], km: 4.6,
+        lines: [line([stop('fukushima', 'ふくしま', 'Fukushima'), stop('osaka', 'おおさか', 'Osaka'), stop('tenma', 'てんま', 'Tenma')])],
+        rivers: [{ points: [[34.72304, 135.51359], [34.7197, 135.50764], [34.71888, 135.50371], [34.71626, 135.49013], [34.69805, 135.45992]], width: 16, ja: 'よどがわ', en: 'Yodo River', label: [34.7095, 135.4770] }],
+        landmarks: [{ kind: 'skyscraper', at: P.umedaSky, ja: 'うめだスカイビル', en: 'Umeda Sky Building' }],
+        threats: [[20, 94], [80, 94], [94, 60]],
+      },
+    }),
+    loc(4, {
+      station: { place: P.osakajokoen, name: 'Osakajokoen', jaName: '大阪城公園', kana: 'おおさかじょうこうえん', line: 'JR Osaka Loop Line' },
+      note: { ja: 'おおさかじょうを まもれ！', en: 'Defend Osaka Castle!' },
+      map: {
+        center: [34.6880, 135.5285], km: 4,
+        parks: [[[34.68808, 135.52022], [34.68338, 135.52162], [34.68245, 135.52325], [34.68163, 135.53337], [34.68904, 135.53415], [34.68956, 135.53429],
+          [34.69152, 135.52542], [34.69077, 135.52273], [34.68936, 135.52266]]],
+        rivers: [{ points: [[34.70407, 135.5184], [34.69967, 135.52204], [34.69578, 135.52293], [34.69411, 135.52234], [34.69176, 135.52019], [34.69112, 135.51486], [34.69085, 135.5104], [34.69239, 135.50624]], width: 6, ja: 'おおかわ', en: 'Okawa River', label: [34.6975, 135.5150] }],
+        lines: [line([stop('morinomiya', 'もりのみや', 'Morinomiya'), stop('osakajokoen', 'おおさかじょうこうえん', 'Osakajokoen'), stop('kyobashi', 'きょうばし', 'Kyobashi')])],
+        landmarks: [{ kind: 'castle', at: P.osakaCastle, ja: 'おおさかじょう', en: 'Osaka Castle' }],
+        threats: [[28, 94], [72, 94], [6, 70]],
       },
     }),
   ]),

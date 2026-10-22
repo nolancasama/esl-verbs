@@ -180,6 +180,24 @@ function drawLandmark(s, kind, [cx, cy]) {
     }
     box(s, cx - 5, cy - 4, 11, 3, 'p'); s.paint(cx, cy - 4, 'c'); s.paint(cx, cy - 3, 'c'); s.paint(cx, cy - 2, 'c');
     s.paint(cx - 5, cy - 3, 'c'); s.paint(cx + 5, cy - 3, 'c');
+  } else if (kind === 'skyscraper') {
+    // a stepped glass tower with rows of lit windows
+    box(s, cx - 4, cy - 22, 9, 24, 'u'); box(s, cx + 2, cy - 22, 3, 24, 'U');
+    box(s, cx - 3, cy - 26, 7, 4, 'u'); box(s, cx - 1, cy - 29, 3, 3, 'U');
+    for (let y = cy - 20; y < cy; y += 3) for (let x = cx - 3; x < cx + 2; x += 2) s.paint(x, y, 'k');
+  } else if (kind === 'tower') {
+    // a lattice tower on splayed legs with an observation deck
+    for (let y = 0; y < 18; y += 1) { const w = Math.round(1 + (y / 17) * 5); s.paint(cx - w, cy - 17 + y, 'U'); s.paint(cx + w, cy - 17 + y, 'U'); if (y % 3 === 0) for (let x = -w; x <= w; x += 1) s.paint(cx + x, cy - 17 + y, 'H'); }
+    box(s, cx - 3, cy - 23, 7, 5, 'c'); box(s, cx - 3, cy - 19, 7, 1, 'H'); box(s, cx, cy - 27, 1, 4, 'U'); s.paint(cx, cy - 28, 'o');
+  } else if (kind === 'castle') {
+    // a castle keep: stone base, white tiers under green roofs, gold on top
+    box(s, cx - 10, cy - 4, 21, 6, 'U'); box(s, cx - 9, cy - 3, 19, 1, 'H');
+    [[8, -10], [6, -16], [4, -21]].forEach(([w, y]) => {
+      box(s, cx - w + 1, cy + y, w * 2 - 1, 5, 'c');
+      box(s, cx - w - 1, cy + y - 1, w * 2 + 3, 2, 'p'); box(s, cx - w - 1, cy + y, w * 2 + 3, 1, 'b');
+      for (let x = cx - w + 3; x < cx + w - 1; x += 3) s.paint(x, cy + y + 2, 't');
+    });
+    box(s, cx - 2, cy - 25, 5, 2, 'p'); s.paint(cx - 3, cy - 26, 'z'); s.paint(cx + 3, cy - 26, 'z');
   }
 }
 
@@ -317,7 +335,7 @@ function flameArt() {
 
 const el = (tag, className = '', text = '') => { const node = document.createElement(tag); node.className = className; node.textContent = text; return node; };
 const pct = (value) => `${value}%`;
-const ROAMERS = { higashiosaka: ['saboteur', 'engineerGoblin', 'goblin', 'bat'], yao: ['hornGoblin', 'bombSlime', 'goblin', 'bat'], sakai: ['goblin', 'wolf', 'bat', 'slime'], matsubara: ['slime', 'bat', 'goblin', 'mushroom'] };
+const ROAMERS = { osakaCity: ['shadowGuard', 'hornGoblin', 'goblin', 'bat'], higashiosaka: ['saboteur', 'engineerGoblin', 'goblin', 'bat'], yao: ['hornGoblin', 'bombSlime', 'goblin', 'bat'], sakai: ['goblin', 'wolf', 'bat', 'slime'], matsubara: ['slime', 'bat', 'goblin', 'mushroom'] };
 
 function ruby(base, reading) {
   const r = document.createElement('ruby'); r.append(base);

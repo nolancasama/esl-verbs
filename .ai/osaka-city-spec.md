@@ -174,3 +174,38 @@ automatically (it reads CITY_CAMPAIGNS) — confirm it reaches osk-4.
   engine systems), bots/report/assertions, docs.
 
 Docs: append dated DESIGN_DECISIONS entries; revise CURRENT_STATE lines.
+
+---------------------------------------------------------------------------
+## 10. O0 done (2026-10-22) — what O1 builds on
+
+- **Sprites** (`src/pixel-enemies.js`, ids as §3): `shadowGuard` (large; the
+  Armored Orc build in Horde black with a star shield; guard = shield up),
+  `blackStarAvatar` (boss, floats; cast = the call with violet rings, charge =
+  Star Fall gathering a gold star overhead; enraged = ember crown and eyes),
+  `blackStarTrue` (boss, floats; a black star with one eye, shadow arms and a
+  dark corona; charge = Black Nova, gold eye; enraged = red rim and light
+  cracks — "fading"). All three are listed in `test/art.test.js`
+  `ART_AHEAD_OF_DATA` / `BOSS_ART_AHEAD`; **O1 must empty both lists** when it
+  adds the enemies to `battle-data.js`.
+- **Stations:** `BATTLE_LOCATIONS.osakaCity` stages 1–4 as §5. Outlines are
+  traced OSM ways (ids in the source comment): Tennoji Park, Osaka Castle Park,
+  Dotonbori, Yodo, Okawa + its Tosabori branch. New landmark kinds:
+  `skyscraper` (Abeno Harukas, Umeda Sky Building), `tower` (Tsutenkaku),
+  `castle` (the keep). Namba shows the Nankai line ending at Namba and the
+  Midosuji subway north–south. The Tennoji Park label was left out (it hid
+  the Tsutenkaku plate; the park reads from its trees). Map roamers for
+  Osaka City: shadowGuard, hornGoblin, goblin, bat.
+- **Final map:** `osakaMapView`'s `reveal()` already adds
+  `.osaka-map--all-saved` (every pin glows) and the banner
+  `おおさかを まもった！ / OSAKA IS SAFE!` when the just-saved city is the last
+  of the five. O1 only has to save Osaka City through the normal flow
+  (`justSaved: 'osakaCity'`); no new map code.
+- **Story text check:** a story line holds ~17 characters at 1024×600, so
+  O1 writes the §4 lines as these cards (same text, split at phrase breaks;
+  `大阪の まもりびと` without furigana braces, as in the Sakai ending):
+  intro `['{大阪|おおさか}{市|し}に ホードの {大|だい}ぐん！']` (en THE INVASION!) →
+  `['ブラックスターが あらわれた！']` → `{hero}` `['いままでの ちからを', 'ぜんぶ つかおう！']`;
+  ending title → `{ally}` `['大阪の まもりびと：', '「やったな！」']` →
+  `['ブラックスターの やみは きえた。']` →
+  `['まつばら、さかい、やお、', 'ひがしおおさか…', 'みんなの まちが ひかっている。']` →
+  `['きみは おおさかの ヒーローだ！']` (en YOU ARE OSAKA'S HERO!).

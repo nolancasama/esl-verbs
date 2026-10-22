@@ -1324,6 +1324,133 @@ function siegeGolem(params) {
   return recolor(done(p), (key) => key.replace(/^([a-zA-Z]+)(\d)$/, (all, name, level) => (SIEGE_MATERIAL[name] ? `${SIEGE_MATERIAL[name]}${level}` : all)));
 }
 
+/* ---------------------------------------------------------- Osaka City foes */
+// The Black Star's own troops. The Shadow Guard is the Armored Orc's build in
+// Horde black with a glowing star shield (it protects a caller). The Black
+// Star appears twice: a crowned sorcerer who calls the Horde and drops Star
+// Fall on the Core, then its true form, a living black star with one eye and
+// arms of shadow. 'angry' is each form's phase 2.
+
+const SHADOW_GUARD_MATERIAL = { moss: 'shade', steel: 'shadowCloth', red: 'violet', crimson: 'violet', stone: 'indigo' };
+function shadowGuard(opts) {
+  return recolor(armoredOrc(opts), (key) => key.replace(/^([a-zA-Z]+)(\d)$/, (all, name, level) => (SHADOW_GUARD_MATERIAL[name] ? `${SHADOW_GUARD_MATERIAL[name]}${level}` : all)));
+}
+
+/** A five-pointed star polygon (points up), outer radius r, inner ratio k, turned by `turn` degrees. */
+function starPoints(x, y, r, k = 0.45, turn = 0) {
+  return Array.from({ length: 10 }, (_, i) => {
+    const a = ((-90 + turn) * Math.PI) / 180 + (i * Math.PI) / 5, rr = i % 2 ? r * k : r;
+    return [x + Math.cos(a) * rr, y + Math.sin(a) * rr];
+  });
+}
+
+/** Black Star (avatar): a hooded, star-crowned sorcerer floating in violet light. */
+function blackStarAvatar({ mode, f, angry }) {
+  const p = new Painter(112, 132, LIGHT);
+  const tired = mode === 'tired', cast = mode === 'cast', charge = mode === 'charge', attack = mode === 'attack';
+  const hot = angry || charge;
+  const bob = tired ? 6 : [0, 1, 2, 1][f % 4] * (mode === 'idle' ? 1 : 0);
+  const cx = 50, oy = 10 + bob;
+  const eye = angry ? 'red' : 'violet';
+  // violet aura motes around the figure
+  if (!tired) [[-30, 40], [28, 30], [-26, 90], [32, 96], [-6, 4]].forEach(([dx, dy], i) => { if ((i + f) % 3 !== 2) p.dot(cx + dx, oy + dy - (f % 2), i % 2 ? 'violet' : 'spark'); });
+  // a ring of violet light behind the crown
+  if (!tired) arc(p, cx + 2, oy + 26, 24 + (f % 2), 0, 360, hot ? 'orange' : 'violet', 1, 'spark');
+  // tattered cape spreading behind like wings
+  const flap = tired ? 4 : [0, 1, 2, 1][f % 4];
+  poly(p, 'shade', [[cx - 14, oy + 40], [cx - 40, oy + 56 + flap], [cx - 34, oy + 70], [cx - 44, oy + 84 + flap], [cx - 32, oy + 92], [cx - 22, oy + 104]], { shadow: 2, dither: true });
+  poly(p, 'shade', [[cx + 14, oy + 40], [cx + 36, oy + 58 + flap], [cx + 30, oy + 72], [cx + 40, oy + 86 + flap], [cx + 26, oy + 96]], { shadow: 2, dither: true });
+  // back arm
+  const backHand = tired ? [cx - 16, oy + 82] : charge ? [cx - 8, oy + 18] : [cx - 22, oy + 70];
+  limb(p, 'shade', [cx - 14, oy + 44], backHand, 4, 3, { gloss: true });
+  blob(p, 'shade', backHand[0], backHand[1], 3.6, 3.6);
+  // the robe: wide, tattered, floating above the ground
+  poly(p, 'shadowCloth', [[cx - 17, oy + 40], [cx + 17, oy + 40], [cx + 30, oy + 102], [cx + 20, oy + 112], [cx + 10, oy + 104], [cx, oy + 116], [cx - 10, oy + 104], [cx - 22, oy + 114], [cx - 32, oy + 100]], { shadow: 3, dither: true, gloss: true });
+  // violet trim down the front, a sash and the Black Star on the chest
+  limb(p, 'violet', [cx + 15, oy + 42], [cx + 28, oy + 100], 1, 1, { line: false, gloss: true });
+  limb(p, 'violet', [cx - 14, oy + 66], [cx + 18, oy + 66], 1.2, 1.2, { line: false, gloss: true });
+  poly(p, hot ? 'ember' : 'violet', starPoints(cx + 1, oy + 54, 7, 0.45), { gloss: true });
+  // hood, dark face, burning eyes
+  const hx = cx + 2 + (tired ? 3 : 0), hy = oy + 30 + (tired ? 4 : 0);
+  blob(p, 'shadowCloth', hx, hy, 11, 12, { gloss: true, shadow: 2 });
+  blob(p, 'shade', hx + 4, hy + 2, 6.5, 7, { level: 0, line: false });
+  if (tired) { p.dots([[hx + 1, hy + 2], [hx + 2, hy + 2], [hx + 6, hy + 2], [hx + 7, hy + 2]], 'violet'); zzz(p, hx + 10, hy - 30); }
+  else { glowEye(p, hx + 1, hy, eye, 'shade4', 1); glowEye(p, hx + 6, hy, eye, 'shade4', 1); }
+  // the crown of five star spikes
+  const crown = tired ? 'stone' : hot ? 'ember' : 'violet';
+  [[-9, 10], [-4, 15], [2, 18], [8, 15], [12, 9]].forEach(([dx, h]) => poly(p, crown, [[hx + dx - 2.5, hy - 9], [hx + dx, hy - 9 - h], [hx + dx + 2.5, hy - 9]], { gloss: true }));
+  if (!tired) [[2, 18], [-4, 15], [8, 15]].forEach(([dx, h], i) => { if ((i + f) % 2 === 0) sparkle(p, hx + dx, hy - 10 - h, i === 0, angry ? 'orange' : 'violet'); });
+  // front arm by pose
+  const front = tired ? [cx + 14, oy + 82]
+    : attack ? [[cx + 8, oy + 18], [cx + 28, oy + 40], [cx + 38, oy + 62], [cx + 28, oy + 76]][f]
+      : cast ? [cx + 22, oy + 14] : charge ? [cx + 10, oy + 14] : [cx + 22, oy + 70];
+  limb(p, 'shade', [cx + 14, oy + 44], front, 4, 3, { gloss: true });
+  blob(p, 'shade', front[0], front[1], 3.6, 3.6, { gloss: true });
+  blob(p, hot ? 'ember' : 'violet', front[0] + 1, front[1] - 1, 1.6, 1.6, { level: 4, line: false });
+  if (attack && f === 2) { arc(p, cx + 11, oy + 44, 30, -70, 50, 'violet', 4, 'white'); sparkle(p, front[0] + 6, front[1] + 2, true, 'violet'); }
+  if (cast) for (let i = 0; i < 3; i += 1) arc(p, front[0], front[1], 6 + i * 5 + (f % 3) * 1.5, -150, 30, 'violet', 1, i === 0 ? 'white' : 'spark');
+  if (charge) {
+    // Star Fall gathering above the raised hands
+    const sx = cx + 2, sy = 10, r = 8 + f * 2;
+    poly(p, 'ember', starPoints(sx, sy + 2, r, 0.45, f * 12), { gloss: true });
+    sparkle(p, sx, sy + 2, true, 'glow');
+    [[-14, 4], [14, 0], [0, -6]].forEach(([dx, dy]) => sparkle(p, sx + dx, sy + dy + f, false, 'orange'));
+  }
+  return done(p);
+}
+
+/** Black Star — True Form: a living black star with one great eye and arms of shadow. */
+function blackStarTrue({ mode, f, angry }) {
+  const p = new Painter(128, 128, LIGHT);
+  const tired = mode === 'tired', charge = mode === 'charge', attack = mode === 'attack';
+  const pulse = tired ? -3 : mode === 'idle' ? [0, 1, 1, 0][f % 4] : charge ? f : 0;
+  const cx = 60, cy = 58 + (tired ? 6 : 0), R = 40 + pulse;
+  // a ragged dark corona behind the star, turning slowly
+  if (!tired) poly(p, 'shadowCloth', starPoints(cx, cy, R + 10, 0.66, 36 + f * 3), { dither: true, line: false, level: angry ? 4 : 3 });
+  // smoke trailing from the lower points instead of legs
+  [[cx - 24, cy + 32], [cx + 24, cy + 32]].forEach(([x, y], i) => [0, 1, 2].forEach((k) => {
+    if ((k + f + i) % 3 !== 2) blob(p, 'shade', x + (i ? 2 : -2) * k, y + 6 + k * 6, 3.5 - k, 2.4 - k * 0.5, { level: 3 - k, line: false });
+  }));
+  // shadow arms from the side points, reaching forward on an attack
+  const reach = attack ? [[96, 30], [112, 44], [124, 56], [108, 66]][f] : charge ? [100, 14] : tired ? [100, 104] : [106, 78 + (f % 2)];
+  const arm = (from, to, r0, bend = 8) => {
+    const mid = [lerp(from[0], to[0], 0.5) + (to[0] > from[0] ? 2 : -2), lerp(from[1], to[1], 0.5) - bend];
+    limb(p, 'shadowCloth', from, mid, r0, r0 * 0.75, { gloss: true });
+    limb(p, 'shadowCloth', mid, to, r0 * 0.75, r0 * 0.5, { gloss: true });
+    const dir = to[0] > from[0] ? 1 : -1;
+    [[-3, 1], [0, 3], [3, 1]].forEach(([dx, dy]) => limb(p, angry ? 'crimson' : 'violet', to, [to[0] + dir * 4 + dx, to[1] + dy + 3], 1, 0.5, { gloss: true }));
+  };
+  arm([cx - 30, cy - 8], tired ? [cx - 40, cy + 46] : charge ? [cx - 46, cy - 46] : [cx - 50, cy + 22 + (f % 2)], 5.5);
+  // the star: violet rim under a black body, a darker inner star for depth
+  poly(p, tired ? 'stone' : angry ? 'crimson' : 'violet', starPoints(cx, cy, R + 3, 0.47), { gloss: true });
+  poly(p, 'shadowCloth', starPoints(cx, cy, R, 0.47), { gloss: true, shadow: 3, dither: true });
+  poly(p, 'shade', starPoints(cx, cy, R * 0.55, 0.5), { level: 1, line: false });
+  if (angry && !tired) {
+    // phase 2: the star is fading, light leaks through cracks toward the points
+    starPoints(cx, cy, R - 4, 0.47).filter((_, i) => i % 2 === 0).forEach(([x, y], i) => {
+      const n = 8;
+      for (let t = 2; t < n; t += 1) if ((t + i + f) % 3 !== 0) p.dot(lerp(cx, x, t / n) + ((t % 2) ? 1 : 0), lerp(cy, y, t / n), t % 2 ? 'glow' : 'white');
+    });
+  }
+  // one great eye
+  if (tired) { p.shape('violet', (id) => p.rect(id, cx - 8, cy, 17, 2), { line: false }); zzz(p, cx + 18, cy - 46); }
+  else {
+    blob(p, charge ? 'gold' : 'cream', cx + 2, cy, 11, 8, { gloss: true, shadow: 2 });
+    blob(p, angry ? 'crimson' : 'violet', cx + 5, cy, 5.5, 5.5, { gloss: true, line: false });
+    blob(p, 'shadowCloth', cx + 6, cy, 2.4, 3.4, { level: 0, line: false });
+    p.dots([[cx + 3, cy - 3], [cx + 4, cy - 3]], 'white');
+  }
+  // front arm last so it reads in front of the body
+  arm([cx + 30, cy - 8], reach, 6);
+  if (attack && f === 2) [[0, -6], [4, 0], [0, 6]].forEach(([dx, dy]) => p.stamp(['SSSSS'], reach[0] - 18 + dx, reach[1] + dy, { S: 'speed' }));
+  if (charge) {
+    // Black Nova gathering: light drawn into the eye from all five points
+    starPoints(cx, cy, R + 10 - f * 4, 0.47).filter((_, i) => i % 2 === 0).forEach(([x, y]) => sparkle(p, x, y, f % 2 === 0, 'violet'));
+    for (let i = 0; i < 2; i += 1) arc(p, cx + 2, cy, 16 + i * 6 - f * 2, 0, 360, 'violet', 1, 'spark');
+  } else if (!tired) starPoints(cx, cy, R + 6, 0.47).filter((_, i) => i % 2 === 0).forEach(([x, y], i) => { if ((i + f) % 3 === 0) p.dot(x, y, 'violet'); });
+  return done(p);
+}
+
 /* -------------------------------------------------------------- the Core */
 // The Action Core (Higashiosaka, Osaka City): the glowing source of the hero's
 // Action Energy on a stone pedestal. Rows: idle (slow glow), charge (bright
@@ -1399,4 +1526,7 @@ export const ENEMY_ART = {
   guardianConstruct: { draw: guardianConstruct, large: true, modes: { idle: 4, attack: 4, guard: 2, tired: 2 } },
   ironForeman: { draw: ironForeman, large: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, guard: 2, tired: 2 } },
   siegeGolem: { draw: siegeGolem, boss: true, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
+  shadowGuard: { draw: shadowGuard, large: true, modes: { idle: 4, attack: 4, guard: 2, tired: 2 } },
+  blackStarAvatar: { draw: blackStarAvatar, boss: true, float: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, tired: 2 } },
+  blackStarTrue: { draw: blackStarTrue, boss: true, float: true, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
 };

@@ -66,6 +66,14 @@ export function osakaMapView({ region, justSaved = null, onSelect = () => {} }) 
     marker.classList.add('osaka-city--just-saved');
     const burst = el('span', 'osaka-city__burst'); burst.setAttribute('aria-hidden', 'true');
     marker.append(burst);
+    // The last city saved completes the campaign: every marker glows and the final banner rises.
+    if (Object.keys(CITIES).every((id) => id === justSaved || region.savedCities.includes(id))) {
+      node.classList.add('osaka-map--all-saved');
+      const banner = el('div', 'osaka-map__final');
+      banner.setAttribute('role', 'status');
+      banner.append(el('b', '', 'おおさかを まもった！'), el('span', '', 'OSAKA IS SAFE!'));
+      node.append(banner);
+    }
   };
   return { node, reveal };
 }

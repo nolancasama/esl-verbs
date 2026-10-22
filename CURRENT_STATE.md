@@ -234,12 +234,15 @@ Verified 2026-09-30:
 
 ## Next Steps
 
-1. Classroom check of Sakai and Yao difficulty, story length, call telegraphs,
-   bomb countdowns and Orc protection; check station-map pacing between rounds.
-2. **Osaka City O0 is next**, then O1, following `.ai/osaka-city-spec.md`.
-   Higashiosaka H0/H1/H2 are implemented. Run the added Higashiosaka browser
-   checks and capture review frames when browser validation is authorized;
-   Claude performs final aesthetic judgment. Osaka City builds on the Core.
+1. Classroom check of Sakai, Yao and Higashiosaka difficulty, story length,
+   call telegraphs, bomb countdowns, Orc protection and the → コア / GUARD THE
+   CORE telegraphs (hig-2 at low AP is deliberately harsh when the Core is
+   ignored); check station-map pacing between rounds.
+2. **Osaka City O1 is next** (worker: data, encounters, region, story, ending,
+   balance, browser checks) following `.ai/osaka-city-spec.md`; O0 is done
+   (spec §10: Shadow Guard and both Black Star forms, four traced station
+   maps, the final OSAKA IS SAFE! map banner, story line splits).
+   Higashiosaka H0–H2 are done and browser-verified.
 3. Not heard yet (no audio device): the new strike/impact/AP-gain sfx and the
    12% defaults on Chromebook speakers.
 4. Optional: a Sakai-specific skyline for its intro/ending (it reuses the

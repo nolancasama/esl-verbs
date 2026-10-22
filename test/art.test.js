@@ -14,10 +14,11 @@ const bounds = (g) => {
   return { top, bottom, height: bottom - top + 1 };
 };
 
-// Higashiosaka art lands before its battle data (spec slice H0 → H2); H2 adds the
-// data and empties this list, so art without data never goes unnoticed.
-const ART_AHEAD_OF_DATA = [];
-const BOSS_ART_AHEAD = new Set();
+// A city's art lands before its battle data (controller art slice → worker data
+// slice: Osaka City O0 → O1 now); the data slice empties this list, so art
+// without data never goes unnoticed.
+const ART_AHEAD_OF_DATA = ['shadowGuard', 'blackStarAvatar', 'blackStarTrue'];
+const BOSS_ART_AHEAD = new Set(['blackStarAvatar', 'blackStarTrue']);
 
 test('every hero and enemy has a complete sprite sheet with one row per state', () => {
   for (const id of [...Object.keys(HEROES), ...Object.keys(ENEMIES), ...ART_AHEAD_OF_DATA, 'actionCore']) {

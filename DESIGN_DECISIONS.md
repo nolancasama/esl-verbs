@@ -946,3 +946,19 @@ Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
   are prepared, but no browser suite or screenshot capture was run: H2's
   validation order lists only `npm test` and `npm run balance`. Layout and
   Claude's final aesthetic review remain open; Osaka City O0 follows H2.
+
+## 2026-10-22 — Osaka City O0: art, traced maps, final banner
+
+- The Black Star's first form is a crowned, hooded sorcerer with a purple
+  cape lining and sleeves: an all-black robe read as a blob at battle scale.
+  The true form is a one-eyed black star with shadow arms from its side
+  points and a dark corona; arms from the lower points read as walking legs
+  and made the final boss look comic.
+- River and park outlines are traced from OpenStreetMap ways (ids in
+  `battle-locations.js`), never guessed: a first draft extended the Okawa
+  west by eye and was replaced by the traced Tosabori branch.
+- The final OSAKA IS SAFE! banner sits at the top of the Osaka map, where no
+  city marker is; centred or low it covered the saved cities it celebrates.
+  It lives in `osakaMapView.reveal()`, so the last save needs no new wiring.
+- Long story lines from the spec are split at phrase breaks (~17 characters
+  per line at 1024×600); the text itself is unchanged.
