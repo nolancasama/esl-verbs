@@ -139,16 +139,18 @@ function goblinHead(p, hx, hy, { angry = false, open = false, helmet = false, ca
   if (angry) p.dots([[hx + 1, hy - 5], [hx + 8, hy - 5]], 'ink');
 }
 
-function goblin({ mode, f }) {
-  const p = new Painter(56, 58, LIGHT);
+function goblin({ mode, f }, gear = null) {
+  const p = new Painter(gear?.w ?? 56, gear?.h ?? 58, LIGHT);
   const poses = {
     idle: [{}, { bob: 1 }, { bob: 1, frontFore: 40 }, {}],
     attack: [{ x: 22, lean: -8, frontUpper: 196, frontFore: 214, weapon: 240 }, { x: 26, lean: 6, frontUpper: 160, frontFore: 150, weapon: 160 }, { x: 30, lean: 16, frontUpper: 90, frontFore: 70, weapon: 70, swing: true }, { x: 27, lean: 8, frontUpper: 50, frontFore: 40, weapon: 40 }],
     guard: [{ lean: -6, frontUpper: 60, frontFore: 150, weapon: 190 }, { lean: -6, bob: 1, frontUpper: 60, frontFore: 150, weapon: 190 }],
     tired: [{ lean: 20, head: 10, frontUpper: 20, frontFore: 10, weapon: 10 }, { lean: 22, head: 12, bob: 1, frontUpper: 20, frontFore: 10, weapon: 10 }],
+    ...gear?.poses,
   };
-  const pose = { x: 24, ground: 56, backThigh: -16, frontThigh: 20, frontUpper: 30, frontFore: 60, weapon: 120, backUpper: -20, backFore: 10, ...(poses[mode] || poses.idle)[f % (poses[mode] || poses.idle).length] };
+  const pose = { x: 24, ground: 56, backThigh: -16, frontThigh: 20, frontUpper: 30, frontFore: 60, weapon: 120, backUpper: -20, backFore: 10, ...gear?.base, ...(poses[mode] || poses.idle)[f % (poses[mode] || poses.idle).length] };
   const s = skeleton(pose, GOBLIN_BODY);
+  gear?.behind?.(p, s, pose, mode, f);
   limb(p, 'goblin', s.backLeg.start, s.backLeg.knee, 2.6, 2.1); limb(p, 'goblin', s.backLeg.knee, s.backLeg.foot, 2.1, 1.8);
   blob(p, 'leather', s.backLeg.foot[0] + 1, s.backLeg.foot[1] - 1, 3, 1.8);
   limb(p, 'goblin', s.backArm.shoulder, s.backArm.elbow, 2, 1.8); limb(p, 'goblin', s.backArm.elbow, s.backArm.hand, 1.8, 1.6);
@@ -156,15 +158,19 @@ function goblin({ mode, f }) {
   poly(p, 'leather', [[nx - 5, ny + 1], [nx + 5, ny + 1], [px + 6, py + 4], [px - 6, py + 4]], { shadow: 2 });
   blob(p, 'goblin', lerp(nx, px, 0.55) + 2, lerp(ny, py, 0.55), 3, 3.5, { line: true });
   poly(p, 'wood', [[px - 6, py - 1], [px + 6, py - 1], [px + 5, py + 6], [px, py + 4], [px - 5, py + 6]]);
+  gear?.torso?.(p, s, pose, mode, f);
   limb(p, 'goblin', s.frontLeg.start, s.frontLeg.knee, 2.8, 2.2); limb(p, 'goblin', s.frontLeg.knee, s.frontLeg.foot, 2.2, 1.9);
   blob(p, 'leather', s.frontLeg.foot[0] + 1, s.frontLeg.foot[1] - 1, 3.2, 1.9);
-  goblinHead(p, s.head[0], s.head[1], { open: mode === 'attack' && f > 0, angry: mode !== 'tired' });
+  goblinHead(p, s.head[0], s.head[1], { open: (mode === 'attack' && f > 0) || (gear?.openCast && mode === 'cast'), angry: mode !== 'tired' });
   if (mode === 'tired') { p.dots([[s.head[0] + 2, s.head[1] - 1], [s.head[0] + 3, s.head[1] - 1], [s.head[0] + 6, s.head[1] - 1], [s.head[0] + 7, s.head[1] - 1]], 'goblin1'); zzz(p, Math.round(s.head[0] + 6), Math.round(s.head[1] - 18)); }
-  // club
+  gear?.head?.(p, s.head, mode, f);
   const [dx, dy] = along(pose.weapon);
   const [hx, hy] = s.frontArm.hand;
-  limb(p, 'wood', [hx - dx * 2, hy - dy * 2], [hx + dx * 14, hy + dy * 14], 1.4, 3.6, { gloss: true });
-  p.dots([[hx + dx * 11 - dy * 2, hy + dy * 11 + dx * 2], [hx + dx * 8 + dy * 2, hy + dy * 8 - dx * 2]], 'wood1');
+  if (gear?.weapon) gear.weapon(p, s, pose, mode, f);
+  else { // club
+    limb(p, 'wood', [hx - dx * 2, hy - dy * 2], [hx + dx * 14, hy + dy * 14], 1.4, 3.6, { gloss: true });
+    p.dots([[hx + dx * 11 - dy * 2, hy + dy * 11 + dx * 2], [hx + dx * 8 + dy * 2, hy + dy * 8 - dx * 2]], 'wood1');
+  }
   limb(p, 'goblin', s.frontArm.shoulder, s.frontArm.elbow, 2.2, 2); limb(p, 'goblin', s.frontArm.elbow, s.frontArm.hand, 2, 1.8);
   blob(p, 'goblin', hx, hy, 2.2, 2.2);
   if (pose.swing) arc(p, s.frontArm.shoulder[0], s.frontArm.shoulder[1], 19, -80, 50, 'white', 3);
@@ -404,20 +410,23 @@ function goblinCaptain({ mode, f }, gear = null) {
   poly(p, 'leather', [[px - 8, py - 1], [px + 8, py - 1], [px + 8, py + 2], [px - 8, py + 2]]);
   limb(p, 'goblin', s.frontLeg.start, s.frontLeg.knee, 3.6, 3); limb(p, 'steel', s.frontLeg.knee, s.frontLeg.foot, 3, 2.4, { gloss: true });
   blob(p, 'leather', s.frontLeg.foot[0] + 1, s.frontLeg.foot[1] - 1, 4, 2.2);
-  goblinHead(p, s.head[0], s.head[1], { captain: true, open: mode === 'attack' && f === 2 });
+  goblinHead(p, s.head[0], s.head[1], { captain: !gear?.head, open: mode === 'attack' && f === 2 });
+  gear?.head?.(p, s.head, mode, f);
   if (mode === 'tired') zzz(p, Math.round(s.head[0] + 6), Math.round(s.head[1] - 24));
-  // broadsword
   const [dx, dy] = along(pose.weapon);
   const [wx, wy] = s.frontArm.hand;
+  if (gear?.weapon) gear.weapon(p, s, pose, mode, f);
+  else { // broadsword
   limb(p, 'leather', [wx - dx * 3, wy - dy * 3], [wx + dx, wy + dy], 1.2);
   p.shape(pose.glow ? 'ember' : 'steel', (id) => p.poly(id, [[wx + dx * 2.5 - dy * 2.4, wy + dy * 2.5 + dx * 2.4], [wx + dx * 2.5 + dy * 2.4, wy + dy * 2.5 - dx * 2.4], [wx + dx * 23 + dy * 1.6, wy + dy * 23 - dx * 1.6], [wx + dx * 26, wy + dy * 26], [wx + dx * 23 - dy * 1.6, wy + dy * 23 + dx * 1.6]]), { gloss: true, dark: 1, shadow: 1 });
   limb(p, 'gold', [wx + dx * 2.5 - dy * 4, wy + dy * 2.5 + dx * 4], [wx + dx * 2.5 + dy * 4, wy + dy * 2.5 - dx * 4], 1.2, 1.2, { gloss: true });
+  }
   limb(p, 'goblin', s.frontArm.shoulder, s.frontArm.elbow, 2.8, 2.5); limb(p, 'goblin', s.frontArm.elbow, s.frontArm.hand, 2.5, 2.2);
   blob(p, 'leather', wx, wy, 2.6, 2.6);
   blob(p, 'steel', s.frontArm.shoulder[0], s.frontArm.shoulder[1] - 1, 4.5, 3.6, { gloss: true });
   if (pose.swing) arc(p, s.frontArm.shoulder[0], s.frontArm.shoulder[1], 30, -80, 50, 'white', 4);
-  if (pose.glow) { sparkle(p, wx + dx * 26, wy + dy * 26, true, 'orange'); sparkle(p, wx - 10, wy + 4 - f * 2, false, 'orange'); sparkle(p, wx + 10, wy - 10 + f, false, 'glow'); }
-  if (pose.call) { sparkle(p, wx + dx * 27, wy + dy * 27 - 1, f % 2 === 0, 'glow'); sparkle(p, wx + 8, wy - 12 - f, false, 'spark'); }
+  if (pose.glow && !gear?.weapon) { sparkle(p, wx + dx * 26, wy + dy * 26, true, 'orange'); sparkle(p, wx - 10, wy + 4 - f * 2, false, 'orange'); sparkle(p, wx + 10, wy - 10 + f, false, 'glow'); }
+  if (pose.call && !gear?.weapon) { sparkle(p, wx + dx * 27, wy + dy * 27 - 1, f % 2 === 0, 'glow'); sparkle(p, wx + 8, wy - 12 - f, false, 'spark'); }
   return done(p);
 }
 
@@ -1046,9 +1055,318 @@ function trainingDummy({ mode, f }) {
   return done(p);
 }
 
+/* ------------------------------------------------------- Higashiosaka foes */
+// The town of makers: the Horde brings machines and the goblins who run them.
+// Each role reads from its silhouette: the lit satchel (goes for the Core), the
+// wrench and goggles (repairs), the scoped crossbow (aims at the Core), the
+// clockwork shield (protects a Core attacker). 'cast' is a repair.
+
+/** A round black bomb with a short fuse and a spark (or a bright flash when `lit`). */
+function bomb(p, x, y, r = 3.2, lit = false, f = 0) {
+  blob(p, 'navy', x, y, r, r, { gloss: true, shadow: 1 });
+  p.dots([[x + r * 0.4, y - r * 0.5], [x + r * 0.5, y - r * 0.3]], 'white');
+  limb(p, 'leather', [x + 1, y - r], [x + 2, y - r - 2.5], 0.6);
+  sparkle(p, x + 2, y - r - 3.5, lit || f % 2 === 0, lit ? 'red' : 'orange');
+}
+const SABOTEUR = {
+  poses: {
+    // wind up overhead, throw, the bomb flies, follow through
+    attack: [{ x: 22, lean: -10, frontUpper: 196, frontFore: 220, weapon: 200 }, { x: 25, lean: 4, frontUpper: 150, frontFore: 120, weapon: 120 }, { x: 28, lean: 14, frontUpper: 96, frontFore: 84, weapon: 90, thrown: 1 }, { x: 26, lean: 8, frontUpper: 60, frontFore: 50, weapon: 50, thrown: 2 }],
+  },
+  w: 64,
+  behind(p, s, pose, mode, f) {
+    // a lumpy satchel of bombs on the back, its fuses fizzing
+    const [px, py] = s.hip, [nx, ny] = s.neck;
+    const by = lerp(ny, py, 0.45);
+    blob(p, 'leather', px - 6, by, 4.5, 5.5, { gloss: true, shadow: 2 });
+    p.shape('ember', (id) => p.rect(id, Math.round(px - 10), Math.round(by - 1), 9, 2), { line: false });
+    limb(p, 'leather', [nx + 2, ny + 1], [px - 4, lerp(ny, py, 0.3)], 0.9, 0.9, { line: false });
+    [[-8, -5], [-4, -6]].forEach(([dx, dy], i) => {
+      const x = px + dx, y = by + dy;
+      blob(p, 'navy', x, y, 2.2, 2.2);
+      if ((i + f) % 2 === 0) sparkle(p, x + 1, y - 4, false, 'orange');
+    });
+  },
+  head(p, [hx, hy]) {
+    // a sooty knit cap and an ember band: the Core wreckers' mark
+    p.shape('shadowCloth', (id) => p.ellipse(id, hx - 1, hy - 7.5, 8.5, 3.5), { gloss: true });
+    p.shape('ember', (id) => p.rect(id, Math.round(hx - 9), Math.round(hy - 6), 18, 2), { line: false, gloss: true });
+    p.dots([[hx + 5, hy + 2], [hx - 3, hy + 1]], 'goblin1');
+  },
+  weapon(p, s, pose, mode, f) {
+    const [hx, hy] = s.frontArm.hand;
+    if (pose.thrown === 1) { bomb(p, hx + 12, hy - 4, 3.2, true, f); p.stamp(['SSSS', '....', 'SSS.'], Math.round(hx + 3), Math.round(hy - 5), { S: 'speed' }); }
+    else if (pose.thrown === 2) sparkle(p, hx + 16, hy - 6, true, 'orange');
+    else bomb(p, hx + 1, hy - 3, 3.2, mode === 'attack', f);
+  },
+};
+function saboteur(opts) { return goblin(opts, SABOTEUR); }
+
+/** A spanner from the hand along `deg`: a steel shaft ending in an open jaw. */
+function wrench(p, hx, hy, deg, len = 13) {
+  const [dx, dy] = along(deg), n = [-dy, dx];
+  const end = [hx + dx * len, hy + dy * len];
+  limb(p, 'steel', [hx - dx * 2, hy - dy * 2], end, 1.3, 1.5, { gloss: true });
+  blob(p, 'steel', end[0], end[1], 3.4, 3.4, { gloss: true });
+  blob(p, 'shadowCloth', end[0] + dx * 1.8, end[1] + dy * 1.8, 1.5, 1.5, { level: 0, line: false });
+  p.dot(end[0] + n[0] * 2, end[1] + n[1] * 2, 'white');
+}
+const ENGINEER = {
+  poses: {
+    cast: [{ lean: 6, head: 4, frontUpper: 120, frontFore: 150, weapon: 150, fix: 0 }, { lean: 10, head: 6, bob: 1, frontUpper: 100, frontFore: 110, weapon: 100, fix: 1 }, { lean: 6, head: 4, frontUpper: 120, frontFore: 150, weapon: 150, fix: 2 }],
+  },
+  w: 62,
+  openCast: true,
+  torso(p, s) {
+    // tool belt with pouches over the apron
+    const [px, py] = s.hip;
+    p.shape('gold', (id) => p.rect(id, Math.round(px - 7), Math.round(py - 2), 14, 2), { line: false, gloss: true });
+    blob(p, 'leather', px - 5, py + 1, 2, 2.4); blob(p, 'leather', px + 3, py + 1, 2, 2.4);
+  },
+  head(p, [hx, hy], mode) {
+    // brass goggles: pushed up on the forehead, pulled down to work
+    const down = mode === 'cast';
+    const gy = down ? hy - 3 : hy - 7;
+    p.shape('leather', (id) => p.rect(id, Math.round(hx - 9), Math.round(gy), 18, 2), { line: false });
+    [hx + 2.5, hx + 7].forEach((x) => { blob(p, 'gold', x, gy + 1, 2.6, 2.6, { gloss: true }); blob(p, 'crystal', x, gy + 1, 1.4, 1.4, { level: down ? 4 : 3, line: false }); });
+  },
+  weapon(p, s, pose, mode, f) {
+    const [hx, hy] = s.frontArm.hand;
+    wrench(p, hx, hy, pose.weapon);
+    if (mode === 'cast') {
+      // repair sparks fly off the wrench head
+      const [dx, dy] = along(pose.weapon), tip = [hx + dx * 15, hy + dy * 15];
+      if (pose.fix === 1) { sparkle(p, tip[0] + 3, tip[1], true, 'orange'); sparkle(p, tip[0] - 2, tip[1] - 5, false, 'glow'); }
+      else sparkle(p, tip[0] + 2, tip[1] - 3, false, 'spark');
+    }
+  },
+};
+function engineerGoblin(opts) { return goblin(opts, ENGINEER); }
+
+const SNIPER_AIM = { frontUpper: 86, frontFore: 92, weapon: 90, backUpper: 64, backFore: 96, head: 4 };
+const SNIPER = {
+  poses: {
+    idle: [{ weapon: 125 }, { weapon: 125, bob: 1 }, { weapon: 125, bob: 1 }, { weapon: 125 }],
+    attack: [{ ...SNIPER_AIM }, { ...SNIPER_AIM, lean: -6, shot: true }, { ...SNIPER_AIM, lean: -4, shot: true, flown: true }, { lean: 0, weapon: 150 }],
+    charge: [{ ...SNIPER_AIM, scope: true }, { ...SNIPER_AIM, scope: true, bob: 1 }],
+  },
+  w: 70,
+  base: { frontUpper: 40, frontFore: 110 },
+  head(p, [hx, hy]) {
+    // a slouch cap with a long red feather
+    p.shape('leaf', (id) => p.ellipse(id, hx - 1, hy - 5, 9.5, 4), { gloss: true });
+    p.shape('leaf', (id) => p.rect(id, Math.round(hx - 1), Math.round(hy - 4), 12, 2), { level: 2, line: false });
+    limb(p, 'red', [hx - 6, hy - 7], [hx - 16, hy - 13], 1.4, 0.6, { gloss: true });
+  },
+  weapon(p, s, pose, mode, f) {
+    // a crossbow (never a gun) with a scope on top; its bolt glows cyan while aiming at the Core
+    const [hx, hy] = s.frontArm.hand;
+    const [dx, dy] = along(pose.weapon), n = [-dy, dx];
+    const back = [hx - dx * 9, hy - dy * 9], front = [hx + dx * 11, hy + dy * 11];
+    limb(p, 'wood', back, front, 1.6, 1.3, { gloss: true });
+    const tips = [1, -1].map((k) => [front[0] + n[0] * 7 * k - dx * 2, front[1] + n[1] * 7 * k - dy * 2]);
+    tips.forEach((t) => limb(p, 'steel', front, t, 1.1, 0.8, { gloss: true }));
+    const nock = pose.shot ? [front[0] - dx * 2, front[1] - dy * 2] : [hx - dx * 3, hy - dy * 3];
+    tips.forEach((t) => { const len = Math.ceil(Math.hypot(nock[0] - t[0], nock[1] - t[1])); for (let i = 0; i <= len; i += 1) p.dot(lerp(t[0], nock[0], i / len), lerp(t[1], nock[1], i / len), 'spark'); });
+    // scope
+    const sc = [hx - dx * 2 - n[0] * 3, hy - dy * 2 - n[1] * 3];
+    limb(p, 'steel', sc, [sc[0] + dx * 7, sc[1] + dy * 7], 1.3, 1.3, { gloss: true });
+    p.dot(sc[0] + dx * 8, sc[1] + dy * 8, pose.scope && f % 2 === 0 ? 'white' : 'cyan');
+    if (!pose.shot) {
+      limb(p, 'wood', nock, [front[0] + dx * 3, front[1] + dy * 3], 0.6, 0.6, { line: false });
+      poly(p, pose.scope ? 'crystal' : 'steel', [[front[0] + dx * 3 + n[0] * 2, front[1] + dy * 3 + n[1] * 2], [front[0] + dx * 7, front[1] + dy * 7], [front[0] + dx * 3 - n[0] * 2, front[1] + dy * 3 - n[1] * 2]], { gloss: true });
+    }
+    if (pose.scope) { sparkle(p, front[0] + dx * 9, front[1] + dy * 9 - 1, f % 2 === 0, 'cyan'); sparkle(p, sc[0] + dx * 4, sc[1] - 4 + f, false, 'cyan'); }
+    if (pose.shot && !pose.flown) [[0, 0], [2, -2], [2, 2]].forEach(([ox, oy]) => p.stamp(['SSSSSS'], Math.round(front[0] + 4 + ox), Math.round(front[1] + oy), { S: 'speed' }));
+  },
+};
+function goblinSniper(opts) { return goblin(opts, SNIPER); }
+
+/** A cog wheel: a disc with square teeth that turn with `turn` (degrees). */
+function cog(p, material, cx, cy, r, turn = 0, teeth = 8) {
+  for (let i = 0; i < teeth; i += 1) {
+    const [dx, dy] = along(turn + (i * 360) / teeth);
+    p.shape(material, (id) => p.rect(id, Math.round(cx + dx * (r + 0.5) - 1), Math.round(cy + dy * (r + 0.5) - 1), 3, 3), { line: false, level: 2 });
+  }
+  blob(p, material, cx, cy, r, r, { gloss: true });
+  blob(p, 'shadowCloth', cx, cy, r * 0.35, r * 0.35, { level: 1, line: false });
+}
+
+const CONSTRUCT_BODY = { thigh: 9, shin: 9, torso: 16, upperArm: 9, foreArm: 9, headLift: 12 };
+/** Guardian Construct: a wooden-and-iron clockwork guardian (からくり) with a round shield. */
+function guardianConstruct({ mode, f }) {
+  const p = new Painter(76, 80, LIGHT);
+  const poses = {
+    idle: [{}, { bob: 1 }, { bob: 1 }, {}],
+    attack: [{ x: 30, lean: -6, frontUpper: 150, frontFore: 170 }, { x: 34, lean: 6, frontUpper: 100, frontFore: 96 }, { x: 38, lean: 14, frontUpper: 90, frontFore: 88, swing: true }, { x: 34, lean: 6, frontUpper: 60, frontFore: 70 }],
+    guard: [{ lean: -4, shieldUp: true, backUpper: 70, backFore: 100 }, { lean: -4, bob: 1, shieldUp: true, backUpper: 70, backFore: 100 }],
+    tired: [{ lean: 18, head: 16, frontUpper: 10, frontFore: 4, backUpper: 4, backFore: 0 }, { lean: 20, head: 18, bob: 1, frontUpper: 10, frontFore: 4, backUpper: 4, backFore: 0 }],
+  };
+  const list = poses[mode] || poses.idle;
+  const pose = { x: 32, ground: 78, backThigh: -14, frontThigh: 16, frontUpper: 30, frontFore: 50, backUpper: 40, backFore: 70, ...list[f % list.length] };
+  const s = skeleton(pose, CONSTRUCT_BODY);
+  const [nx, ny] = s.neck, [px, py] = s.hip;
+  const tired = mode === 'tired';
+  // wind-up key on the back: it turns while the construct runs
+  const key = [nx - 10, lerp(ny, py, 0.4)];
+  limb(p, 'gold', [nx - 4, key[1]], key, 1.2);
+  const kt = tired ? 0 : [0, 1, 2, 1][f % 4];
+  poly(p, 'gold', [[key[0], key[1] - 1], [key[0] - 5, key[1] - 5 + kt], [key[0] - 7, key[1] - 1], [key[0] - 5, key[1] + 4 - kt]], { gloss: true });
+  // back leg: a short wooden post with an iron knee and foot
+  limb(p, 'wood', s.backLeg.start, s.backLeg.knee, 3.4, 3.1); limb(p, 'wood', s.backLeg.knee, s.backLeg.foot, 3.1, 2.9);
+  blob(p, 'stone', s.backLeg.knee[0], s.backLeg.knee[1], 2.4, 2.4, { gloss: true });
+  blob(p, 'stone', s.backLeg.foot[0] + 1, s.backLeg.foot[1] - 1, 5, 2.4, { gloss: true });
+  // back arm (shield arm) behind the body
+  limb(p, 'wood', s.backArm.shoulder, s.backArm.elbow, 2.8, 2.6); limb(p, 'wood', s.backArm.elbow, s.backArm.hand, 2.6, 2.4);
+  // the box torso with iron bands and a turning chest cog
+  poly(p, 'wood', [[nx - 10, ny - 1], [nx + 10, ny - 1], [px + 10, py + 3], [px - 10, py + 3]], { shadow: 3, gloss: true, dither: true });
+  [[nx, ny + 2], [px, py]].forEach(([x, y]) => p.shape('stone', (id) => p.rect(id, Math.round(x - 10), Math.round(y), 21, 2), { line: false, gloss: true }));
+  p.dots([[nx - 8, ny + 2], [nx + 8, ny + 2], [px - 8, py], [px + 8, py]], 'gold4');
+  cog(p, tired ? 'stone' : 'gold', lerp(nx, px, 0.5) + 2, lerp(ny, py, 0.5) + 1, 3.6, tired ? 0 : f * 11);
+  // front leg in front of the torso
+  limb(p, 'wood', s.frontLeg.start, s.frontLeg.knee, 3.8, 3.4); limb(p, 'wood', s.frontLeg.knee, s.frontLeg.foot, 3.4, 3.2);
+  blob(p, 'stone', s.frontLeg.knee[0], s.frontLeg.knee[1], 2.6, 2.6, { gloss: true });
+  blob(p, 'stone', s.frontLeg.foot[0] + 1, s.frontLeg.foot[1] - 1, 5.5, 2.6, { gloss: true });
+  // round wooden head with an iron brim and one big lens eye
+  const [hx, hy] = s.head;
+  blob(p, 'wood', hx, hy, 8, 7.5, { gloss: true, shadow: 2 });
+  p.shape('stone', (id) => p.ellipse(id, hx, hy - 7, 6, 2.5), { gloss: true });
+  p.shape('stone', (id) => p.rect(id, Math.round(hx - 9), Math.round(hy - 6), 19, 2), { gloss: true });
+  blob(p, 'stone', hx + 3, hy + 1, 3.6, 3.6, { gloss: true });
+  if (tired) { p.dots([[hx + 2, hy + 1], [hx + 3, hy + 1], [hx + 4, hy + 1]], 'stone1'); zzz(p, Math.round(hx + 6), Math.round(hy - 20)); }
+  else glowEye(p, Math.round(hx + 2), Math.round(hy), 'cyan', 'crystal4', 1);
+  p.stamp(['k.k.k'], Math.round(hx - 1), Math.round(hy + 5), { k: 'wood1' });
+  // the round iron-bound shield on the back arm: raised to guard, at the side otherwise
+  const up = pose.shieldUp;
+  const [sx, sy] = up ? [s.backArm.hand[0] + 8, s.backArm.hand[1] - 2] : [s.backArm.hand[0] + 3, s.backArm.hand[1] + 1];
+  const [rx, ry] = up ? [9, 11] : [8, 10];
+  blob(p, 'stone', sx, sy, rx, ry, { gloss: true, shadow: 2 });
+  blob(p, 'wood', sx, sy, rx - 2, ry - 2, { gloss: true, line: false });
+  cog(p, 'gold', sx, sy, 2.6, tired ? 0 : -f * 11, 6);
+  if (up) sparkle(p, sx + 8, sy - 9 + f, false, 'cyan');
+  // front arm: a mallet fist
+  limb(p, 'wood', s.frontArm.shoulder, s.frontArm.elbow, 3, 2.8); limb(p, 'wood', s.frontArm.elbow, s.frontArm.hand, 2.8, 2.6);
+  blob(p, 'stone', s.frontArm.elbow[0], s.frontArm.elbow[1], 2.2, 2.2, { gloss: true });
+  blob(p, 'stone', s.frontArm.hand[0], s.frontArm.hand[1], 4, 3.6, { gloss: true });
+  blob(p, 'stone', s.frontArm.shoulder[0], s.frontArm.shoulder[1] - 1, 4.4, 3.6, { gloss: true });
+  if (pose.swing) arc(p, s.frontArm.shoulder[0], s.frontArm.shoulder[1], 22, -50, 40, 'white', 3);
+  return done(p);
+}
+
+// Iron Foreman: the captain's rig in safety orange with a hard hat, a steam rig
+// on the back and a sledgehammer. 'charge' raises the hammer; 'cast' repairs.
+const FOREMAN_MATERIAL = { red: 'ember' };
+const FOREMAN = {
+  behind(p, s, pose, mode, f) {
+    // boiler pack with a smoking pipe
+    const [nx, ny] = s.neck, [px, py] = s.hip;
+    const bx = nx - 9, by = lerp(ny, py, 0.35);
+    p.shape('steel', (id) => p.ellipse(id, bx, by, 6, 9), { gloss: true, shadow: 2 });
+    [by - 4, by + 4].forEach((y) => p.shape('gold', (id) => p.rect(id, Math.round(bx - 6), Math.round(y), 12, 1), { line: false }));
+    limb(p, 'stone', [bx - 2, by - 8], [bx - 3, by - 16], 1.4, 1.4, { gloss: true });
+    if (mode !== 'tired') smoke(p, Math.round(bx - 5), Math.round(by - 22), f);
+  },
+  head(p, [hx, hy]) {
+    // yellow hard hat with a brim and a lamp
+    p.shape('gold', (id) => p.ellipse(id, hx - 0.5, hy - 4.5, 9.5, 6), { gloss: true });
+    p.shape('gold', (id) => p.rect(id, Math.round(hx - 10), Math.round(hy - 3), 21, 2), { level: 2 });
+    blob(p, 'white', hx + 6, hy - 6, 1.6, 1.6, { line: false });
+    p.dot(hx + 6, hy - 6, 'glow');
+  },
+  weapon(p, s, pose, mode, f) {
+    const [dx, dy] = along(pose.weapon), n = [-dy, dx];
+    const [wx, wy] = s.frontArm.hand;
+    const head = [wx + dx * 20, wy + dy * 20];
+    limb(p, 'wood', [wx - dx * 4, wy - dy * 4], head, 1.4, 1.4, { gloss: true });
+    const hot = pose.glow;
+    const corner = (a, b) => [head[0] + n[0] * a + dx * b, head[1] + n[1] * a + dy * b];
+    p.shape(hot ? 'ember' : 'stone', (id) => p.poly(id, [corner(-7, -4), corner(7, -4), corner(7, 4), corner(-7, 4)]), { gloss: true, dark: 1, shadow: 2 });
+    limb(p, 'gold', corner(-7, 0), corner(7, 0), 0.8, 0.8, { line: false });
+    if (hot) { sparkle(p, head[0] + n[0] * 9, head[1] + n[1] * 9, true, 'orange'); sparkle(p, head[0] - n[0] * 9, head[1] - n[1] * 9 + f, false, 'glow'); }
+    if (pose.call) { sparkle(p, head[0] + n[0] * 8 + 2, head[1] + n[1] * 8 + 2, f % 2 === 0, 'orange'); sparkle(p, head[0] + 6, head[1] + 4 - f, false, 'spark'); }
+  },
+};
+function ironForeman(opts) {
+  return recolor(goblinCaptain(opts, FOREMAN), (key) => key.replace(/^([a-zA-Z]+)(\d)$/, (all, name, level) => (FOREMAN_MATERIAL[name] ? `${FOREMAN_MATERIAL[name]}${level}` : all)));
+}
+
+// Siege Golem: the golem body grown to boss size and rebuilt as a factory
+// machine: rusted plates, a brick chimney on the back and an iron battering
+// ram for a front arm. Phase 2 (angry) makes the chimney spit embers.
+const SIEGE_MATERIAL = { moss: 'leather' };
+function siegeGolem(params) {
+  const { mode, f } = params;
+  const angry = params.angry || mode === 'charge';
+  const p = new Painter(124, 128, LIGHT);
+  const k = 1.42, cx = 124 / 2 - 2 * k;
+  const sink = mode === 'tired' ? 4 * k : 0;
+  // chimney behind the back shoulder
+  const chx = cx - 22 * k, chy = 11 + sink;
+  p.shape('red', (id) => p.rect(id, Math.round(chx - 5), Math.round(chy + 6), 10, 24), { gloss: true, shadow: 2 });
+  for (let y = chy + 9; y < chy + 28; y += 4) p.shape('red', (id) => p.rect(id, Math.round(chx - 5), Math.round(y), 10, 1), { level: 1, line: false });
+  p.shape('stone', (id) => p.rect(id, Math.round(chx - 6), Math.round(chy + 4), 12, 3), { gloss: true });
+  if (mode !== 'tired') {
+    if (angry) [[0, 0], [-4, -4], [3, -6], [-1, -9]].forEach(([dx, dy], i) => { if ((i + f) % 3 !== 2) sparkle(p, chx + dx, chy + dy - (f % 2), i === 0, 'orange'); });
+    else smoke(p, Math.round(chx - 2), Math.round(chy - 2), f);
+  }
+  golemBody(p, params, k, 124, 128);
+  // riveted iron plates on the chest and a brass pipe across the belly
+  [[cx - 14 * k, 34 * k + sink], [cx + 14 * k, 34 * k + sink], [cx - 16 * k, 52 * k + sink], [cx + 15 * k, 52 * k + sink]].forEach(([x, y]) => p.dot(x, y, 'gold4'));
+  limb(p, 'gold', [cx - 18 * k, 58 * k + sink], [cx + 17 * k, 58 * k + sink], 1.2, 1.2, { gloss: true });
+  // battering ram over the front fist
+  const attack = mode === 'attack', charge = mode === 'charge', tired = mode === 'tired';
+  const fistY = (charge ? 36 : attack ? [40, 18, 64, 62][f] : tired ? 66 : 60 + (mode === 'idle' ? [0, 1, 2, 1][f] : 0)) * k;
+  const rx = cx + 26 * k, push = attack && f >= 2 ? 6 : 0;
+  p.shape('stone', (id) => p.rect(id, Math.round(rx - 9), Math.round(fistY - 7), 26 + push, 14), { gloss: true, shadow: 2, dark: 1 });
+  [rx - 4, rx + 6 + push / 2].forEach((x) => p.shape('gold', (id) => p.rect(id, Math.round(x), Math.round(fistY - 7), 2, 14), { line: false, gloss: true }));
+  p.shape(angry ? 'ember' : 'steel', (id) => p.rect(id, Math.round(rx + 15 + push), Math.round(fistY - 9), 5, 18), { gloss: true });
+  if (charge) sparkle(p, rx + 22, fistY - 10 + f, true, 'orange');
+  return recolor(done(p), (key) => key.replace(/^([a-zA-Z]+)(\d)$/, (all, name, level) => (SIEGE_MATERIAL[name] ? `${SIEGE_MATERIAL[name]}${level}` : all)));
+}
+
+/* -------------------------------------------------------------- the Core */
+// The Action Core (Higashiosaka, Osaka City): the glowing source of the hero's
+// Action Energy on a stone pedestal. Rows: idle (slow glow), charge (bright
+// pulse when it pays +1 AP), tired = broken (dark and cracked); a hit is the
+// sheet's derived flash/shake. 'attack' only exists to fill the sheet.
+function actionCore({ mode, f }) {
+  const p = new Painter(44, 60, LIGHT);
+  const cx = 22, broken = mode === 'tired', charge = mode === 'charge';
+  // pedestal: a stepped stone base with a gold rim
+  poly(p, 'stone', [[8, 59], [36, 59], [33, 53], [11, 53]], { gloss: true, shadow: 2 });
+  poly(p, 'stone', [[13, 53], [31, 53], [29, 44], [15, 44]], { gloss: true, shadow: 2, dither: true });
+  p.shape('gold', (id) => p.rect(id, 12, 43, 21, 2), { gloss: true });
+  p.dots([[18, 49], [22, 49], [26, 49]], broken ? 'stone1' : 'cyan');
+  if (broken) {
+    // the crystal has fallen, dark and split, with a shard on the base
+    poly(p, 'shadowCloth', [[cx - 2, 42], [cx + 6, 34], [cx + 3, 26], [cx - 4, 30]], { gloss: true });
+    poly(p, 'stone', [[cx - 9, 42], [cx - 6, 36], [cx - 3, 42]], { gloss: true });
+    p.dots([[cx + 2, 30], [cx + 1, 32], [cx + 2, 34], [cx + 1, 36], [11, 55], [12, 56], [30, 57]], 'stone1');
+    if (f % 2 === 0) p.dot(cx + 3, 28, 'crystal2');
+    return done(p);
+  }
+  // floating crystal inside a gold ring
+  const cy = 24 + (charge ? 0 : [0, -1, -1, 0][f % 4]);
+  arc(p, cx, cy, 13, 0, 360, 'gold3', 1, 'gold4');
+  poly(p, charge ? 'gold' : 'crystal', [[cx, cy - 12], [cx + 7, cy - 2], [cx + 4, cy + 10], [cx - 4, cy + 10], [cx - 7, cy - 2]], { gloss: true, shadow: 2 });
+  poly(p, charge ? 'gold' : 'crystal', [[cx, cy - 9], [cx + 3, cy - 2], [cx, cy + 7], [cx - 3, cy - 2]], { level: 5, line: false });
+  p.dots([[cx - 3, cy - 6], [cx - 4, cy - 4]], 'white');
+  if (charge) {
+    for (let i = 0; i < 8; i += 1) { const [dx, dy] = along(i * 45 + f * 22); p.dot(cx + dx * (16 + f), cy + dy * (16 + f), i % 2 ? 'glow' : 'white'); }
+    sparkle(p, cx + 12, cy - 12 + f, true, 'glow'); sparkle(p, cx - 13, cy + 6 - f, false, 'glow');
+  } else {
+    [0, 180].forEach((a) => { const [dx, dy] = along(a + f * 90); p.dot(cx + dx * 16, cy + dy * 10, 'cyan'); });
+    if (f % 2 === 0) sparkle(p, cx + 9, cy - 10, false, 'cyan');
+  }
+  // light pooled on the pedestal
+  p.dots([[cx - 2, 42], [cx, 42], [cx + 2, 42]], charge ? 'glow' : 'cyan');
+  return done(p);
+}
+
 /** Props on the sprite pipeline that are not enemies (no battle data). */
 export const PROP_ART = {
   trainingDummy: { draw: trainingDummy, modes: { idle: 4, attack: 1 } },
+  actionCore: { draw: actionCore, modes: { idle: 4, attack: 1, charge: 2, tired: 2 } },
 };
 
 // Frame counts per drawn mode; derived rows (hit, defeat, dodge...) are built in pixel-sprites.js.
@@ -1075,4 +1393,10 @@ export const ENEMY_ART = {
   armoredOrc: { draw: armoredOrc, large: true, modes: { idle: 4, attack: 4, guard: 2, tired: 2 } },
   signalCaptain: { draw: signalCaptain, large: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, guard: 2, tired: 2 } },
   warcaller: { draw: warcaller, boss: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, tired: 2 } },
+  saboteur: { draw: saboteur, modes: { idle: 4, attack: 4, tired: 2 } },
+  engineerGoblin: { draw: engineerGoblin, modes: { idle: 4, attack: 4, cast: 3, tired: 2 } },
+  goblinSniper: { draw: goblinSniper, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
+  guardianConstruct: { draw: guardianConstruct, large: true, modes: { idle: 4, attack: 4, guard: 2, tired: 2 } },
+  ironForeman: { draw: ironForeman, large: true, modes: { idle: 4, attack: 4, cast: 3, charge: 2, guard: 2, tired: 2 } },
+  siegeGolem: { draw: siegeGolem, boss: true, modes: { idle: 4, attack: 4, charge: 2, tired: 2 } },
 };

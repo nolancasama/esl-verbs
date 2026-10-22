@@ -145,6 +145,13 @@ function drawLine(s, points, kind) {
     const end = walk(points).at(-1); const n = [-end.dir[1], end.dir[0]];
     for (let k = -3; k <= 3; k += 0.5) s.paint(end.x + n[0] * k + end.dir[0] * 2, end.y + n[1] * k + end.dir[1] * 2, 'o');
   }
+  if (kind === 'tunnel') {
+    // the line runs on into a hillside tunnel: a stone portal around a dark mouth
+    const end = walk(points).at(-1); const n = [-end.dir[1], end.dir[0]];
+    for (let t = 0; t <= 3; t += 0.5) for (let k = -4.5; k <= 4.5; k += 0.5) {
+      s.paint(end.x + n[0] * k + end.dir[0] * (t + 1), end.y + n[1] * k + end.dir[1] * (t + 1), Math.abs(k) > 2.5 || t > 2.5 ? 'U' : 'b');
+    }
+  }
 }
 /** Platform and a red-roofed station house beside the track. */
 function drawStationHouse(s, [cx, cy], dir) {
@@ -165,13 +172,28 @@ function drawLandmark(s, kind, [cx, cy]) {
   } else if (kind === 'shrine') {
     box(s, cx - 5, cy - 7, 11, 2, 'o'); box(s, cx - 4, cy - 5, 9, 1, 'o'); box(s, cx - 3, cy - 5, 1, 7, 'o'); box(s, cx + 3, cy - 5, 1, 7, 'o');
     disc(s, cx - 7, cy + 1, 2.4, 't'); disc(s, cx + 7, cy, 2.4, 't');
+  } else if (kind === 'stadium') {
+    // an oval bowl of cream stands around a green pitch with white lines
+    for (let y = cy - 10; y <= cy + 4; y += 1) for (let x = cx - 14; x <= cx + 14; x += 1) {
+      const d = ((x - cx) / 14) ** 2 + ((y - cy + 3) / 7.5) ** 2;
+      if (d <= 1) s.paint(x, y, d > 0.82 ? 'H' : d > 0.45 ? 'c' : 'p');
+    }
+    box(s, cx - 5, cy - 4, 11, 3, 'p'); s.paint(cx, cy - 4, 'c'); s.paint(cx, cy - 3, 'c'); s.paint(cx, cy - 2, 'c');
+    s.paint(cx - 5, cy - 3, 'c'); s.paint(cx + 5, cy - 3, 'c');
   }
 }
 
 // City blocks: a pale lot with up to four houses (or a garden); a block that
 // would touch a rail, the water, a landmark or the station plaza is left out.
 const ROOFS = [['h', 'H'], ['h', 'H'], ['h', 'H'], ['u', 'U'], ['u', 'U'], ['q', 'Q']];
-function drawBlocks(s, seed) {
+/** A small factory filling a lot: a grey sawtooth roof (light/shade stripes) with a red chimney. */
+function drawFactory(s, x0, y0, x1, y1, hash) {
+  for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) s.paint(x, y, (x - x0) % 3 === 2 ? 'U' : 'u');
+  box(s, x0, y1 - 1, x1 - x0, 1, 'U');
+  const cx = x0 + 1 + (hash % Math.max(1, x1 - x0 - 2));
+  box(s, cx, y0 - 2, 1, 3, 'o'); s.paint(cx, y0 - 3, 'H');
+}
+function drawBlocks(s, seed, factories = false) {
   const houses = [];
   const BW = 15, BH = 11;
   for (let row = 0, by = 2; by + BH - 3 <= H; row += 1, by += BH) for (let bx = 2 - (row % 2) * 7; bx < W; bx += BW) {
@@ -186,6 +208,7 @@ function drawBlocks(s, seed) {
       for (let x = x0 + 1; x < x1 - 1; x += 4) { s.paint(x, y0 + 2, 't'); s.paint(x + 1, y0 + 2, 't'); s.paint(x, y0 + 1, 'T'); }
       continue;
     }
+    if (factories && hash % 3 === 1) { box(s, x0, y0, x1 - x0, y1 - y0, 'x'); drawFactory(s, x0 + 1, y0 + 2, x1 - 1, y1 - 1, hash); continue; }
     box(s, x0, y0, x1 - x0, y1 - y0, 'x');
     const hw = Math.floor((x1 - x0 - 1) / 2), hh = Math.floor((y1 - y0 - 1) / 2);
     [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([i, j], n) => {
@@ -232,7 +255,7 @@ function linePaths(location) {
     const pts = line.stops.map((stop) => project(stop.at));
     const extend = (a, b) => [b[0] + (b[0] - a[0]) * 6, b[1] + (b[1] - a[1]) * 6];
     const startIsStation = line.stops[0].at === station;
-    const ends = line.kind === 'terminus' || line.kind === 'tram';
+    const ends = line.kind === 'terminus' || line.kind === 'tram' || line.kind === 'tunnel';
     const path = [...(startIsStation ? [] : [extend(pts[1], pts[0])]), ...pts, ...(ends ? [] : [extend(pts.at(-2), pts.at(-1))])];
     return { line, pts, path };
   });
@@ -257,7 +280,7 @@ function drawLocation(location) {
   const station = P(location.station.place);
   disc(s, station[0], station[1], 14, null);
   (map.landmarks ?? []).forEach(({ kind, at }) => { if (kind !== 'park' && kind !== 'mountain' && kind !== 'airport') { const [lx, ly] = P(at); disc(s, lx, ly - 4, 12, null); } });
-  const houses = drawBlocks(s, location.stage * 13 + location.station.name.length);
+  const houses = drawBlocks(s, location.stage * 13 + location.station.name.length, map.factories);
   const routes = map.threats.map((from) => [toPx(from), station]);
   const fires = burnHouses(s, houses, routes, station);
   paths.forEach(({ path, line }) => drawLine(s, path.map(toPx), line.kind));
@@ -294,7 +317,7 @@ function flameArt() {
 
 const el = (tag, className = '', text = '') => { const node = document.createElement(tag); node.className = className; node.textContent = text; return node; };
 const pct = (value) => `${value}%`;
-const ROAMERS = { yao: ['hornGoblin', 'bombSlime', 'goblin', 'bat'], sakai: ['goblin', 'wolf', 'bat', 'slime'], matsubara: ['slime', 'bat', 'goblin', 'mushroom'] };
+const ROAMERS = { higashiosaka: ['saboteur', 'engineerGoblin', 'goblin', 'bat'], yao: ['hornGoblin', 'bombSlime', 'goblin', 'bat'], sakai: ['goblin', 'wolf', 'bat', 'slime'], matsubara: ['slime', 'bat', 'goblin', 'mushroom'] };
 
 function ruby(base, reading) {
   const r = document.createElement('ruby'); r.append(base);
@@ -419,7 +442,8 @@ export function stationMapScreen(location, { cityId, heroId, stage = location.st
       // A plate close to the station moves away from it so the two never overlap.
       const dx = at[0] - stationAt[0], dy = (at[1] - stationAt[1]) * (H / W), d = Math.hypot(dx, dy) || 1;
       const push = d < 18 ? 12 : 0;
-      const plateAt = [Math.max(10, Math.min(90, at[0] + (dx / d) * push)), Math.max(8, Math.min(92, at[1] + 5 + ((dy / d) * push) / (H / W)))];
+      const drop = landmark.kind === 'stadium' ? 10 : 5; // the stadium's bowl is wide: its plate sits below it
+      const plateAt = [Math.max(10, Math.min(90, at[0] + (dx / d) * push)), Math.max(8, Math.min(92, at[1] + drop + ((dy / d) * push) / (H / W)))];
       map.append(marker('place', plateAt, landmark.ja, landmark.en, ' station-map__marker--landmark'));
     }
   }

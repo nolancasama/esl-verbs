@@ -823,3 +823,22 @@ Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
 - Balance targets carry Yao's lessons: measure how defeats end before tuning,
   assert hero-mean thresholds, both bots must complete every city at AP 0–10,
   prove each new assertion can fail.
+
+## 2026-10-22 — Higashiosaka H0: art, stations, Core plate
+
+- The Core stands at the back-left of the hero column; the hero moves right
+  of it. With an ally (Osaka City) the ally stands **between** the Core and
+  the hero, not front-left of the Core as the spec first said: at 1024×600 a
+  front-left ally hid half the Core and its plate. The Core is then scaled
+  .8 and raised, reading as "further back"; the hero column widens.
+- The Core plate is cyan (the Core's colour, also the `→ コア` intent tag),
+  pulses red under 35%; the broken Core is a fallen dark crystal (the
+  sprite's `tired` row) rather than a separate sheet.
+- New foes reuse the goblin and captain rigs through small gear hooks
+  (head / torso / weapon / behind) instead of copies; every existing sprite
+  is byte-identical. The Sniper carries a crossbow, never a gun.
+- Higashiosaka maps show sawtooth factory roofs for the town of makers
+  (decoration only, never a named building); both Ishikiri lines end in a
+  tunnel portal because they really tunnel under the Ikoma hills.
+- Art lands before battle data: the art test lists the art-ahead ids
+  explicitly (H2 empties the list), instead of loosening the check.

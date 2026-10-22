@@ -240,3 +240,34 @@ the Siege Golem via `?debug=battle` (hig-4, wave 2); 1024×600 no scroll.
 
 Docs: append dated DESIGN_DECISIONS entries for every decision taken while
 implementing; revise CURRENT_STATE lines instead of appending logs.
+
+---------------------------------------------------------------------------
+## 11. H0 done (2026-10-22) — what H1/H2 build on
+
+- **Sprites** (`src/pixel-enemies.js`, ids as §3): `saboteur`, `engineerGoblin`
+  (cast = repair), `goblinSniper` (charge = aiming), `guardianConstruct`
+  (large; guard = shield up), `ironForeman` (large; charge = hammer raised,
+  cast = repair), `siegeGolem` (boss; enraged variant). They are in
+  `ENEMY_ART` before their data exists: `test/art.test.js`
+  `ART_AHEAD_OF_DATA` lists them, and **H2 must empty that list** when it adds
+  the enemies to `battle-data.js`.
+- **Core prop:** `PROP_ART.actionCore` (`battleArt('actionCore', row)`).
+  Rows: `idle`, `charge` (gold pulse), `hit` (derived flash), and **`tired`
+  is the broken Core**.
+- **Core plate / layout (frozen; CSS already in `rpg.css` "Action Core"):**
+  markup is documented in the CSS comment. The field gets
+  `.battle-field--core`; the article is
+  `.battle-core.battle-core--{idle|hit|charge|broken|low}` with
+  `data-combatant="core"`, a `.battle-core__plate.px-panel` holding
+  `<b>アクション・コア</b>` and `hpBar(...)` with the extra class
+  `battle-hp--core`, then `.battle-art-wrap` with the sprite. `--low` is
+  below 35%. With an ally (Osaka City) the Core stands at the back-left
+  (scaled .8) and the ally in front of it, between the Core and the hero:
+  nothing overlaps at 1024×600.
+- **Aim tag:** append `<span class="battle-intent__aim">→ コア</span>` inside
+  `.battle-intent` for a Core-aimed intent.
+- **Stations:** `BATTLE_LOCATIONS.higashiosaka` stages 1–4 as §6. Yoshita
+  re-checked on Wikipedia: 34.68029, 135.62414. New map features: line kind
+  `tunnel` (both Ishikiri lines enter the Ikoma tunnels), landmark kind
+  `stadium`, `map.factories` (sawtooth factory roofs). The map roamers for
+  Higashiosaka are saboteur, engineerGoblin, goblin, bat.

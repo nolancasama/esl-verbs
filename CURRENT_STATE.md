@@ -220,9 +220,11 @@ Verified 2026-09-30:
 1. Classroom check of Sakai and Yao difficulty, story length, call telegraphs,
    bomb countdowns and Orc protection; check station-map pacing between rounds.
 2. Higashiosaka next, then Osaka City — both specs are frozen:
-   `.ai/higashiosaka-spec.md` (slices H0 art/maps → H1 Core system → H2 city)
-   and `.ai/osaka-city-spec.md` (O0 art/maps → O1 city + finale; needs
-   Higashiosaka's Core first).
+   `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`. **H0 is done**
+   (spec §11: sprites, Core prop + plate CSS, four station maps); next is
+   **H1** (worker: the Core system + Core UI on a test-only encounter), then
+   H2 (Higashiosaka data, campaign, balance). Osaka City (O0 → O1) needs
+   Higashiosaka's Core first.
 3. Not heard yet (no audio device): the new strike/impact/AP-gain sfx and the
    12% defaults on Chromebook speakers.
 4. Optional: a Sakai-specific skyline for its intro/ending (it reuses the

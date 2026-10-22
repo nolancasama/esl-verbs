@@ -62,6 +62,6 @@ for (const id of ids) {
   if (id === 'backdrops') { for (const stage of [1, 2, 3, 4]) renderSheet(backdropImage(stage), `backdrop-${stage}`); continue; }
   if (id === 'effects') { for (const name of EFFECT_NAMES) renderSheet(effectSheet(name), `fx-${name}`, [40, 44, 70]); continue; }
   renderSheet(spriteSheet(id), id);
-  if (spriteSheet(id, 'enraged') && ['dragon', 'demonKing', 'giantGolem', 'vampireLord'].includes(id)) renderSheet(spriteSheet(id, 'enraged'), `${id}-enraged`);
+  if (spriteSheet(id, 'enraged') && ['dragon', 'demonKing', 'giantGolem', 'vampireLord', 'warcaller', 'siegeGolem'].includes(id)) renderSheet(spriteSheet(id, 'enraged'), `${id}-enraged`);
 }
 console.log(`rows: ${ROWS.join(', ')}`);

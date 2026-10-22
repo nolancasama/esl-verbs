@@ -14,9 +14,14 @@ const bounds = (g) => {
   return { top, bottom, height: bottom - top + 1 };
 };
 
+// Higashiosaka art lands before its battle data (spec slice H0 → H2); H2 adds the
+// data and empties this list, so art without data never goes unnoticed.
+const ART_AHEAD_OF_DATA = ['saboteur', 'engineerGoblin', 'goblinSniper', 'guardianConstruct', 'ironForeman', 'siegeGolem'];
+const BOSS_ART_AHEAD = new Set(['siegeGolem']);
+
 test('every hero and enemy has a complete sprite sheet with one row per state', () => {
-  for (const id of [...Object.keys(HEROES), ...Object.keys(ENEMIES)]) {
-    const variants = ENEMIES[id]?.boss ? ['', 'enraged'] : [''];
+  for (const id of [...Object.keys(HEROES), ...Object.keys(ENEMIES), ...ART_AHEAD_OF_DATA, 'actionCore']) {
+    const variants = ENEMIES[id]?.boss || BOSS_ART_AHEAD.has(id) ? ['', 'enraged'] : [''];
     for (const variant of variants) {
       const sheet = spriteSheet(id, variant);
       assert.ok(sheet, `${id} has no art`);
@@ -26,7 +31,7 @@ test('every hero and enemy has a complete sprite sheet with one row per state', 
       SPRITE_STATES.forEach((state, row) => assert.equal(sheet.grids[row].length, FRAMES[state], `${id} ${state} frames`));
     }
   }
-  assert.deepEqual([...ART_IDS.enemies].sort(), Object.keys(ENEMIES).sort());
+  assert.deepEqual([...ART_IDS.enemies].sort(), [...Object.keys(ENEMIES), ...ART_AHEAD_OF_DATA.filter((id) => !ENEMIES[id])].sort());
 });
 
 test('sprite sizes follow the late-16-bit targets: heroes ~64-72, bosses 96-128', () => {

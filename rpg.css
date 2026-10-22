@@ -438,6 +438,34 @@
 .battle-ally--enter { animation: ally-enter .9s cubic-bezier(.2, .8, .3, 1) both; }
 @keyframes ally-enter { from { translate: -140% 0; } 70% { translate: 8% 0; } to { translate: 0 0; } }
 .battle-ally__tag { margin-top: -4px; padding: 1px 8px; font-family: var(--read-font); font-weight: 900; font-size: .8rem; color: #9fd8ff; }
+/* Action Core (Higashiosaka, Osaka City). Markup for battle-ui (frozen in H0):
+   <article class="battle-core battle-core--{idle|hit|charge|broken|low}" data-combatant="core">
+     <div class="battle-core__plate px-panel"><b>アクション・コア</b>{hpBar(hp, maxHp, 'Core') + ' battle-hp--core'}</div>
+     <div class="battle-art-wrap">{actionCore sprite: idle | charge | hit | tired (= broken)}</div>
+   </article>
+   The field gets .battle-field--core: the hero moves right of the Core, and with
+   an ally too the ally stands in front-left of the Core. */
+.battle-field--core { grid-template-columns: minmax(250px, .85fr) minmax(300px, 1.6fr); }
+.battle-field--core .battle-hero { justify-items: end; padding-right: 4%; }
+.battle-core { position: absolute; left: 14px; bottom: calc(var(--px) * 12px); z-index: 1; display: grid; justify-items: center; gap: 2px; }
+.battle-field--core.battle-field--ally { grid-template-columns: minmax(390px, 1.1fr) minmax(300px, 1.4fr); }
+.battle-field--core.battle-field--ally .battle-core { left: 6px; bottom: calc(var(--px) * 22px); scale: .8; transform-origin: left bottom; }
+.battle-field--core.battle-field--ally .battle-ally { z-index: 2; left: calc(var(--px) * 30px); }
+.battle-core__plate { display: grid; gap: 2px; width: 150px; padding: 3px 8px 5px; }
+.battle-core__plate b { font-family: var(--read-font); font-weight: 900; font-size: .78rem; line-height: 1.1; color: #8ff6ff; text-align: center; white-space: nowrap; }
+.battle-core__plate .battle-hp { grid-template-columns: 1fr auto; gap: 5px; font-size: 9px; }
+.battle-core__plate .battle-hp__label { display: none; }
+.battle-hp--core .battle-hp__track span { background: #36c4d8; }
+.battle-core--low .battle-core__plate { border-color: var(--red); animation: px-blink .9s steps(2) infinite; }
+.battle-core--low .battle-hp--core .battle-hp__track span { background: var(--hp-danger); }
+.battle-core--idle .px-sprite { filter: drop-shadow(0 0 calc(var(--px) * 2px) #36c4d880); }
+.battle-core--charge .px-sprite { filter: drop-shadow(0 0 calc(var(--px) * 4px) #fff4a0); }
+.battle-core--hit { animation: core-shake .3s steps(3); }
+@keyframes core-shake { 0%, 100% { translate: 0 0; } 33% { translate: -4px 0; } 66% { translate: 4px 0; } }
+.battle-core--broken .px-sprite { filter: saturate(.3) brightness(.75); }
+.battle-core--broken .battle-core__plate b { color: #9aa0b4; }
+/* An intent aimed at the Core: a cyan → コア tag after the label. */
+.battle-intent__aim { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; padding: 0 4px; background: #36c4d8; color: var(--ink); font-family: var(--read-font); font-weight: 900; border: 1px solid var(--ink); }
 .battle-wave { color: var(--gold); }
 .battle-banner { position: absolute; left: 50%; top: 22%; z-index: 8; display: none; justify-items: center; gap: 4px; padding: 10px 28px; translate: -50% 0; pointer-events: none; background: #0e1024e6; border: var(--b) solid var(--edge); box-shadow: 0 0 0 var(--b) var(--ink); }
 .battle-banner--show { display: grid; animation: banner-pop 1.4s steps(12) forwards; }
@@ -638,7 +666,7 @@
   .rpg-field--choices .rpg-field__answer:not(.is-answered) { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .px-summoned, .battle-skill--hint, .battle-floater, .battle-intent--heavy, .battle-intent--call, .battle-hint--danger, .battle-target-marker .px-icon, .rpg-reward-line, .rpg-xp__gain, .rpg-burst::before, .rpg-field__streak, .ap-meter--recovering, .ap-meter--deny, .ap-meter--gain .ap-meter__fill {
+  .px-summoned, .battle-core--hit, .battle-core--low .battle-core__plate, .battle-skill--hint, .battle-floater, .battle-intent--heavy, .battle-intent--call, .battle-hint--danger, .battle-target-marker .px-icon, .rpg-reward-line, .rpg-xp__gain, .rpg-burst::before, .rpg-field__streak, .ap-meter--recovering, .ap-meter--deny, .ap-meter--gain .ap-meter__fill {
     animation: none !important;
   }
   .rpg-xp__fill { transition-duration: .001ms !important; }

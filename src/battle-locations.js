@@ -24,6 +24,13 @@ const P = Object.freeze({
   yao: [34.61756, 135.59675], kyuhoji: [34.62235, 135.58433], shiki: [34.60058, 135.61572],
   kintetsuYao: [34.6297, 135.60387], kyuhojiguchi: [34.6348, 135.59034], kawachiYamamoto: [34.62796, 135.61962],
   takayasu: [34.6189, 135.6246], hattorigawa: [34.62626, 135.64148], mtTakayasu: [34.61689, 135.65755],
+  ishikiri: [34.68523, 135.65544], nukata: [34.67539, 135.65108], shinIshikiri: [34.68015, 135.64087],
+  ishikiriShrine: [34.68199, 135.64617],
+  higashiHanazono: [34.66252, 135.62646], kawachiHanazono: [34.66284, 135.61799], hyotanyama: [34.66211, 135.63975],
+  hanazonoRugby: [34.6693, 135.62657],
+  aramoto: [34.67861, 135.6049], nagata: [34.67844, 135.59302], yoshita: [34.68029, 135.62414],
+  higashiosakaCityHall: [34.67942, 135.60064],
+  fuse: [34.66412, 135.56321], imazato: [34.66468, 135.54966], kawachiEiwa: [34.66429, 135.57321], shuntokumichi: [34.6583, 135.57184],
 });
 
 const stop = (place, ja, en) => Object.freeze({ at: P[place], ja, en });
@@ -38,6 +45,9 @@ const NANKAI_MAIN = [stop('shichido', 'しちどう', 'Shichido'), stop('sakai',
 const NANKAI_SOUTH = [stop('suwanomori', 'すわのもり', 'Suwanomori'), stop('hamaderakoen', 'はまでらこうえん', 'Hamadera-koen'), stop('hagoromo', 'はごろも', 'Hagoromo')];
 const KINTETSU_OSAKA = [stop('kyuhojiguchi', 'きゅうほうじぐち', 'Kyuhojiguchi'), stop('kintetsuYao', 'きんてつやお', 'Kintetsu-Yao'),
   stop('kawachiYamamoto', 'かわちやまもと', 'Kawachi-Yamamoto'), stop('takayasu', 'たかやす', 'Takayasu')];
+
+const KINTETSU_NARA_EAST = [stop('kawachiHanazono', 'かわちはなぞの', 'Kawachi-Hanazono'), stop('higashiHanazono', 'ひがしはなぞの', 'Higashi-Hanazono'),
+  stop('hyotanyama', 'ひょうたんやま', 'Hyotan-yama')];
 
 export const BATTLE_LOCATIONS = Object.freeze({
   matsubara: Object.freeze([
@@ -163,6 +173,54 @@ export const BATTLE_LOCATIONS = Object.freeze({
         mountains: [[34.6330, 135.6520], [34.6280, 135.6600], [34.6215, 135.6540], [34.6168, 135.6575], [34.6120, 135.6640], [34.6100, 135.6500]],
         landmarks: [{ kind: 'mountain', at: P.mtTakayasu, ja: 'たかやすやま', en: 'Mt. Takayasu' }],
         threats: [[94, 30], [70, 6], [6, 94]],
+      },
+    }),
+  ]),
+
+  // The Horde pushes west from the Ikoma hills toward Osaka City. Higashiosaka
+  // is a town of small factories, so its lots show sawtooth factory roofs.
+  higashiosaka: Object.freeze([
+    loc(1, {
+      station: { place: P.ishikiri, name: 'Ishikiri', jaName: '石切', kana: 'いしきり', line: 'Kintetsu Nara Line' },
+      note: { ja: 'いこまの やまの ふもとの えき', en: 'The station at the foot of the Ikoma hills' },
+      map: {
+        center: [34.6815, 135.6500], km: 3, factories: true,
+        // Both lines climb the hillside, then tunnel east under the Ikoma hills to Nara.
+        lines: [line([stop('nukata', 'ぬかた', 'Nukata'), stop('ishikiri', 'いしきり', 'Ishikiri')], 'tunnel'),
+          line([stop('yoshita', '', ''), stop('shinIshikiri', 'しんいしきり', 'Shin-Ishikiri')], 'tunnel')],
+        mountains: [[34.6880, 135.6610], [34.6830, 135.6640], [34.6775, 135.6615], [34.6752, 135.6650], [34.6860, 135.6655]],
+        landmarks: [{ kind: 'shrine', at: P.ishikiriShrine, ja: 'いしきりじんじゃ', en: 'Ishikiri Shrine' }],
+        threats: [[94, 20], [94, 75], [70, 6]],
+      },
+    }),
+    loc(2, {
+      station: { place: P.higashiHanazono, name: 'Higashi-Hanazono', jaName: '東花園', kana: 'ひがしはなぞの', line: 'Kintetsu Nara Line' },
+      note: { ja: 'ラグビーじょうの ちかくの えき', en: 'The station near the rugby stadium' },
+      map: {
+        center: [34.6655, 135.6280], km: 3, factories: true, lines: [line(KINTETSU_NARA_EAST)],
+        landmarks: [{ kind: 'stadium', at: P.hanazonoRugby, ja: 'はなぞの ラグビーじょう', en: 'Hanazono Rugby Stadium' }],
+        threats: [[94, 20], [94, 90], [60, 6]],
+      },
+    }),
+    loc(3, {
+      station: { place: P.aramoto, name: 'Aramoto', jaName: '荒本', kana: 'あらもと', line: 'Kintetsu Keihanna Line' },
+      note: { ja: 'ひがしおおさか しやくしょの ちかくの えき', en: 'The station by Higashiosaka City Hall' },
+      map: {
+        center: [34.6790, 135.6086], km: 3.6, factories: true,
+        lines: [line([stop('nagata', 'ながた', 'Nagata'), stop('aramoto', 'あらもと', 'Aramoto'), stop('yoshita', 'よした', 'Yoshita')])],
+        landmarks: [{ kind: 'cityHall', at: P.higashiosakaCityHall, ja: 'しやくしょ', en: 'City Hall' }],
+        threats: [[94, 12], [94, 88], [52, 6]],
+      },
+    }),
+    loc(4, {
+      station: { place: P.fuse, name: 'Fuse', jaName: '布施', kana: 'ふせ', line: 'Kintetsu Nara / Osaka Line' },
+      note: { ja: 'おおさか市への いりぐち', en: 'The gateway to Osaka City' },
+      map: {
+        center: [34.6625, 135.5610], km: 3.4, factories: true,
+        // Fuse is the junction: the Osaka Line turns south-east, the Nara Line runs on east.
+        lines: [line([stop('imazato', 'いまざと', 'Imazato'), stop('fuse', 'ふせ', 'Fuse'), stop('shuntokumichi', 'しゅんとくみち', 'Shuntokumichi')]),
+          line([stop('fuse', 'ふせ', 'Fuse'), stop('kawachiEiwa', 'かわちえいわ', 'Kawachi-Eiwa')])],
+        threats: [[94, 20], [94, 70], [70, 94]],
       },
     }),
   ]),
