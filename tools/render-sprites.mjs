@@ -5,6 +5,8 @@ import { deflateSync } from 'node:zlib';
 import path from 'node:path';
 import { ENEMY_IDS, HERO_IDS, ROWS, spriteSheet } from '../src/pixel-sprites.js';
 import { EFFECT_NAMES, backdropImage, cityImage, effectSheet, osakaMapImage, titleImage } from '../src/pixel-effects.js';
+import { ACTOR_KINDS, actorSheet, sceneImage } from '../src/pixel-scenes.js';
+import { SCENES } from '../src/scenes.js';
 
 const out = process.argv[2] || 'art-review';
 const scale = Number(process.argv[3] || 4);
@@ -60,6 +62,8 @@ for (const id of ids) {
   if (id === 'map') { renderSheet(osakaMapImage(), 'osaka-map'); continue; }
   if (id === 'title') { for (const part of ['sky', 'ground']) renderSheet(titleImage(part), `title-${part}`); continue; }
   if (id === 'city') { for (const mood of ['calm', 'danger', 'safe', 'monsters']) renderSheet(cityImage(mood), `city-${mood}`); continue; }
+  if (id === 'scenes') { for (const scene of Object.values(SCENES)) renderSheet(sceneImage(scene).image, `scene-${scene.id}`); continue; }
+  if (id === 'actors') { for (const kind of ACTOR_KINDS) renderSheet(actorSheet(kind, 1), `actor-${kind}`); continue; }
   if (id === 'backdrops') { for (const stage of [1, 2, 3, 4]) renderSheet(backdropImage(stage), `backdrop-${stage}`); continue; }
   if (id === 'effects') { for (const name of EFFECT_NAMES) renderSheet(effectSheet(name), `fx-${name}`, [40, 44, 70]); continue; }
   renderSheet(spriteSheet(id), id);

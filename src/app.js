@@ -9,7 +9,8 @@ import {
   applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, chapterRest, createCampaign, recordDefeat, recordStage, resumeCampaign, retryHp, xpProgress,
 } from './campaign.js';
 import { createBattleView, defeatHpLine } from './battle-ui.js';
-import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, getIcon, groundClass, prewarmArt, titleClass } from './battle-art.js';
+import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, fitScenes, getIcon, groundClass, prewarmArt, prewarmScene, sceneGroundClass, sceneMarkup, sceneSky, titleClass } from './battle-art.js';
+import { SCENES, pickBattleScene, pickTrainingScene } from './scenes.js';
 import {
   ADVENTURE_RECORDS_KEY, FINAL_BOSSES, completedHeroes, heroTitle, nextHeroTitle, parseRecords, recordCompletion,
 } from './records.js';
@@ -40,6 +41,8 @@ let micFree = readMicFree(), round = null, quizContext = null, feedback = '', au
 // speechFailed: recognition kept erroring during this Adventure stage, so it falls back to choices.
 let recognitionErrors = 0, speechDenied = false, speechFailed = false, tap = null, lastHeard = '';
 let campaign = null, stageResult = null, battleView = null, screen = 'menu', debugConfig = null, screenTimers = [], upcomingEncounter = null;
+// The neighbourhood scenes (src/scenes.js): one training scene per quiz round, one battle scene per battle.
+let trainingScene = null, battleScene = null, upcomingScene = null;
 let campaignOutcome = null; // the finished campaign's saved record, for the results screen
 let targetingTaught = false;
 let pendingTrainingGain = null;
@@ -268,6 +271,7 @@ function startRound(mode, items = createRound(VOCABULARY), context = 'study') {
   if (context === 'study' && mode >= 3 && !micFree && !speechRecognitionAvailable()) { micFree = true; saveMicFree(true); feedback = MIC_MESSAGE; }
   if (context === 'adventure') {
     if (!CITY_CAMPAIGNS[campaign.cityId]?.origin) saveRegion(stageCheckpoint(readRegion(), campaign));
+    trainingScene = SCENES[debugScene()] ?? pickTrainingScene(campaign.cityId, { avoid: trainingScene?.id });
     apMeter?.set(0, { animate: false }); audio.play('field'); prepareEncounter();
   } else audio.stop();
   renderQuestion();
@@ -277,6 +281,7 @@ function startRound(mode, items = createRound(VOCABULARY), context = 'study') {
 function prepareEncounter() {
   const encounterId = stageEncounterId(campaign);
   upcomingEncounter = ENCOUNTERS[encounterId];
+  upcomingScene = pickBattleScene(campaign.cityId, campaign.stage, { avoid: battleScene?.id }); prewarmScene(upcomingScene);
   if (!upcomingEncounter) return;
   const art = [];
   const waves = upcomingEncounter.waves ?? [{ enemyIds: upcomingEncounter.enemyIds }];
@@ -409,7 +414,11 @@ function renderAdventureQuestion(autoSpeak = true) {
   const { top, slot } = rpgTopbar();
 
   const field = element('div', `rpg-field rpg-field--${vm.input}`);
-  field.append(element('div', `rpg-field__sky ${backdropClass(stage)}`), element('div', `rpg-field__ground ${groundClass(stage)}`));
+  // The training scene: its horizon is lined up under the hero once laid out (fitScenes).
+  const scene = trainingScene ?? pickTrainingScene(campaign.cityId);
+  field.dataset.sceneFit = 'horizon'; field.style.setProperty('--field-sky', sceneSky(scene));
+  field.insertAdjacentHTML('beforeend', sceneMarkup(scene));
+  field.append(element('div', `rpg-field__ground rpg-field__ground--scene ${sceneGroundClass(scene)}`));
 
   const hud = element('div', 'rpg-field__hud');
   hud.append(element('span', 'rpg-field__stage', `STAGE ${stage}`), element('span', 'rpg-field__mode', titles[round.mode][2]), element('span', 'rpg-field__count', `${round.currentIndex + 1} / ${round.items.length}`));
@@ -446,7 +455,7 @@ function renderAdventureQuestion(autoSpeak = true) {
   bottom.append(answer);
 
   field.append(hud, arena, bottom);
-  root.append(top, field); app.append(root);
+  root.append(top, field); app.append(root); fitScenes(field);
   apMeter?.mount(slot);
   if (strike) trainingStrike({ field, heroNode, dummy, value: round.correctCount });
   else apMeter?.set(round.correctCount);
@@ -551,16 +560,17 @@ function finishAdventureStage() {
   // SUCCESS → the hero (status on the ground under them) → the AP earned → BATTLE!
   // No menu / music strip here; the battle itself introduces the enemies.
   const card = element('section', 'rpg-card px-panel stage-card');
-  const scene = element('div', `rpg-stage-scene rpg-stage-scene--clear ${backdropClass(stage)}`);
+  if (trainingScene?.cityId !== campaign.cityId) trainingScene = pickTrainingScene(campaign.cityId); // a dev jump skips the quiz
+  const scene = sceneCard(trainingScene, 'rpg-stage-scene--clear');
   const heroArt = element('div', 'stage-clear__hero'); heroArt.innerHTML = battleArt(campaign.heroId, 'victory'); heroArt.firstElementChild?.setAttribute('aria-hidden', 'true');
-  const ground = element('div', `stage-clear__ground ${groundClass(stage)}`); ground.append(heroNameplate('stage-clear__status'));
+  const ground = element('div', `stage-clear__ground ${trainingScene ? `stage-clear__ground--scene ${sceneGroundClass(trainingScene)}` : groundClass(stage)}`); ground.append(heroNameplate('stage-clear__status'));
   scene.append(heroArt, ground);
   const apSlot = element('div', 'ap-slot'); // the shared meter replaces this, under the scene
   const [noteEn, noteJa] = stageResult.startingAp > 0 ? ['Every action costs AP.', 'こうどうに AP をつかうよ！'] : ['0 AP… you will rest to recover AP.', 'AP 0 … やすんで かいふく！'];
   const apNote = element('p', 'rpg-note stage-clear__note'); apNote.append(element('span', '', noteEn), element('span', '', noteJa));
   const battle = element('button', 'battle-start px-button', 'BATTLE!'); battle.onclick = () => adventureStationMap(stage);
   card.append(element('h1', 'rpg-title', `STAGE ${stage} CLEAR!`), scene, apSlot, apNote, battle);
-  app.append(card); apMeter?.mount(apSlot); apMeter?.set(stageResult.startingAp, { quiet: true });
+  app.append(card); fitScenes(card); apMeter?.mount(apSlot); apMeter?.set(stageResult.startingAp, { quiet: true });
   audio.sfx('fanfare');
   queueMicrotask(() => battle.focus());
 }
@@ -578,6 +588,9 @@ function adventureStationMap(stage) {
 function startAdventureBattle() {
   const stage = campaign.stageResults.length;
   const state = createBattle(battleSetup(campaign, stageResult));
+  // Chosen (and drawn) while the quiz or the defeat card was up; a retry gets a different scene when the stage has more than one.
+  battleScene = SCENES[debugScene()] ?? (upcomingScene?.stage === stage && upcomingScene.cityId === campaign.cityId ? upcomingScene : pickBattleScene(campaign.cityId, stage, { avoid: battleScene?.id }));
+  upcomingScene = null;
   showBattle(state, { kind: 'adventure', stage, cityId: campaign.cityId });
 }
 
@@ -593,8 +606,9 @@ function showBattle(initialState, options) {
     return defenceHintRound === state.round ? { skill: 'defense', text: 'まもろう！' } : null;
   } : null;
   apMeter?.set(initialState.ap, { quiet: true, animate: options.kind === 'adventure' });
+  if (options.kind === 'debug') battleScene = SCENES[debugScene()] ?? pickBattleScene(encounter?.city ?? 'matsubara', encounter?.stage ?? encounter?.tier ?? 1);
   battleView = createBattleView(host, {
-    state: initialState, hint: onboardingHint, apMeter, sound: audio, topRight: soundButtonMarkup(),
+    state: initialState, hint: onboardingHint, apMeter, sound: audio, topRight: soundButtonMarkup(), scene: battleScene,
     targetHint: options.kind === 'adventure' && !targetingTaught ? 'intro' : 'quiet',
     onTargetChange: () => { if (options.kind === 'adventure') targetingTaught = true; },
     onExit: options.kind === 'adventure' ? confirmQuit : debugLauncher,
@@ -618,8 +632,16 @@ function battleEnded(state, options) {
   }
 }
 function heroPose(pose, stage) {
-  const scene = element('div', `rpg-stage-scene rpg-hero-pose ${backdropClass(stage)}`); scene.innerHTML = battleArt(campaign.heroId, pose);
-  scene.firstElementChild?.setAttribute('aria-hidden', 'true'); return scene;
+  const scene = battleScene ? sceneCard(battleScene, 'rpg-hero-pose') : element('div', `rpg-stage-scene rpg-hero-pose ${backdropClass(stage)}`);
+  const art = element('div', 'rpg-hero-pose__art'); art.innerHTML = battleArt(campaign.heroId, pose); art.firstElementChild?.setAttribute('aria-hidden', 'true');
+  scene.append(art); queueMicrotask(() => fitScenes(scene)); return scene;
+}
+/** A Stage Clear / result card scene: the scene layer (image, actors, sign) scaled to the card's width. */
+function sceneCard(scene, className) {
+  if (!scene) return element('div', `rpg-stage-scene ${className} ${backdropClass(campaign.stage)}`);
+  const card = element('div', `rpg-stage-scene rpg-stage-scene--scene ${className}`);
+  card.dataset.sceneFit = 'width'; card.style.backgroundColor = sceneSky(scene); card.innerHTML = sceneMarkup(scene);
+  return card;
 }
 
 /* --------------------------------------------------------- victory / XP */
@@ -732,6 +754,7 @@ function playXpSequence(rewards, { fill, levelLabel, levelUps, rest, card }) {
 }
 
 function adventureDefeat(state) {
+  upcomingScene = pickBattleScene(campaign.cityId, campaign.stageResults.length, { avoid: battleScene?.id }); prewarmScene(upcomingScene);
   clearScreen(); rpgScreen(); screen = 'battle-result'; audio.play('defeat');
   const card = element('section', 'rpg-card px-panel result-card defeat-card'); const { top, slot } = rpgTopbar(); card.append(top);
   const title = element('h1', 'rpg-title', 'DEFEATED... '); title.append(element('span', 'rpg-ja', 'もういちど！'));
@@ -1173,7 +1196,8 @@ const debugMode = new URLSearchParams(location.search).get('debug');
 function debugQuiz(params) {
   const heroId = HEROES[params.get('hero')] ? params.get('hero') : 'fighter';
   const stage = Math.max(1, Math.min(4, Number(params.get('stage')) || 1));
-  campaign = { ...createCampaign(heroId), stage };
+  const cityId = CITY_CAMPAIGNS[params.get('city')] ? params.get('city') : 'matsubara';
+  campaign = { ...createCampaign(heroId, { cityId }), stage };
   startRound(stage, createRound(VOCABULARY), 'adventure');
 }
 
@@ -1190,6 +1214,20 @@ function debugMap(params) {
   saveRegion({ heroId: saved.length ? heroId : null, level: saved.length ? LEVELS.length : 1, xp: saved.length ? 300 : 0, savedCities: saved, checkpoint: null });
   const justSaved = params.get('justSaved');
   osakaMapScreen({ justSaved: saved.includes(justSaved) ? justSaved : null });
+}
+
+/** `&scene=<id>` on a debug URL forces that scene (quiz or battle), for reviewing the art. */
+function debugScene() { return debugMode ? new URLSearchParams(location.search).get('scene') : null; }
+/** ?debug=scenes: every training and battle scene with its actors, for art review. */
+function sceneGallery() {
+  clearScreen(); screen = 'debug-art'; app.className = 'app rpg-app'; const page = element('section', 'art-gallery scene-gallery'); page.append(element('h1', '', 'SCENES'));
+  for (const scene of Object.values(SCENES)) {
+    const box = element('figure', 'scene-gallery__item'); box.style.backgroundColor = sceneSky(scene);
+    box.insertAdjacentHTML('beforeend', sceneMarkup(scene));
+    box.append(element('figcaption', '', `${scene.id} · ${scene.time} · damage ${scene.damage}${scene.sign ? ` · ${scene.sign}` : ''}`));
+    page.append(box);
+  }
+  app.append(page);
 }
 
 /* --------------------------------------------- dev jump (Ctrl+Alt+Shift+D) */
@@ -1287,4 +1325,4 @@ document.addEventListener('keydown', (event) => {
 }, true);
 
 const debugParams = new URLSearchParams(location.search);
-if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'quiz') debugQuiz(debugParams); else if (debugMode === 'map') debugMap(debugParams); else if (debugMode === 'study') levelSelect(); else mainMenu();
+if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'scenes') sceneGallery(); else if (debugMode === 'quiz') debugQuiz(debugParams); else if (debugMode === 'map') debugMap(debugParams); else if (debugMode === 'study') levelSelect(); else mainMenu();

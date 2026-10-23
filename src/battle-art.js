@@ -3,6 +3,8 @@
 // drawn, so the art can be replaced without touching battle logic.
 import { DURATION_MS, ENEMY_IDS, FRAMES, HERO_IDS, LOOPING, ROWS, hasSpriteSheet, spriteSheet } from './pixel-sprites.js';
 import { backdropImage, cityImage, effectSheet, groundImage, iconImage, osakaMapImage, titleImage } from './pixel-effects.js';
+import { SCENE_H, SCENE_HZ, SCENE_W, actorSheet, sceneGroundImage, sceneImage } from './pixel-scenes.js';
+import { sceneActors } from './scenes.js';
 import { sheetClass } from './pixel-core.js';
 
 export { createEffectsPlayer } from './fx-player.js';
@@ -89,6 +91,65 @@ export function groundClass(stage) {
   const s = groundImage(stage);
   return s ? sheetClass('pxg', `ground${stage}`, s) : '';
 }
+
+/* ------------------------------------------------------------ scenes */
+
+/** Whole-pixel scale at which a scene covers `width` CSS px (never below 2), so it is never tiled. */
+export function sceneScale(width) { return Math.max(2, Math.ceil((width || 0) / SCENE_W)); }
+/** The scene's top sky colour, for any field area above the image. */
+export function sceneSky(scene) { return sceneImage(scene).sky; }
+/** Class that paints a scene image as an element's background. */
+export function sceneClass(scene) { return sheetClass('pxs', scene.id, sceneImage(scene).image); }
+/** Class that paints the floor tile continuing a scene's ground below it. */
+export function sceneGroundClass(scene) {
+  const { ground } = sceneImage(scene);
+  return sheetClass('pxsg', `${ground}-${scene.time}`, sceneGroundImage(ground, scene.time));
+}
+
+const frameSeconds = { smoke: 1.6, blink: 1, flame: 0.45, cyclist: 0.4 };
+/**
+ * The scene layer: the image plus its small actors and the station sign, all in
+ * scene pixels scaled by the container's --bgpx. Each animation takes a negative
+ * delay from the clock, so the battle view redrawing every event never restarts them.
+ */
+export function sceneMarkup(scene, { now = Date.now() } = {}) {
+  const built = sceneImage(scene); const t = now / 1000;
+  const actors = sceneActors(scene, built.anchors).map((a) => {
+    const s = actorSheet(a.kind, a.variant, scene.time);
+    const fdur = frameSeconds[a.kind] ?? (a.still ? 1.2 : 0.5);
+    const style = [`--x:${a.x}`, `--y:${a.y}`, `--n:${s.frames}`, `--fdur:${fdur}s`, `--fdelay:${-(t % fdur).toFixed(2)}s`];
+    if (!a.still) style.push(`--dx:${a.dx}`, `--dur:${a.dur}s`, `--delay:${-((t + a.x / 7) % a.dur).toFixed(2)}s`);
+    return `<i class="scene-actor scene-actor--${a.kind} ${sheetClass('pxa', `${a.kind}-${a.variant}-${scene.time}`, s)}${a.still ? ' scene-actor--still' : ''}${a.flip ? ' scene-actor--flip' : ''}" style="${style.join(';')}"></i>`;
+  }).join('');
+  const { sign, arcade } = built.anchors;
+  const labels = (scene.sign && sign ? `<span class="scene-sign" style="--x:${sign.x};--y:${sign.y}">${scene.sign}</span>` : '')
+    + (arcade ? `<span class="scene-sign scene-sign--arcade" style="--x:${arcade.x};--y:${arcade.y}">しょうてんがい</span>` : '');
+  return `<div class="px-scene ${sceneClass(scene)}" data-scene="${scene.id}" aria-hidden="true">${actors}${labels}</div>`;
+}
+
+/** Draw a scene and its actors' sheets in idle time, so the screen that shows it opens without a stall. */
+export function prewarmScene(scene) { if (scene) whenIdle(() => sceneMarkup(scene)); }
+
+/**
+ * Size scenes inside `root` to their containers ([data-scene-fit]): --bgpx from
+ * the width; a "horizon" field (the quiz) also moves the scene so the hero's
+ * feet stand on its road, and its floor tile continues underneath.
+ */
+export function fitScenes(root = typeof document === 'undefined' ? null : document) {
+  if (!root?.querySelectorAll) return;
+  const nodes = [...(root.matches?.('[data-scene-fit]') ? [root] : []), ...root.querySelectorAll('[data-scene-fit]')];
+  for (const node of nodes) {
+    const bgpx = sceneScale(node.clientWidth);
+    node.style.setProperty('--bgpx', bgpx);
+    if (node.dataset.sceneFit !== 'horizon') continue;
+    const hero = node.querySelector('.rpg-field__hero');
+    const box = node.getBoundingClientRect();
+    const feet = hero ? hero.getBoundingClientRect().bottom - box.top : box.height * 0.55;
+    node.style.setProperty('--scene-top', `${Math.round(feet - (SCENE_HZ + 14) * bgpx)}px`);
+  }
+}
+if (typeof window !== 'undefined') window.addEventListener('resize', () => fitScenes());
+export const SCENE_SIZE = Object.freeze({ w: SCENE_W, h: SCENE_H, horizon: SCENE_HZ });
 
 /** Class name that paints the Osaka campaign map. */
 export function osakaMapClass() {

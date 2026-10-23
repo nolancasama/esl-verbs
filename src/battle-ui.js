@@ -4,7 +4,7 @@ import {
   protectedUid, useItem, useSkill,
 } from './battle-engine.js';
 import {
-  backdropClass, createEffectsPlayer, enemyRestState, eventSpriteStates, getBarrierArt, getBattleArt, getIcon, heroRestState,
+  backdropClass, sceneMarkup, sceneScale, sceneSky, createEffectsPlayer, enemyRestState, eventSpriteStates, getBarrierArt, getBattleArt, getIcon, heroRestState,
 } from './battle-art.js';
 import { AP_SLOT } from './ap-meter.js';
 
@@ -195,7 +195,7 @@ function payoffHint(state) {
  */
 export function createBattleView(container, {
   state, apMeter = null, onAction = () => {}, onSelect = () => {}, onExit = () => {}, hint = null, sound = null, topRight = '',
-  targetHint = null, onTargetChange = () => {},
+  targetHint = null, onTargetChange = () => {}, scene = null,
 } = {}) {
   if (!container) throw new Error('createBattleView needs a container');
   if (!state) throw new Error('createBattleView needs battle state');
@@ -389,7 +389,8 @@ export function createBattleView(container, {
         ${AP_SLOT}
         <div class="battle-topbar__right">${waveCount > 1 ? `<div class="battle-round battle-wave px-panel">WAVE ${waveShown} / ${waveCount}</div>` : ''}<div class="battle-round px-panel">TURN ${currentState.round}</div>${topRight}</div>
       </div>
-      <div class="battle-field ${backdropClass(stage)}${allyShown ? ' battle-field--ally' : ''}${coreShown ? ' battle-field--core' : ''}${targetMode ? ` battle-field--target-${targetMode}` : ''}">
+      <div class="battle-field ${scene ? 'battle-field--scene' : backdropClass(stage)}${allyShown ? ' battle-field--ally' : ''}${coreShown ? ' battle-field--core' : ''}${targetMode ? ` battle-field--target-${targetMode}` : ''}"${scene ? ` style="background-color:${sceneSky(scene)}"` : ''}>
+        ${scene ? sceneMarkup(scene) : ''}
         <div class="battle-light" aria-hidden="true"></div>
         ${reserveMarkup()}
         ${coreMarkup(coreShown)}
@@ -417,6 +418,9 @@ export function createBattleView(container, {
     container.querySelector('[data-sound-button]')?.setAttribute('aria-expanded', String(Boolean(document.querySelector('[data-sound-popover]'))));
     if (fitPx) container.querySelector('.battle-view')?.style.setProperty('--px', fitPx);
     else fit();
+    // The scene's own whole-pixel scale covers the field's width (src/scenes.js).
+    const sceneField = scene && container.querySelector('.battle-field');
+    if (sceneField) sceneField.style.setProperty('--bgpx', sceneScale(sceneField.clientWidth));
     if (apMeter) {
       apMeter.mount(container.querySelector('[data-ap-slot]'));
       apMeter.setRecovering(recovering);

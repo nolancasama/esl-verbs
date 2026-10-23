@@ -1152,3 +1152,73 @@ Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
 - **Verb training.** A correct Ninja answer throws a shuriken at the dummy (a
   dash would cross the word in the middle of the scene); the impact → +1
   mote → AP sequence is unchanged.
+
+## 2026-10-24 — Neighbourhood scenes: local Japan under attack
+
+- **Backgrounds are real-feeling Osaka-area places, not RPG backdrops.** The
+  four generic stage backdrops (meadow, forest, dungeon, castle) are replaced
+  in the Adventure quiz, Stage Clear, battles and result cards by scenes drawn
+  from data: `src/scenes.js` describes them, `src/pixel-scenes.js` draws them
+  (procedural pixel art, no image files, no build step). The old backdrops
+  remain only as the fallback for screens with no campaign scene.
+- **Archetypes + city skylines.** A scene is an archetype (station front,
+  shopping arcade, residential lane, rice paddies, river embankment, shrine,
+  park, school / rugby ground, small factories, downtown, Dotonbori canal,
+  Osaka Castle, and the training-only station plaza and vacant lot), plus the
+  city's far layer (Matsubara: low hills with Abeno Harukas far off; Sakai:
+  burial mound and city-hall tower; Yao: the Ikoma range with its masts;
+  Higashiosaka: Ikoma close by; Osaka City: dense skyline, Harukas,
+  Tsutenkaku, Umeda Sky, the HEP Five wheel), a time of day and a damage
+  level. Utility poles and sagging wires, block walls, vending machines,
+  bicycles, school-route green strips, taxis and trains in each line's colours
+  (Kintetsu, Nankai, JR, Metro) carry the Osaka street feel.
+- **Pools follow the station map.** Each city stage has 1–4 battle scenes
+  matched to its station from `src/battle-locations.js` (Kawachi-Matsubara →
+  station front / arcade / lanes; Nunose → shrine; Kawachi-Amami → Yamato
+  River; old Sakai port → lighthouse; Hamadera-koen → pines and the old
+  station; Ishikiri → shrine approach; Higashi-Hanazono → stadium; Aramoto →
+  expressway; Namba → Dotonbori; Osaka Castle → the castle). The first scene
+  in a pool is the stage's signature, picked half the time so the map and the
+  fight agree ("I saw the map → now I'm fighting there"); station scenes put
+  the map's station name (e.g. 河内松原) on the station sign as real text. A
+  retry avoids the scene just shown. Bosses use one or two signature scenes.
+  Rejected: fully random scenes (breaks map coherence) and one fixed scene per
+  stage (no replay variety).
+- **Training scenes are per city and calmer.** One scene per quiz round (not
+  per question), chosen from the city's pool of four; the middle of the scene
+  behind the word plate is kept quiet (x 144–250 of 384) and landmarks sit in
+  the gaps between hero, word and dummy. Stage Clear shows the same training
+  scene; the victory / defeat cards show the battle's scene.
+- **Danger escalates by stage and city.** Damage 0 peaceful · 1 tension (far
+  smoke, a barricade, people leaving) · 2 attack (cracks, broken windows, one
+  small window fire, a hanging sign, debris) · 3 severe (one ruined building,
+  more fire, a leaning pole). Matsubara 1/1/1/2, Sakai 1/2/2/2, Yao 2/2/2/3,
+  Higashiosaka 2/2/3/3, Osaka City 2/3/3/3, with times of day running from
+  day to dusk and night. Training is 0 in Matsubara and Sakai and 1 (distant
+  smoke, a police officer) later. Smoke never rises from a landmark.
+- **Tone: kid-friendly danger, not graphic realism.** Buildings get hurt;
+  people never do. Background people are tiny accents (at most four per
+  scene) who are getting away safely or helping: runners and a parent with a
+  child heading left (away from the Horde), a person waving others on, a
+  police officer, a shopkeeper pulling a shutter down. Training scenes only
+  have a walker and a cyclist (plus the officer later). No blood, no bodies,
+  no injured people. Rejected: crowds and panic scenes.
+- **Stores as local flavour.** FamilyMart and Lawson appear only on a few
+  station fronts / plazas (9 of 72 scenes), as a one-storey store with its
+  colour-language fascia and pixel lettering, never the focus. Other shops are
+  generic (ramen with noren, bakery, drugstore, barber pole, takoyaki).
+- **Scale and layout.** Scenes are 384×128 scene pixels drawn at their own
+  whole-number scale `--bgpx` = ceil(field width / 384) (min 2), so a scene is
+  never tiled, independent of the sprite scale `--px`. Everything that tells
+  the story sits in x 30–354 because 1024×600 crops ~26 columns each side. The
+  quiz lines the scene's horizon up just above the hero's feet and continues
+  its floor tile downward. Rejected: tiling at sprite scale (a FamilyMart
+  twice in one street) and non-integer stretching (uneven pixels).
+- **Light animation only.** Actors are tiny sprite sheets animated with CSS
+  `steps()` and `translate`; each takes a negative delay from the clock so
+  the battle view's frequent re-renders never restart them. Fires flicker and
+  smoke puffs drift in place; a level-crossing light blinks by the paddies.
+  Reduced motion stops them. The upcoming battle scene is drawn in idle time
+  during the quiz (and the defeat card) so the battle opens without a stall.
+  Measured at 1024×600 with 4× CPU throttling: the busiest scene matched HEAD
+  (~181 frames / 3 s idle, ~172 during a turn, p95 16.8 ms).

@@ -253,11 +253,13 @@ async function adventureFlow(page, baseUrl) {
   await page.locator('.rpg-quiz').waitFor();
   await page.waitForTimeout(3000); // past the reduced-motion intro's own timer
   if (await page.locator('.rpg-quiz').count() !== 1 || !(await page.getByText(/^1 \/ 10$/).count())) throw new Error('Stage 1 should start exactly once after skipping the intro');
+  await assertScene(page, '.rpg-field', 'matsubara-training-', 'Stage 1 quiz');
   await answerTenTypedQuestions(page);
 
   await page.getByText(/STAGE\s*1\s*CLEAR/i).waitFor();
   // Stage Clear shows the earned AP on the meter under the hero, with no topbar.
   await page.locator('.stage-card > .rpg-stage-scene--clear + .ap-meter').waitFor();
+  await assertScene(page, '.rpg-stage-scene--clear', 'matsubara-training-', 'Stage Clear');
   if (await page.locator('.stage-card .rpg-topbar').count()) throw new Error('Stage Clear should not show the menu / music topbar');
   if (await apMeterValue(page) !== 10) throw new Error('The AP meter should show the 10 AP earned in the quiz');
   await page.getByRole('button', { name: /BATTLE!/i }).click();
@@ -267,6 +269,7 @@ async function adventureFlow(page, baseUrl) {
   await page.screenshot({ path: path.join(evidenceDir, 'station-map.png') });
   await page.getByRole('button', { name: /DEFEND!/i }).click();
   await page.locator('.battle-view').waitFor();
+  await assertScene(page, '.battle-field', 'matsubara-s1-', 'Kawachi-Matsubara battle');
   if (await apMeterValue(page) !== 10) throw new Error('The same AP meter should carry into battle');
   await page.locator('.battle-skill__cost').first().getByText(/1 AP/).waitFor();
   await winBattleWithKeyboard(page);
@@ -385,6 +388,18 @@ async function yaoBattleFlow(page, baseUrl) {
   if (!(await page.locator('.battle-hint').innerText()).includes('オークを さきに たおそう！ BREAK THE GUARD!')) throw new Error('A protected caller must show the Orc hint');
   await assertNoPageScroll(page, 'Yao final boss');
   await page.screenshot({ path: path.join(evidenceDir, 'yao-protected-warcaller.png') });
+}
+
+/** The neighbourhood scene is drawn behind the field, covers it without tiling, and keeps its people few. */
+async function assertScene(page, fieldSelector, idPrefix, label) {
+  const info = await page.evaluate((selector) => {
+    const field = document.querySelector(selector); const scene = field?.querySelector(':scope > .px-scene');
+    return field && scene ? { field: field.clientWidth, scene: scene.getBoundingClientRect().width, actors: scene.querySelectorAll('.scene-actor').length, id: scene.dataset.scene } : null;
+  }, fieldSelector);
+  if (!info) throw new Error(`${label} should show a neighbourhood scene`);
+  if (!info.id.startsWith(idPrefix)) throw new Error(`${label} should show a ${idPrefix} scene, not ${info.id}`);
+  if (info.scene < info.field) throw new Error(`${label} scene must cover its field without tiling: ${JSON.stringify(info)}`);
+  if (info.actors > 9) throw new Error(`${label} has too many background actors: ${info.actors}`);
 }
 
 async function assertNoPageScroll(page, label) {

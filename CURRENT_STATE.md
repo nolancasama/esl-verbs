@@ -1,6 +1,31 @@
 # Current State
 
-## Status (2026-10-23)
+## Status (2026-10-24)
+
+**Neighbourhood scenes.** The quiz, Stage Clear, battles and result cards now
+show Osaka-area places under attack instead of the four generic backdrops:
+72 data-driven pixel scenes (`src/scenes.js` data, `src/pixel-scenes.js`
+drawing) — station fronts with the station's name on the sign, shopping
+arcades, residential lanes, rice paddies, the Yamato River, shrines, parks,
+schools, factories, downtown with an expressway, Dotonbori, Osaka Castle.
+Battle pools (1–4 per stage) follow each stage's station map, with the
+signature scene picked half the time; training pools are per city and calmer.
+Damage 0–3 and the time of day escalate by stage and city; tiny background
+people get away safely (kid-friendly danger, nobody hurt); FamilyMart /
+Lawson appear on a few station fronts. Scenes have their own whole-pixel
+scale (`--bgpx`) so they never tile. Cache version 2026-10-24-1.
+Verified 2026-10-24: `npm test` 247/247 (new `test/scenes.test.js`, each of
+its pool / escalation / calm-training checks seen failing on a deliberate
+breakage); `npm run balance` unchanged (defeats 2166/1075/0 and 1610/301/0);
+`npm run test:browser` passes with a new scene check (quiz, Stage Clear,
+Kawachi-Matsubara battle: scene present, covers the field, ≤ 9 actors),
+seen failing with the battle scene removed. Screenshots reviewed at 1024×600,
+1366×768 and 1920×1080 (quiz, battle incl. Core + ally finale, Stage Clear,
+victory / defeat) plus the full `?debug=scenes` gallery: no page scroll, no
+console errors. Perf at 1024×600 with 4× CPU throttle matched HEAD. Known and
+unchanged: battles at 412×860 scroll vertically on HEAD too.
+The pending esl-stt speech integration was kept out of this commit; it
+remains uncommitted and unreviewed in the working tree.
 
 The game is now presented as **MATSUBARA HEROES** (SAVE OSAKA! / 大阪を
 まもれ！); storage keys keep their `esl-verbs-*` names, so saves are untouched.
@@ -285,6 +310,12 @@ Verified 2026-09-30:
   `fx-player.js` has ally and reinforcement effects.
 - `src/battle-locations.js` / `src/station-map.js` supply the station defence
   card before each Adventure battle; the app mounts the controller-owned card.
+- Scenes: `src/scenes.js` (pools per city stage / city, damage + time tables,
+  `pickBattleScene` / `pickTrainingScene`, `sceneActors`), `src/pixel-scenes.js`
+  (384×128 grids: sky, FAR landmarks, ARCHETYPES, LOTS, damage, ground tiles,
+  actor sheets), `battle-art.js` `sceneMarkup` / `fitScenes` / `prewarmScene`;
+  `rpg.css` "scenes" section. app.js keeps `trainingScene` (per quiz round),
+  `battleScene` and the prewarmed `upcomingScene`.
 - Art: Osaka Defender on the hero rig (`ALLY_IDS`), training dummy
   (`PROP_ART`), Shadow Commander (recoloured Goblin Captain), ground tiles;
   H0's six Higashiosaka enemies and Action Core, plus O0's Shadow Guard and
@@ -294,10 +325,16 @@ Verified 2026-09-30:
   browser's regional save (earlier cities saved, later progress cleared).
 - Debug: `?debug=quiz&stage=N&hero=X`, `?debug=map&preset=fresh|matsubara|sakai|yao|higashiosaka|osakaCity[&justSaved=id]`
   (writes the regional save), `?debug=study` (Practice / Study mode), `?debug=battle` (city encounters, start wave),
-  `?debug=art` (Sakai intro / ending / city results previews).
+  `?debug=art` (Sakai intro / ending / city results previews),
+  `?debug=scenes` (every scene with its actors), `&scene=<id>` on a quiz /
+  battle debug URL forces a scene, `?debug=quiz&city=<id>` picks the city.
 
 ## Next Steps
 
+00. Classroom check of the neighbourhood scenes on a real Chromebook: do the
+   word, answer box, enemy plates and selection still read first; are the
+   background people noticed without distracting; does the destruction in
+   Yao / Higashiosaka / Osaka City feel exciting rather than scary.
 0. Classroom check of the new presentation: does the boot cinematic feel
    short enough on repeat loads, does the title read on a projector, and do
    the Ninja's shuriken / dash moves stay readable at Chromebook frame rates.
@@ -342,6 +379,6 @@ Verified 2026-09-30:
 ## Tools
 
 - `npm run art:png -- <outDir> [scale] [ids...]` (ids include `osakaDefender`,
-  `trainingDummy`, `hordeCommander`, `map`).
+  `trainingDummy`, `hordeCommander`, `map`, `scenes`, `actors`).
 - `npm run balance -- [seeds] [thresholds|detail]` prints win-rate tables.
 - Run locally: `npm run serve` → http://localhost:8010.

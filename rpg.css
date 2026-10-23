@@ -969,3 +969,49 @@
   .title-logo__face, .title-start__arrow { animation: none !important; }
   .title-screen--reveal .title-logo { animation-name: title-fade-in; }
 }
+
+/* ---------------------------------------------------------------- scenes */
+/* Neighbourhood scenes (src/scenes.js, drawn by src/pixel-scenes.js): a 384x128
+   scene-pixel image at the whole-number scale --bgpx chosen to cover its field
+   (so it never tiles), centred on the field's floor. Actors and signs sit in
+   scene pixels; their animations are cheap transform / background-position steps. */
+.px-scene {
+  position: absolute; left: 50%; bottom: 0; z-index: 0; width: calc(384px * var(--bgpx, 3)); height: calc(128px * var(--bgpx, 3)); translate: -50% 0;
+  background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; overflow: hidden;
+}
+.battle-field--scene { background-image: none; }
+.scene-actor {
+  position: absolute; left: calc(var(--x) * var(--bgpx) * 1px); top: calc((var(--y) - var(--fh)) * var(--bgpx) * 1px);
+  width: calc(var(--fw) * var(--bgpx) * 1px); height: calc(var(--fh) * var(--bgpx) * 1px);
+  background-size: calc(var(--sw) * var(--bgpx) * 1px) 100%; background-repeat: no-repeat; image-rendering: pixelated;
+  animation: scene-frames var(--fdur) steps(var(--n)) var(--fdelay) infinite, scene-move var(--dur) linear var(--delay) infinite;
+}
+.scene-actor--still { animation: scene-frames var(--fdur) steps(var(--n)) var(--fdelay) infinite; }
+.scene-actor--flip { scale: -1 1; }
+@keyframes scene-frames { to { background-position-x: calc(var(--sw) * var(--bgpx) * -1px); } }
+/* People cross part of the lane, fade, and stay away a while before the next pass. */
+@keyframes scene-move { 0% { translate: 0 0; opacity: 0; } 5% { opacity: 1; } 62% { opacity: 1; } 68%, 100% { translate: calc(var(--dx) * var(--bgpx) * 1px) 0; opacity: 0; } }
+/* The station's name on its sign, matching the station map the player just saw. */
+.scene-sign {
+  position: absolute; left: calc(var(--x) * var(--bgpx) * 1px); top: calc(var(--y) * var(--bgpx) * 1px); translate: -50% -50%;
+  font-weight: 800; font-size: calc(var(--bgpx) * 5.4px); line-height: 1; letter-spacing: .06em; color: #1d2440; white-space: nowrap;
+}
+.scene-sign--arcade { font-size: calc(var(--bgpx) * 3.4px); color: #fff4d8; letter-spacing: .1em; }
+@media (prefers-reduced-motion: reduce) { .scene-actor { animation: none; } }
+
+/* Quiz field: the scene's horizon sits just above the hero's feet (--scene-top,
+   set by fitScenes) and its floor tile carries on down behind the answer box. */
+.rpg-field > .px-scene { z-index: -1; bottom: auto; top: var(--scene-top, 0px); }
+.rpg-field__ground--scene { top: calc(var(--scene-top, 0px) + 128px * var(--bgpx, 3) - 1px); background-size: calc(384px * var(--bgpx, 3)) calc(48px * var(--bgpx, 3)); }
+
+/* Stage Clear and the result cards: the scene layer behind the hero (on the
+   Stage Clear floor band, the scene sits on top of the band). */
+.rpg-stage-scene--scene { --bgpx: 2; position: relative; }
+.rpg-stage-scene--scene > :not(.px-scene) { position: relative; z-index: 1; }
+.rpg-stage-scene--clear > .px-scene { bottom: var(--band); }
+.stage-clear__ground--scene { background-size: calc(384px * var(--bgpx, 2)) calc(48px * var(--bgpx, 2)); }
+
+.scene-gallery { --bgpx: 2; }
+.scene-gallery__item { position: relative; margin: 0; width: 768px; max-width: 100%; height: 256px; overflow: hidden; border: var(--b) solid var(--edge); }
+.scene-gallery__item .px-scene { left: 0; translate: 0 0; }
+.scene-gallery__item figcaption { position: absolute; left: 6px; top: 6px; padding: 2px 6px; background: rgb(0 0 0 / .6); font-size: 12px; }
