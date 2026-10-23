@@ -52,6 +52,8 @@
 /* ------------------------------------------------------ attacker movement */
 .battle-art-wrap.fx-dash { animation: fx-dash var(--dash-dur, 420ms) steps(8) both; z-index: 5; }
 @keyframes fx-dash { 0% { translate: 0 0; } 30%, 72% { translate: var(--dash-x) 0; } 100% { translate: 0 0; } }
+/* The Ninja's blink (a Web Animation in fx-player.js) passes in front of the enemies. */
+.battle-hero.fx-blink { z-index: 4; }
 
 /* ------------------------------------------------------------ field camera */
 .battle-field.fx-shake-s { animation: fx-shake-s .24s steps(4); }

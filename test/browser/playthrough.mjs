@@ -148,9 +148,103 @@ async function selectOption(control, value, labelPattern) {
   throw new Error(`Could not select ${value}`);
 }
 
+// The boot cinematic plays once per page load before the title screen; SKIP ends it at once.
+async function skipBoot(page) {
+  await page.locator('.story--boot').waitFor();
+  await page.locator('.story--boot').getByRole('button', { name: /^Skip/i }).click();
+  await page.locator('.story--boot').waitFor({ state: 'detached' });
+  await page.locator('.title-screen:not(.title-screen--booting)').waitFor();
+}
+
+async function assertTitleBasics(page, label) {
+  const logo = (await page.locator('.title-logo').getAttribute('aria-label')) ?? '';
+  const visible = (await page.locator('.title-logo .title-logo__face').allInnerTexts()).join(' ');
+  if (logo !== 'MATSUBARA HEROES' || visible !== 'MATSUBARA HEROES') throw new Error(`${label}: the title should read MATSUBARA HEROES, got ${JSON.stringify([logo, visible])}`);
+  const tagline = await page.locator('.title-tagline').innerText();
+  if (!tagline.includes('SAVE OSAKA!') || !tagline.includes('大阪を まもれ！')) throw new Error(`${label}: missing the SAVE OSAKA! subtitle`);
+  if (await page.getByRole('button', { name: /PRACTICE/i }).count()) throw new Error(`${label}: Practice must not be on the title screen`);
+  if (await page.title() !== 'Matsubara Heroes') throw new Error(`${label}: document title is ${await page.title()}`);
+  const sound = await page.locator('.title-screen [data-sound-button]').boundingBox();
+  const viewport = page.viewportSize();
+  if (!sound || sound.y > 40 || sound.x + sound.width < viewport.width - 40 || sound.height < 40) throw new Error(`${label}: SOUND should sit in the top-right corner, got ${JSON.stringify(sound)}`);
+  const start = await page.locator('[data-title-start]').boundingBox();
+  if (!start || start.y + start.height > viewport.height) throw new Error(`${label}: START / CONTINUE is below the fold`);
+  if (await page.locator('.title-hero .battle-sprite').count() !== 3) throw new Error(`${label}: the three heroes should stand on the title screen`);
+  if (await page.locator('[data-title-start] .battle-sprite').count()) throw new Error(`${label}: hero art must not sit inside the start button`);
+  await assertNoPageScroll(page, label);
+}
+
+async function titleAndBootFlow(page, baseUrl) {
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.goto(baseUrl);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  const storageBefore = await page.evaluate(() => Object.keys(localStorage).sort());
+  // A fresh load plays the cinematic over a hidden, inert title screen, then reaches the title on its own.
+  await page.locator('.story--boot').waitFor();
+  await page.locator('.story--boot').getByRole('button', { name: /^Skip/i }).waitFor();
+  if (!(await page.locator('.story--boot .cinematic__skip').innerText()).includes('スキップ')) throw new Error('The boot SKIP should also say スキップ');
+  if (!(await page.locator('.title-screen').evaluate((node) => node.inert))) throw new Error('The title must be inert under the boot cinematic');
+  const started = Date.now();
+  await page.locator('.story--boot').waitFor({ state: 'detached', timeout: 16_000 });
+  const elapsed = Date.now() - started;
+  if (elapsed < 7000 || elapsed > 15_000) throw new Error(`The boot cinematic should auto-play in about 8–15 s, took ${elapsed} ms`);
+  await page.locator('.title-screen:not(.title-screen--booting)').waitFor();
+  await page.getByRole('button', { name: /START ADVENTURE/i }).waitFor();
+  await assertTitleBasics(page, 'New player title');
+  if (await page.locator('.title-new, .title-progress').count()) throw new Error('A new player should see no NEW ADVENTURE or progress line');
+  await page.screenshot({ path: path.join(evidenceDir, 'title-new.png') });
+
+  // Escape, Enter and Space each skip straight to the title; the key does not also press START.
+  for (const key of ['Escape', 'Enter', ' ']) {
+    await page.reload();
+    await page.locator('.story--boot').waitFor();
+    await page.keyboard.press(key);
+    await page.locator('.story--boot').waitFor({ state: 'detached' });
+    await page.waitForTimeout(500);
+    if (await page.locator('.hero-select').count() || !(await page.locator('.title-screen:not(.title-screen--booting)').count())) throw new Error(`${JSON.stringify(key)} should skip to the title and stay there`);
+  }
+  await page.reload();
+  await skipBoot(page);
+  // Returning to the main menu in the same page load goes straight to the title.
+  await page.getByRole('button', { name: /START ADVENTURE/i }).click();
+  await page.locator('.hero-select').waitFor();
+  await page.getByRole('button', { name: /Main Menu/i }).click();
+  await page.locator('.title-screen').waitFor();
+  await page.waitForTimeout(300);
+  if (await page.locator('.story--boot').count()) throw new Error('The boot cinematic replayed on returning to the main menu');
+  const storageAfter = await page.evaluate(() => Object.keys(localStorage).sort());
+  const added = storageAfter.filter((key) => !storageBefore.includes(key));
+  if (added.some((key) => /intro|boot|seen|cinematic/i.test(key))) throw new Error(`The boot cinematic stored a seen flag: ${added}`);
+
+  // A returning player: CONTINUE, the real saved progress, a small NEW ADVENTURE; the save is untouched.
+  const save = JSON.stringify({ heroId: 'ninja', level: 5, xp: 300, savedCities: ['matsubara', 'sakai'], checkpoint: null });
+  await page.evaluate((value) => localStorage.setItem('esl-verbs-region-v1', value), save);
+  await page.reload();
+  await skipBoot(page);
+  await page.getByRole('button', { name: /CONTINUE ADVENTURE/i }).waitFor();
+  await assertTitleBasics(page, 'Returning player title');
+  const progress = (await page.locator('.title-progress').innerText()).replace(/\s+/g, ' ');
+  for (const part of ['NINJA · LV 5', 'Matsubara ★', 'Sakai ★', 'Yao !']) if (!progress.includes(part)) throw new Error(`Progress line ${JSON.stringify(progress)} lacks ${part}`);
+  if (/Higashiosaka|Osaka City/.test(progress)) throw new Error('Locked cities should not clutter the progress line');
+  if (await page.locator('.title-hero.is-chosen').getAttribute('data-hero') !== 'ninja') throw new Error('The saved hero should stand centre front');
+  const continueBox = await page.locator('[data-title-start]').boundingBox();
+  const newBox = await page.getByRole('button', { name: /NEW ADVENTURE/i }).boundingBox();
+  if (!newBox || newBox.width * newBox.height >= continueBox.width * continueBox.height / 2 || newBox.y < continueBox.y) throw new Error('NEW ADVENTURE should be a small button below CONTINUE');
+  if (await page.evaluate(() => localStorage.getItem('esl-verbs-region-v1')) !== save) throw new Error('Showing the title changed the regional save');
+  await page.screenshot({ path: path.join(evidenceDir, 'title-continue.png') });
+  // NEW ADVENTURE keeps its confirmation; もどる keeps the save.
+  await page.getByRole('button', { name: /NEW ADVENTURE/i }).click();
+  await page.getByRole('dialog', { name: /あたらしく はじめる/ }).waitFor();
+  await page.getByRole('button', { name: 'もどる' }).click();
+  if (await page.evaluate(() => localStorage.getItem('esl-verbs-region-v1')) !== save) throw new Error('Cancelling NEW ADVENTURE changed the save');
+  await page.evaluate(() => localStorage.clear());
+}
+
 async function adventureFlow(page, baseUrl) {
   await page.setViewportSize({ width: 1024, height: 600 });
   await page.goto(baseUrl);
+  await skipBoot(page);
   await page.getByRole('button', { name: /START ADVENTURE/i }).click();
   await page.getByRole('button', { name: /Fighter/i }).click();
   // The intro story plays first; SKIP goes straight to Stage 1, exactly once.
@@ -192,6 +286,7 @@ async function regionalFlow(page, baseUrl) {
     heroId: 'fighter', level: 5, xp: 300, savedCities: ['matsubara'], checkpoint: null,
   })));
   await page.reload();
+  await skipBoot(page);
   const continueAdventure = page.getByRole('button', { name: /CONTINUE ADVENTURE/i });
   await continueAdventure.waitFor();
   await continueAdventure.click();
@@ -500,7 +595,10 @@ async function osakaCityFlow(page, baseUrl) {
   await page.screenshot({ path: path.join(evidenceDir, 'osaka-city-all-saved.png') });
   await page.getByRole('button', { name: /Main Menu/i }).click();
   await page.getByRole('button', { name: /CONTINUE ADVENTURE/i }).waitFor();
-  await page.getByRole('button', { name: /START NEW ADVENTURE/i }).waitFor();
+  await page.getByRole('button', { name: /NEW ADVENTURE/i }).waitFor();
+  if (await page.locator('.story--boot').count()) throw new Error('The boot cinematic replayed on returning to the main menu');
+  const finalProgress = (await page.locator('.title-progress').innerText()).replace(/\s+/g, ' ');
+  if (!finalProgress.includes('Osaka City ★') || finalProgress.includes('!')) throw new Error(`Completed campaign progress line is ${JSON.stringify(finalProgress)}`);
   await assertNoPageScroll(page, 'Completed campaign menu');
   await page.getByRole('button', { name: /CONTINUE ADVENTURE/i }).click();
   await page.locator('.osaka-city[data-city="osakaCity"]').click();
@@ -545,8 +643,8 @@ async function targetDiscovery(page, baseUrl) {
   if (await selected() === beforeSound) throw new Error('Battle keys did not resume after closing sound');
 
   // Exercise the introductory view option and an already defeated slot without
-  // depending on damage rolls or event playback timings.
-  await page.goto(baseUrl);
+  // depending on damage rolls or event playback timings (on a quiet page: no boot cinematic).
+  await page.goto(`${baseUrl}/?debug=study`);
   await page.evaluate(async () => {
     const { createBattle } = await import('/src/battle-engine.js');
     const { createBattleView } = await import('/src/battle-ui.js');
@@ -568,6 +666,7 @@ async function targetDiscovery(page, baseUrl) {
 
 async function soundSettings(page, baseUrl) {
   await page.goto(baseUrl);
+  await skipBoot(page);
   const button = page.locator('[data-sound-button]').first();
   await button.waitFor();
   await button.click();
@@ -585,15 +684,105 @@ async function soundSettings(page, baseUrl) {
   await popover.waitFor({ state: 'detached' });
   if (await button.getAttribute('aria-expanded') !== 'false') throw new Error('Sound button stayed expanded');
   await page.reload();
+  await skipBoot(page);
   await page.locator('[data-sound-button]').first().click();
   const restored = page.locator('[data-sound-popover] input[type="range"]');
   if (await restored.nth(0).inputValue() !== '37' || await restored.nth(1).inputValue() !== '21') throw new Error('Independent sound preferences were not remembered');
   await page.keyboard.press('Escape');
 }
 
+// Ninja attacks: Strike alternates a shuriken and a dash-slash, Double Strike throws then dashes,
+// Shadow Strike vanishes to the target; the hero always ends at home with no animation left.
+async function startNinjaBattle(page, baseUrl, encounterId) {
+  await page.goto(`${baseUrl}/?debug=battle`);
+  await page.getByRole('button', { name: /START BATTLE/i }).waitFor();
+  await page.locator('select').nth(0).selectOption('ninja');
+  await page.locator('select').nth(1).selectOption(encounterId);
+  await page.getByLabel(/^AP/i).first().fill('10');
+  await page.locator('select').nth(2).selectOption('5');
+  await page.getByRole('button', { name: /START BATTLE/i }).click();
+  await page.locator('.battle-view').waitFor();
+  await page.locator('.battle-skill:not(:disabled)').first().waitFor();
+  await page.evaluate(() => {
+    globalThis.fxSeen = [];
+    new MutationObserver((records) => records.forEach((record) => record.addedNodes.forEach((node) => {
+      if (node.classList?.contains('px-fx')) globalThis.fxSeen.push(node.className);
+    }))).observe(document.body, { childList: true, subtree: true });
+  });
+}
+
+async function ninjaMove(page, key) {
+  const wrap = '[data-combatant="hero"] .battle-art-wrap';
+  const home = await page.locator(wrap).boundingBox();
+  await page.evaluate((selector) => {
+    globalThis.fxSeen.length = 0; globalThis.heroTrack = [];
+    const until = performance.now() + 1500;
+    const step = () => { const node = document.querySelector(selector); if (node) globalThis.heroTrack.push(node.getBoundingClientRect().left); if (performance.now() < until) requestAnimationFrame(step); };
+    step();
+  }, wrap);
+  await page.keyboard.press(key);
+  await page.waitForTimeout(1600);
+  const result = await page.evaluate((selector) => {
+    const node = document.querySelector(selector);
+    return {
+      fx: globalThis.fxSeen.join(' '), maxDx: Math.max(...globalThis.heroTrack) - globalThis.heroTrack[0],
+      animations: node.getAnimations().length, translate: getComputedStyle(node).translate, blinking: document.querySelector('.battle-hero.fx-blink') !== null,
+    };
+  }, wrap);
+  const now = await page.locator(wrap).boundingBox();
+  if (result.animations || result.translate !== 'none' || result.blinking || Math.abs(now.x - home.x) > 1) throw new Error(`The Ninja did not end at home after ${key}: ${JSON.stringify({ result, home, now })}`);
+  for (let wait = 0; wait < 80 && !(await page.locator('.battle-skill:not(:disabled)').first().isVisible().catch(() => false)); wait += 1) await page.waitForTimeout(100);
+  return result;
+}
+
+async function ninjaPresentationFlow(browser, baseUrl) {
+  const context = await browser.newContext({ reducedMotion: 'no-preference', viewport: { width: 1024, height: 600 } });
+  const page = await context.newPage();
+  page.setDefaultTimeout(10_000);
+  watchBrowserErrors(page, browserErrors);
+  try {
+    // The golem lives through every move, so each one plays in full.
+    await startNinjaBattle(page, baseUrl, 'golem');
+    const throwMove = await ninjaMove(page, '1');
+    if (!throwMove.fx.includes('shurikenProj') || throwMove.maxDx > 4) throw new Error(`First Strike should throw a shuriken from home: ${JSON.stringify(throwMove)}`);
+    const dashMove = await ninjaMove(page, '1');
+    if (dashMove.fx.includes('shurikenProj') || dashMove.maxDx < 150 || !dashMove.fx.includes('strikeX')) throw new Error(`Second Strike should dash to the target and slash: ${JSON.stringify(dashMove)}`);
+    const double = await ninjaMove(page, '3');
+    if (!double.fx.includes('shurikenProj') || !double.fx.includes('quickB') || double.maxDx < 150) throw new Error(`Double Strike should throw and then dash: ${JSON.stringify(double)}`);
+    const shadow = await ninjaMove(page, '4');
+    if (!shadow.fx.includes('darkSlash') || !shadow.fx.includes('shadowPuff') || shadow.maxDx < 150) throw new Error(`Shadow Strike should vanish to the target: ${JSON.stringify(shadow)}`);
+    // Far-right target among several, and a dash cut short by skipping playback.
+    await startNinjaBattle(page, baseUrl, 'bat-bat-mushroom');
+    await page.keyboard.press('ArrowLeft');
+    await ninjaMove(page, '1');
+    const far = await ninjaMove(page, '1');
+    if (far.maxDx < 400) throw new Error(`The dash should reach the far-right enemy: ${JSON.stringify(far)}`);
+    await startNinjaBattle(page, baseUrl, 'golem');
+    await ninjaMove(page, '1');
+    await page.keyboard.press('1');
+    await page.waitForTimeout(90);
+    await page.keyboard.press('Enter'); // skip playback mid-dash
+    await page.locator('.battle-skill:not(:disabled)').first().waitFor();
+    const cut = await page.locator('[data-combatant="hero"] .battle-art-wrap').evaluate((node) => [node.getAnimations().length, getComputedStyle(node).translate]);
+    if (cut[0] || cut[1] !== 'none') throw new Error(`A skipped dash left the Ninja moved: ${cut}`);
+    await page.screenshot({ path: path.join(evidenceDir, 'ninja-battle.png') });
+  } finally {
+    await context.close();
+  }
+}
+
+// Reduced motion: the Ninja stays home and its hit mark still appears on the target.
+async function ninjaReducedMotion(page, baseUrl) {
+  await startNinjaBattle(page, baseUrl, 'golem');
+  for (const [key, mark] of [['1', 'shurikenHit'], ['1', 'strikeX']]) {
+    const move = await ninjaMove(page, key);
+    if (move.maxDx > 1 || !move.fx.includes(mark) || !move.fx.includes('px-fx--static')) throw new Error(`Reduced-motion Strike should stay home and show ${mark}: ${JSON.stringify(move)}`);
+  }
+}
+
+// Practice is off the title screen but still works for teachers (?debug=study or the dev panel).
 async function studyFlow(page, baseUrl) {
-  await page.goto(baseUrl);
-  await page.getByRole('button', { name: /PRACTICE ONLY/i }).click();
+  await page.goto(`${baseUrl}/?debug=study`);
   await page.getByRole('button', { name: /^1\.|English.*Japanese/i }).first().click();
   await answerTenTypedQuestions(page);
   await page.getByRole('heading', { name: /Score:\s*10\s*\/\s*10/i }).waitFor();
@@ -616,6 +805,7 @@ try {
   watchBrowserErrors(page, browserErrors);
   await stubSpeech(page);
 
+  await titleAndBootFlow(page, baseUrl);
   await adventureFlow(page, baseUrl);
   await regionalFlow(page, baseUrl);
   await debugBattleFlow(page, baseUrl);
@@ -625,9 +815,11 @@ try {
   await targetDiscovery(page, baseUrl);
   await soundSettings(page, baseUrl);
   await studyFlow(page, baseUrl);
+  await ninjaReducedMotion(page, baseUrl);
+  await ninjaPresentationFlow(browser, baseUrl);
 
   if (browserErrors.length) throw new Error(`Browser errors:\n${browserErrors.join('\n')}`);
-  console.log('Browser playthrough passed: Adventure station defence, Osaka regional continuation/checkpoint, 0-AP recovery battle, Yao call telegraph/reinforcements and final boss, Higashiosaka unlock/checkpoint and Ishikiri/Core flow, guarded Siege Blast, Osaka City unlock/Tennoji, finale Core/ally layout, dev jump, ending/completion/five saved cities and menu/replay, target discovery, sound settings, and Study mode 1.');
+  console.log('Browser playthrough passed: boot cinematic and MATSUBARA HEROES title (new and returning), Adventure station defence, Osaka regional continuation/checkpoint, 0-AP recovery battle, Yao call telegraph/reinforcements and final boss, Higashiosaka unlock/checkpoint and Ishikiri/Core flow, guarded Siege Blast, Osaka City unlock/Tennoji, finale Core/ally layout, dev jump, ending/completion/five saved cities and menu/replay, target discovery, sound settings, Study mode 1 (?debug=study), and Ninja shuriken/dash presentation (normal and reduced motion).');
 } catch (error) {
   console.error(error?.stack || error);
   process.exitCode = 1;

@@ -39,6 +39,17 @@ export const INTRO_STORY = Object.freeze([
   { title: { ja: 'STAGE 1', en: 'ステージ 1' }, ms: 1300 },
 ]);
 
+// Boot cinematic, once per page load before the first title screen: the city,
+// the threat, the three heroes, then the MATSUBARA HEROES logo, about nine
+// seconds. Nobody chooses a hero here. `heroes` brings the trio on; `reveal`
+// fades the scene into the title screen underneath.
+export const BOOT_STORY = Object.freeze([
+  { mood: 'calm', music: 'field', title: { ja: 'まつばら市', en: 'MATSUBARA CITY' }, ms: 2100 },
+  { mood: 'danger', monsters: 'near', cut: true, sfx: 'alarm', title: { ja: 'シャドウ・ホードが せまる！', en: 'THE SHADOW HORDE IS COMING!' }, ms: 2600 },
+  { heroes: true, sfx: 'heroSting', title: { ja: 'だれが 町を まもる？', en: 'WHO WILL DEFEND THE CITY?' }, ms: 2600 },
+  { reveal: true, music: 'title', sfx: 'titleSting', ms: 1900 },
+]);
+
 // Matsubara ending, in three parts:
 //  1. the victory, on its own: the darkness clears, the city celebrates;
 //  2. the story reveal in five cards, looking back at what the student just

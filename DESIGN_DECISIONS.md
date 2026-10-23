@@ -1100,3 +1100,55 @@ Full designs in `.ai/higashiosaka-spec.md` and `.ai/osaka-city-spec.md`
   3% as the Mage (naive 47%); from AP6 the Mage wins ~100%, the three-hero
   targets hold and city retries stay low. Left after two balance passes;
   watch Mage at low quiz scores in class.
+
+## 2026-10-23 — MATSUBARA HEROES: title, boot cinematic, Ninja moves
+
+- **Name.** The player-facing game is **MATSUBARA HEROES**, subtitle
+  **SAVE OSAKA! / 大阪を まもれ！** (document title "Matsubara Heroes"). The
+  repo, file names, CSS classes and every `esl-verbs-*` storage key stay as
+  they were: renaming keys would have reset students' heroes, levels, cities
+  and sound settings for a branding change. Rejected: a key migration.
+- **Boot cinematic.** Before the first title screen of each page load, a
+  ~9 s story plays over the already-built (hidden, inert) title: まつばら市 →
+  シャドウ・ホードが せまる！ (danger sky, Horde) → だれが 町を まもる？ (all
+  three heroes walk on; nobody is chosen) → a reveal that fades into the title
+  with a restrained flash and a new `titleSting`. It reuses `playStory` (a
+  hosted mode) and the intro's city art. SKIP, Escape, Enter and Space end it
+  at once (a key's release is ignored by START for 400 ms); a tap moves to the
+  next beat. "Played" is a module flag, not storage: returning to the menu
+  never replays it, a reload does, and future students always see it. Debug
+  URLs skip it. Reduced motion keeps the beats with no slides or flash.
+- **Title screen.** The screen is the scene: new programmatic art
+  (`titleImage('sky')`: Osaka at sunset seen from Matsubara — Osaka Castle,
+  Abeno Harukas, Tsutenkaku, a Kintetsu train on its viaduct, Matsubara roofs,
+  the Horde on the eastern hills and the Black Star far off) above a ground
+  strip where Fighter, Mage and Ninja stand on the horizon. The logo is the
+  existing pixel font with a stepped gold face, an ink outline and a rare
+  short highlight sweep; nothing else moves. The main button is a gold
+  START / CONTINUE ADVENTURE button with no art in it. A returning player's
+  hero stands centre front; under the button a progress line comes from the
+  real save (`HERO · LV n`, saved cities ★, the city in danger !, locked
+  cities omitted); NEW ADVENTURE / はじめから is a small secondary button
+  using the unchanged confirmation. SOUND moved to the top-right corner
+  (same popover). Rejected: keeping the old white card, or a glossy
+  mobile-style menu that would not match the rest of the game.
+- **Practice off the title.** Study mode stays intact but is reached only by
+  `?debug=study` or the dev panel (Ctrl+Alt+Shift+D → Practice); results
+  screens keep "Practice mistakes".
+- **Ninja attacks are cosmetic shuriken and dash-slash moves.** Strike
+  alternates (per battle) a thrown shuriken (`shurikenProj`, new art) and a
+  blink to the target's side → slash → quick return. Double Strike throws for
+  hit 1 and dashes for hit 2 (if the target dies to the shuriken there is no
+  dash; if it will survive both hits the dash starts as the shuriken lands).
+  Shadow Strike vanishes in a puff, streaks in shadow, reappears beside the
+  target for the dark slash and returns in shadow. The blink is a Web
+  Animation on the hero's art wrap: a re-render, playback skip or destroy
+  cancels it, a defeat of the target sends the Ninja home, and a 500 ms
+  fallback returns it regardless, so the hero cannot be stranded. The choice
+  never touches battle state: damage, AP, OPENING and targeting are
+  unchanged (`npm run balance` byte-identical). Reduced motion: the Ninja
+  stays home and the shuriken / slash mark shows on the target, with sound.
+  New sfx: `shurikenThrow`, `shurikenHit`, `ninjaDash`.
+- **Verb training.** A correct Ninja answer throws a shuriken at the dummy (a
+  dash would cross the word in the middle of the scene); the impact → +1
+  mote → AP sequence is unchanged.

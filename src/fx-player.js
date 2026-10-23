@@ -11,6 +11,7 @@ import { effectSheet } from './pixel-effects.js';
 import { sheetClass } from './pixel-core.js';
 import { ENEMIES } from './battle-data.js';
 
+const NINJA_SKILLS = new Set(['strike', 'doubleStrike', 'shadowStrike']);
 const BOSS_STYLE = { dragon: 'breath', giantGolem: 'quake', demonKing: 'dark', vampireLord: 'blood' };
 // Where each boss's big attack comes from, as fractions of its sprite box (sprites face left).
 const BOSS_MOUTH = { dragon: [0.06, 0.3], demonKing: [0.3, 0.52], vampireLord: [0.32, 0.46], giantGolem: [0.2, 0.86] };
@@ -136,6 +137,86 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
     later(dur, () => wrap.classList.remove('fx-dash'));
   }
 
+  /* ----------------------------------------------------------- ninja moves */
+
+  // Ninja attacks are a thrown shuriken or a blink to the target and back:
+  // Strike alternates the two (per battle, purely cosmetic: the battle has
+  // already been resolved), Double Strike throws and then dashes, Shadow Strike
+  // is the dark, vanishing dash. The blink is a Web Animation on the hero's art
+  // wrap, so cancelling it (a re-render, destroy) always leaves the hero home.
+  let strikes = 0, ninjaMove = null, blink = null;
+
+  function restartPose(target, state) {
+    const node = spriteOf(target);
+    if (!node) return;
+    node.dataset.state = ''; void node.offsetWidth; node.dataset.state = state;
+  }
+
+  function endBlink() {
+    if (!blink) return;
+    blink.going.cancel(); blink.back?.cancel();
+    blink.wrap.closest('.battle-hero')?.classList.remove('fx-blink');
+    blink = null;
+  }
+
+  /** Move the hero right up to the target in `launch` ms and hold there until blinkHome. */
+  function blinkTo(target, { launch = 150, vanish = false, maxHold = 500 } = {}) {
+    endBlink();
+    if (reducedMotion) return null;
+    const host = field(), wrap = wrapOf('hero'), heroNode = spriteOf('hero'), foe = spriteOf(target);
+    if (!host || !wrap?.animate || !heroNode || !foe) return null;
+    const box = host.getBoundingClientRect(), h = heroNode.getBoundingClientRect(), e = foe.getBoundingClientRect();
+    // Stop short of the target by most of the two half-widths (sprite boxes carry transparent
+    // margins), so the Ninja lands at its side without covering it, and never off the field.
+    const vx = e.left + e.width / 2 - (h.left + h.width / 2), vy = e.bottom - h.bottom, dist = Math.hypot(vx, vy);
+    const stop = (h.width + e.width) * 0.5 * 0.6;
+    const k = dist > stop ? (dist - stop) / dist : 0;
+    const dx = Math.round(Math.min(vx * k, box.right - 4 - h.right)), dy = Math.round(vy * k);
+    const to = `${dx}px ${dy}px`;
+    const going = wrap.animate(vanish
+      ? [{ translate: '0 0', opacity: 1 }, { translate: '0 0', opacity: 0, offset: 0.3 }, { translate: to, opacity: 0, offset: 0.75 }, { translate: to, opacity: 1 }]
+      : [{ translate: '0 0', opacity: 1 }, { opacity: 0.35, offset: 0.45 }, { translate: to, opacity: 1 }],
+    { duration: launch, easing: 'cubic-bezier(.4, .8, .2, 1)', fill: 'forwards' });
+    const from = anchor('hero', 0.5, 0.55);
+    const there = from && { x: from.x + dx, y: from.y + dy };
+    wrap.closest('.battle-hero')?.classList.add('fx-blink'); // drawn in front of the enemies while beside them
+    blink = { going, back: null, wrap, from, there, launchedAt: performance.now(), launch, to, target };
+    const mine = blink;
+    later(launch + maxHold, () => { if (blink === mine) blinkHome(0); });
+    return blink;
+  }
+
+  /** Bring the hero back from a blink `hold` ms after it has arrived. */
+  function blinkHome(hold = 110, { back = 170, shadow = false } = {}) {
+    const mine = blink;
+    if (!mine || mine.back) return;
+    const wait = Math.max(0, mine.launch - (performance.now() - mine.launchedAt)) + hold;
+    mine.back = { cancel() {} }; // reserved: a second release does nothing
+    later(wait, () => {
+      if (blink !== mine) return;
+      spawn('shadowPuff', mine.there, { dur: 320, scale: shadow ? 0.9 : 0.5 });
+      streak(mine.there, mine.from, shadow ? 'shadow' : 'gold');
+      sfx('ninjaDash');
+      mine.back = mine.wrap.animate([{ translate: mine.to, opacity: 1 }, { opacity: shadow ? 0 : 0.4, offset: 0.5 }, { translate: '0 0', opacity: 1 }], { duration: back, easing: 'cubic-bezier(.5, 0, .7, .4)' });
+      mine.back.onfinish = () => { if (blink === mine) endBlink(); };
+    });
+  }
+
+  /** Throw a shuriken at the target; resolves when it lands. */
+  function throwShuriken(target, delay = 60, travel = 190) {
+    sfx('shurikenThrow');
+    projectile('shurikenProj', anchor('hero', 0.72, 0.4), centre(target, 0.45), travel, { delay });
+    return delay + travel;
+  }
+
+  function dashSlash(target, launch = 150) {
+    spawn('shadowPuff', centre('hero', 0.6), { dur: 300, scale: 0.6 });
+    streak(anchor('hero', 0.6, 0.55), centre(target, 0.55), 'gold', 20);
+    sfx('ninjaDash');
+    blinkTo(target, { launch });
+    return launch;
+  }
+
   /* -------------------------------------------------------------- events */
 
   function heroAttack(event, state) {
@@ -144,9 +225,11 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
     const hero = anchor('hero', 0.62, 0.42);
     switch (skill) {
       case 'slash':
-      case 'strike':
         dash('hero', target, 0.42, 420); sfx('slash');
         return 300;
+      case 'strike':
+        ninjaMove = strikes++ % 2 === 0 ? 'shuriken' : 'dash';
+        return ninjaMove === 'shuriken' ? throwShuriken(target) : dashSlash(target);
       case 'magicBolt':
         sfx('magic');
         projectile('boltProj', anchor('hero', 0.78, 0.32), centre(target, 0.45), 240, { delay: 120 });
@@ -164,9 +247,9 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
         shake('s', 340);
         return 560;
       }
+      // A shuriken for the first hit, then a dash for the second: two attacks you can see.
       case 'doubleStrike':
-        dash('hero', target, 0.6, 640); sfx('slash');
-        return 260;
+        return throwShuriken(target, 40, 170);
       case 'fireball': {
         const mid = formationCentre();
         sfx('magic');
@@ -182,17 +265,17 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
         shake('m', 690); punch(680); light('white', 160, 680);
         return 980;
       }
+      // The dark dash: vanish in a puff, a shadow streak, reappear at the target's side.
       case 'shadowStrike': {
-        const to = centre(target, 0.5);
+        const to = centre(target, 0.55);
         sfx('shadow');
-        light('shadow', 900);
+        light('shadow', 1000);
         spawn('shadowPuff', centre('hero', 0.55), { dur: 420 });
-        streak(anchor('hero', 0.6, 0.5), to, 'shadow', 260);
-        dash('hero', target, 0.85, 700);
-        if (to) spawn('shadowPuff', to, { dur: 380, delay: 330 });
-        later(520, () => sfx('slash'));
-        shake('s', 540);
-        return 620;
+        streak(anchor('hero', 0.6, 0.5), to, 'shadow', 120);
+        blinkTo(target, { launch: 300, vanish: true, maxHold: 800 });
+        if (blink?.there) spawn('shadowPuff', blink.there, { dur: 360, delay: 200, scale: 0.8 });
+        later(300, () => { restartPose('hero', 'shadow'); sfx('ninjaSlash'); });
+        return 340;
       }
       default:
         return 220;
@@ -281,30 +364,66 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
     hits += 1;
     switch (skill) {
       case 'slash': spawn('slash', at, { dur: 300 }); spawn('impact', at, { dur: 280, delay: 80 }); sfx('hit'); return 320;
-      case 'strike': spawn('strikeX', at, { dur: 280 }); spawn('impact', at, { dur: 260, delay: 60 }); sfx('hit'); return 300;
+      case 'strike':
+        if (ninjaMove === 'shuriken') { spawn('shurikenHit', at, { dur: 280 }); spawn('impact', at, { dur: 240, delay: 40, scale: 0.8 }); sfx('shurikenHit'); return 300; }
+        restartPose('hero', 'attack');
+        spawn('strikeX', at, { dur: 280 }); spawn('impact', at, { dur: 260, delay: 60 }); sfx('ninjaSlash'); later(40, () => sfx('ninjaHit'));
+        blinkHome(140);
+        return 300;
       case 'magicBolt': spawn('boltHit', at, { dur: 320 }); sfx('hit'); return 320;
       case 'powerSlash':
         spawn('bigSlash', at, { dur: 460 }); spawn('bigImpact', at, { dur: 420, delay: 120 });
         sfx('bigHit'); shake('m', 100); punch(100);
         return 480;
       case 'cleave': spawn('slash', at, { dur: 260, flip: hits % 2 === 0 }); spawn('impact', at, { dur: 240 }); sfx('hit'); return 200;
-      case 'doubleStrike':
-        spawn(hits % 2 ? 'quickA' : 'quickB', at, { dur: 280 }); spawn('impact', at, { dur: 220, delay: 60 });
-        sfx('slash'); if (hits % 2 === 0) shake('s');
-        return hits % 2 ? 230 : 320;
+      case 'doubleStrike': {
+        if (hits % 2) {
+          // The shuriken lands. If the target lives through both hits, the Ninja is already
+          // dashing in for the second; otherwise the second hit (if any) brings a faster dash.
+          spawn('shurikenHit', at, { dur: 260 }); spawn('quickA', at, { dur: 280 }); sfx('shurikenHit');
+          if (state.enemies.find((enemy) => enemy.uid === event.target)?.hp > 0) dashSlash(event.target, 170);
+          return 230;
+        }
+        const arrive = blink ? 0 : dashSlash(event.target, 120);
+        later(arrive, () => {
+          restartPose('hero', 'attack');
+          spawn('quickB', at, { dur: 280 }); spawn('impact', at, { dur: 220, delay: 60 });
+          sfx('ninjaSlash'); later(40, () => sfx('ninjaHit')); shake('s');
+        });
+        blinkHome(130);
+        return 320 + arrive;
+      }
       case 'fireball': spawn('fireHit', at, { dur: 300 }); sfx('hit'); return 220;
       case 'ally': spawn('quickA', at, { dur: 280 }); spawn('impact', at, { dur: 260, delay: 60 }); sfx('hit'); return 300;
       case 'shadowStrike':
         spawn('darkSlash', at, { dur: 380, scale: hits === 1 ? 1.4 : 1 }); spawn('impact', at, { dur: 260, delay: 100 });
-        sfx('bigHit'); if (hits === 1) { shake('m'); punch(); }
+        sfx('bigHit'); if (hits === 1) { shake('m'); punch(); blinkHome(220, { back: 230, shadow: true }); }
         return hits === 1 ? 420 : 300;
       default: spawn('impact', at, { dur: 300 }); sfx('hit'); return 320;
     }
   }
 
+  // Reduced motion: the Ninja stays home; its hits show the thrown or slashed mark at the target.
+  function reducedNinja(event) {
+    if (event.type === 'attack') {
+      skill = event.source ? null : event.skillId; hits = 0;
+      if (skill === 'strike') ninjaMove = strikes++ % 2 === 0 ? 'shuriken' : 'dash';
+      if (NINJA_SKILLS.has(skill)) sfx((skill === 'strike' && ninjaMove === 'shuriken') || skill === 'doubleStrike' ? 'shurikenThrow' : 'ninjaDash');
+      return false;
+    }
+    if (event.type === 'allyAttack') { skill = null; return false; }
+    if (event.type !== 'damage' || !(event.amount > 0) || !NINJA_SKILLS.has(skill) || ['hero', 'ally', 'core'].includes(event.target)) return false;
+    hits += 1;
+    const thrown = (skill === 'strike' && ninjaMove === 'shuriken') || (skill === 'doubleStrike' && hits === 1);
+    spawn(thrown ? 'shurikenHit' : skill === 'shadowStrike' ? 'darkSlash' : 'strikeX', centre(event.target, 0.45), { dur: 220 });
+    sfx(thrown ? 'shurikenHit' : 'ninjaHit');
+    return true;
+  }
+
   function play(event, state) {
     if (reducedMotion) {
       // Keep essential feedback only: a static hit flash, no motion, no shake.
+      if (reducedNinja(event)) return undefined;
       if (event.type === 'damage' && event.amount > 0) spawn('impact', centre(event.target, 0.45), { dur: 200 });
       if (event.type === 'call' && event.targets.length) sfx('summon');
       if (event.type === 'explode') sfx('bigHit');
@@ -379,6 +498,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
       }
       case 'enrage': spawn('enrage', centre(event.target, 0.5), { dur: 520, scale: 1.5 }); sfx('charge'); light('red', 420); shake('s'); return 720;
       case 'defeat': {
+        if (blink?.target === event.target) blinkHome(140); // never left standing by a fallen enemy
         const foe = state.enemies.find((enemy) => enemy.uid === event.target);
         const boss = ENEMIES[foe?.id]?.boss;
         spawn(boss ? 'bossBurst' : 'poof', centre(event.target, 0.55), { dur: boss ? 700 : 400, scale: boss ? 1.4 : 1 });
@@ -392,6 +512,7 @@ export function createEffectsPlayer(root, { reducedMotion = false, sound = null 
   }
 
   function clear() {
+    endBlink();
     root.querySelectorAll('.px-fx, .px-streak').forEach((node) => node.remove());
   }
 

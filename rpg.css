@@ -551,11 +551,6 @@
 .results-hero__text { display: grid; justify-items: start; gap: 2px; text-align: left; }
 .results-hero__text p { margin: 0; }
 
-.adventure-choice { display: grid; justify-items: center; gap: 10px; padding: 14px 18px 18px; font-size: clamp(16px, 3vw, 22px); }
-/* Heroes arrive one by one after the menu paints (see prewarmArt); the row keeps their height meanwhile. */
-.adventure-choice .adventure-trio { display: flex; gap: 4px; --px: 2; min-height: calc(72px * var(--px)); pointer-events: none; }
-.adventure-choice small { font-family: var(--read-font); font-weight: 800; font-size: 1.1rem; }
-.menu-toggles { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 
 .hero-select { width: min(1100px, 100%); margin: auto; padding: 22px; display: grid; gap: 18px; }
 .hero-select .topline h1 { margin: 0; font-family: var(--pixel-font); font-weight: 400; font-size: clamp(16px, 2.4vw, 24px); color: var(--gold); line-height: 1.5; }
@@ -672,27 +667,6 @@
   .rpg-xp__fill { transition-duration: .001ms !important; }
   .battle-floater { animation: none !important; translate: -50% -10px; }
 }
-
-/* ------------------------------------------------ main menu: Adventure first */
-/* Adventure is the game: a big gold-framed button with a play arrow that reads as
-   pressable without hover (Chromebook touchpads). Practice sits below, quieter. */
-.menu-actions { gap: 14px; }
-.menu-card .menu-toggles { justify-content: center; }
-.adventure-choice {
-  min-height: 0; padding: 16px 18px 20px; gap: 8px;
-  background: linear-gradient(180deg, #6f8cf0, #3b55cf 50%, #28389a);
-  border-color: var(--gold); box-shadow: 0 0 0 var(--b) var(--ink), 0 8px 0 0 #1a226a, inset 0 calc(var(--b) * -2) 0 0 #0005, inset 0 2px 0 0 #ffffff50;
-}
-.adventure-choice:active:not(:disabled) { translate: 0 6px; box-shadow: 0 0 0 var(--b) var(--ink), 0 2px 0 0 #1a226a, inset 0 var(--b) 0 0 #0006; }
-.adventure-choice:focus-visible { outline: 5px solid var(--gold); outline-offset: 6px; }
-.adventure-cta { max-width: 100%; display: inline-flex; align-items: center; gap: 12px; padding: 10px 18px; background: var(--gold); color: var(--ink); text-shadow: none; font-size: clamp(16px, 3.4vw, 26px); border: var(--b) solid var(--ink); box-shadow: inset 0 -4px 0 #d89a2a; }
-.adventure-cta__arrow { display: inline-block; animation: cta-nudge 1.1s steps(2) infinite; }
-.adventure-choice small { font-size: 1.3rem; color: #fff4b0; }
-.practice-choice { justify-self: center; display: grid; justify-items: center; gap: 2px; min-height: 58px; width: min(320px, 100%); padding: .45rem 1rem; font-size: 1.05rem; border: 2px solid #b9c5d8; }
-.practice-choice small { font-weight: 700; font-size: .95rem; }
-@keyframes cta-nudge { 50% { transform: translateX(4px); } }
-@media (max-height: 620px) { .adventure-choice .adventure-trio { --px: 1.6; } .adventure-choice { padding-block: 10px 14px; } }
-@media (max-width: 520px) { .adventure-choice .adventure-trio { --px: 1.3; gap: 0; } .adventure-choice { padding-inline: 10px; } .adventure-cta { gap: 8px; padding: 8px 10px; } }
 
 /* ----------------------------------------------- hero select: replay badges */
 .hero-card-art { position: relative; }
@@ -863,19 +837,16 @@
   .results-card .missed { max-height: max(80px, 100vh - 548px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .adventure-cta__arrow, .cinematic__citizen { animation: none; }
+  .cinematic__citizen { animation: none; }
 }
 
 /* ---------------------------------------- regional Adventure continuation */
-.new-adventure-choice { justify-self: center; display: grid; justify-items: center; gap: 2px; width: min(440px, 100%); min-height: 72px; padding: .55rem 1rem; font-size: clamp(13px, 2.4vw, 18px); }
-.new-adventure-choice small { font-family: var(--read-font); font-weight: 800; font-size: 1rem; }
 .results-card .results-actions > .results-map { grid-column: 1 / -1; min-height: 58px; display: grid; justify-items: center; gap: 2px; background: linear-gradient(180deg, #ffd35a, #f2a93a 55%, #d8812a); color: var(--ink); text-shadow: none; border-color: #fff4b0; font-size: 14px; }
 .results-map small { font-family: var(--read-font); font-weight: 800; font-size: .95rem; }
 .results-actions .results-again.secondary, .results-actions .results-new-hero.secondary { background: #20285d; color: #fff; border-color: var(--edge-dim); }
 .city-results .results-hero { justify-content: center; }
 .city-results .results-actions > .secondary { grid-column: span 3; }
 .city-results .results-actions:not(:has(> .results-practice)) > .secondary { grid-column: 1 / -1; }
-@media (max-height: 620px) { .menu-card:has(.new-adventure-choice) .menu-actions { gap: 8px; } .new-adventure-choice { min-height: 54px; padding-block: .3rem; } .menu-card:has(.new-adventure-choice) .practice-choice { min-height: 46px; } }
 /* The CONTINUE ADVENTURE row makes results one button taller: the missed-word list gives up that room. */
 .results-card:has(.results-map) .missed { max-height: max(80px, 100vh - 636px); }
 @media (max-height: 740px) { .results-card:has(.results-map) .missed { max-height: max(72px, 100vh - 560px); } }
@@ -888,10 +859,113 @@
   .results-card .results-actions > .results-map { min-height: 48px; }
 }
 @media (max-height: 620px) { .app.rpg-app:has(.results-card) { padding-block: 6px; } }
-/* Continue layout: three choices, so the title, the hero and the buttons tighten and the CTA stays on one line. */
-.menu-card:has(.new-adventure-choice) .game-title { font-size: clamp(2.2rem, 6vw, 3.6rem); margin-bottom: .7rem; }
-.menu-card:has(.new-adventure-choice) .adventure-choice .adventure-trio { --px: 1.6; }
-.menu-card:has(.new-adventure-choice) .adventure-cta { white-space: nowrap; font-size: clamp(14px, 2.6vw, 21px); }
-.menu-card:has(.new-adventure-choice) .new-adventure-choice { min-height: 60px; }
-.menu-card:has(.new-adventure-choice) .menu-actions { gap: 10px; margin-bottom: 10px; }
-@media (max-height: 700px) { .menu-card:has(.new-adventure-choice) { padding-block: 16px; } .menu-card:has(.new-adventure-choice) .adventure-choice .adventure-trio { --px: 1.2; } }
+
+/* ------------------------------------------------ MATSUBARA HEROES title */
+/* The screen is the scene: Osaka at sunset (title sky) above a ground strip,
+   the logo over the sky, the three heroes standing on the horizon, and the
+   actions on the ground. SOUND sits in the top-right corner. Rows:
+   logo | tagline | heroes (1fr, feet on the horizon) | actions on the ground. */
+.app.title-app { display: block; min-height: 0; height: 100vh; height: 100dvh; padding: 0; overflow: hidden; }
+.title-screen {
+  --logo: clamp(26px, min(8.4vh, 7vw), 92px); --hpx: 2.5;
+  position: relative; isolation: isolate; height: 100%; overflow: hidden;
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); justify-items: center;
+  background: #222c27;
+}
+.title-screen > * { grid-column: 1; } /* the sky and ground layers share the one column with the content */
+.title-screen__sky, .title-screen__ground { grid-column: 1; justify-self: stretch; align-self: stretch; z-index: -1; image-rendering: pixelated; image-rendering: crisp-edges; }
+.title-screen__sky { grid-row: 1 / 4; background-size: cover; background-position: center bottom; }
+.title-screen__ground { position: relative; grid-row: 4; background-repeat: repeat-x; background-position: center top; background-size: max(50vw, 512px) auto; background-color: #222c27; }
+.title-screen__ground::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 0, #0e10244d 40%, #0e1024b3); }
+.title-screen__sound { position: absolute; top: clamp(10px, 2.4vh, 20px); right: clamp(10px, 2vw, 20px); z-index: 3; }
+
+.title-logo { grid-row: 1; margin: clamp(14px, 4.4vh, 56px) 0 0; display: grid; justify-items: center; gap: calc(var(--logo) * .16); font: 400 var(--logo) / 1 var(--pixel-font); letter-spacing: 0; text-align: center; }
+.title-logo__line { display: grid; }
+.title-logo__line > span { grid-area: 1 / 1; white-space: nowrap; }
+.title-logo__line--big { font-size: 1.5em; }
+/* An ink outline, thicker underneath so the letters stand on a shadow. */
+.title-logo__depth {
+  --o: max(3px, .065em); color: var(--ink);
+  text-shadow:
+    var(--o) 0 0 var(--ink), calc(var(--o) * -1) 0 0 var(--ink), 0 var(--o) 0 var(--ink), 0 calc(var(--o) * -1) 0 var(--ink),
+    var(--o) var(--o) 0 var(--ink), calc(var(--o) * -1) var(--o) 0 var(--ink), var(--o) calc(var(--o) * -1) 0 var(--ink), calc(var(--o) * -1) calc(var(--o) * -1) 0 var(--ink),
+    0 calc(var(--o) * 2) 0 var(--ink), var(--o) calc(var(--o) * 2) 0 var(--ink), calc(var(--o) * -1) calc(var(--o) * 2) 0 var(--ink);
+}
+.title-logo__face {
+  color: transparent; -webkit-background-clip: text; background-clip: text;
+  background-image: linear-gradient(100deg, transparent 35%, #fffef2 45% 55%, transparent 65%), linear-gradient(180deg, #fffbe0 0 30%, #ffe27a 30% 55%, #ffc234 55% 78%, #f28a2e 78%);
+  background-size: 30% 100%, 100% 100%; background-repeat: no-repeat; background-position: -60% 0, 0 0;
+}
+.title-logo__line--top .title-logo__face { background-image: linear-gradient(100deg, transparent 35%, #ffffff 45% 55%, transparent 65%), linear-gradient(180deg, #ffffff 0 40%, #e6e9ff 40% 70%, #b9c2ff 70%); }
+/* Once in a while a short highlight sweeps across HEROES; nothing else moves. */
+.title-logo__line--big .title-logo__face { animation: title-shine 7s steps(12) 1.6s infinite; }
+@keyframes title-shine { 0%, 84% { background-position: -60% 0, 0 0; } 100% { background-position: 160% 0, 0 0; } }
+
+.title-tagline { grid-row: 2; margin: clamp(6px, 1.8vh, 20px) 0 0; display: grid; justify-items: center; gap: 2px; padding: 4px 40px 6px; background: linear-gradient(90deg, transparent, #0e1024a6 18% 82%, transparent); }
+.title-tagline__en { font: 400 clamp(12px, 2.5vh, 24px) / 1.4 var(--pixel-font); letter-spacing: 2px; color: #fff; text-shadow: 3px 3px 0 var(--ink); }
+.title-tagline__ja { font: 900 clamp(1rem, 3vh, 1.75rem) / 1.3 var(--read-font); color: var(--gold); text-shadow: 2px 2px 0 var(--ink); }
+
+/* Heroes arrive one by one after the screen paints (see prewarmArt); the slots keep their size meanwhile. */
+.title-heroes { grid-row: 3; align-self: end; z-index: 1; display: flex; align-items: flex-end; justify-content: center; gap: calc(var(--hpx) * 6px); margin-bottom: calc(var(--hpx) * -5px); pointer-events: none; }
+.title-hero { --px: var(--hpx); position: relative; display: flex; justify-content: center; min-width: calc(var(--hpx) * 40px); min-height: calc(var(--hpx) * 60px); }
+.title-hero::after { content: ""; position: absolute; z-index: -1; left: 50%; bottom: calc(var(--px) * 2px); width: calc(var(--px) * 30px); height: calc(var(--px) * 6px); translate: -50% 0; border-radius: 50%; background: #0e102466; }
+.title-hero.is-chosen { --px: calc(var(--hpx) * 1.15); z-index: 2; margin-bottom: calc(var(--hpx) * -4px); }
+
+.title-actions { grid-row: 4; z-index: 1; width: 100%; display: grid; justify-items: center; gap: clamp(6px, 1.4vh, 14px); padding: clamp(16px, 3.4vh, 34px) 16px clamp(12px, 3.2vh, 34px); }
+.title-start {
+  display: grid; justify-items: center; gap: 2px; min-width: min(480px, 100%); max-width: 100%; min-height: 0; padding: 10px 28px 12px;
+  background: linear-gradient(180deg, #fff0a0, var(--gold) 45%, #f2a93a); color: var(--ink); text-shadow: none; border-color: #fff8d0;
+  box-shadow: 0 0 0 var(--b) var(--ink), 0 6px 0 0 #8a4a1a, 0 6px 0 var(--b) var(--ink), inset 0 calc(var(--b) * -2) 0 0 #c9761e, inset 0 2px 0 0 #ffffff80;
+}
+.title-start:active:not(:disabled) { translate: 0 5px; box-shadow: 0 0 0 var(--b) var(--ink), 0 1px 0 0 #8a4a1a, 0 1px 0 var(--b) var(--ink), inset 0 var(--b) 0 0 #0004; }
+.title-start:focus-visible { outline: 4px solid #fff; outline-offset: 7px; }
+.title-start__cta { display: inline-flex; align-items: center; gap: 12px; font-size: clamp(13px, min(2.9vh, 3.8vw), 24px); white-space: nowrap; }
+.title-start__arrow { display: inline-block; animation: title-nudge 1.1s steps(2) infinite; }
+@keyframes title-nudge { 50% { transform: translateX(4px); } }
+.title-start small { font: 900 clamp(.95rem, 2.3vh, 1.3rem) / 1.3 var(--read-font); color: #5a2a10; }
+.title-progress { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 4px 16px; padding: 0 12px; font: 400 clamp(9px, 1.75vh, 13px) / 1.7 var(--pixel-font); color: #fff4cf; text-shadow: 2px 2px 0 var(--ink); }
+.title-progress__hero { font-weight: 400; color: var(--gold); }
+.title-progress__cities { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px 14px; }
+.title-progress__city i { font-style: normal; color: var(--gold); }
+.title-progress__city.is-danger, .title-progress__city.is-danger i { color: var(--bad); }
+.title-new { display: inline-flex; align-items: baseline; gap: 10px; min-height: 40px; padding: 4px 14px; font-size: clamp(10px, 1.3vh, 14px); }
+.title-new small { font: 800 clamp(.85rem, 1.7vh, 1.05rem) / 1.2 var(--read-font); }
+
+/* The boot cinematic plays over the finished screen; the actions and SOUND appear when it ends. */
+.title-actions, .title-screen__sound { transition: opacity .35s ease; }
+.title-screen--booting .title-actions, .title-screen--booting .title-screen__sound { visibility: hidden; opacity: 0; }
+.title-screen--reveal .title-logo { animation: title-logo-in .9s cubic-bezier(.2, .9, .3, 1.15) both; }
+.title-screen--reveal .title-tagline { animation: title-fade-in .5s ease .45s both; }
+.title-screen--reveal .title-heroes { animation: title-fade-in .6s ease .15s both; }
+@keyframes title-logo-in { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
+@keyframes title-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Boot cinematic: the story scene, full screen, with the three heroes. */
+.cinematic.story--boot { position: fixed; inset: 0; z-index: 50; width: auto; margin: 0; display: block; --cpx: 3; background: var(--night); }
+.story--boot .cinematic__scene { position: absolute; inset: 0; width: auto; aspect-ratio: auto; border: 0; box-shadow: none; }
+.story--boot .cinematic__city, .story--boot .cinematic__monsters { background-size: cover; background-position: center bottom; }
+.story--boot .cinematic__skip { top: clamp(10px, 2.4vh, 20px); right: clamp(10px, 2vw, 20px); }
+.story--boot .story__title { bottom: 6%; }
+.cinematic__trio { position: absolute; left: 7%; bottom: 21%; z-index: 3; display: flex; align-items: flex-end; gap: calc(var(--px) * 4px); pointer-events: none; }
+.cinematic__trio-hero { opacity: 0; transform: translateX(-140%); transition: transform .7s cubic-bezier(.2, .8, .3, 1), opacity .35s ease; }
+.cinematic__trio.is-on .cinematic__trio-hero { opacity: 1; transform: none; }
+.cinematic__trio.is-on .cinematic__trio-hero:nth-child(2) { transition-delay: .18s; }
+.cinematic__trio.is-on .cinematic__trio-hero:nth-child(3) { transition-delay: .36s; }
+.story--boot.cinematic--reveal { animation: boot-out .7s ease .1s forwards; }
+.story--boot.cinematic--reveal::after { content: ""; position: absolute; inset: 0; z-index: 8; pointer-events: none; background: #fff; animation: boot-flash .4s ease-out forwards; }
+@keyframes boot-out { to { opacity: 0; } }
+@keyframes boot-flash { from { opacity: .4; } to { opacity: 0; } }
+.cinematic--still .cinematic__trio-hero { transition: none; }
+.cinematic--still.cinematic--reveal::after { display: none; }
+@media (min-height: 760px) { .cinematic.story--boot { --cpx: 4; } }
+@media (min-height: 1000px) { .cinematic.story--boot { --cpx: 5; } }
+
+/* Sizes: a 1024×600 Chromebook keeps the corner button, logo, heroes and actions with no scrolling. */
+@media (max-height: 700px) { .title-screen { --hpx: 2; } }
+@media (max-height: 560px) { .title-screen { --hpx: 1.6; } }
+@media (min-height: 900px) { .title-screen { --hpx: 3.5; } }
+@media (max-width: 520px) { .title-screen { --hpx: 1.8; } .title-logo { margin-top: 70px; } .title-tagline { padding-inline: 20px; } }
+@media (prefers-reduced-motion: reduce) {
+  .title-logo__face, .title-start__arrow { animation: none !important; }
+  .title-screen--reveal .title-logo { animation-name: title-fade-in; }
+}

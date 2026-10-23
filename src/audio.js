@@ -511,6 +511,13 @@ export function createAudio(options = {}) {
       case 'magicHit': hiss(t, 0.12, 0.2, 6500, 1800, 'highpass'); notes(['D6', 'A6', 'D7'], t, 0.025, 'triangle', 0.17, 0.1); break;
       case 'ninjaSlash': hiss(t, 0.07, 0.27, 8000, 2400, 'bandpass'); break;
       case 'ninjaHit': hiss(t, 0.045, 0.32, 4500, 1600, 'highpass'); tone('triangle', 460, t, 0.055, 0.16, 220); break;
+      // Shuriken: a sharp flick, then a thin spinning whirr through the air; the hit is a light metal clink.
+      case 'shurikenThrow':
+        hiss(t, 0.05, 0.3, 9000, 3000, 'bandpass');
+        for (let i = 0; i < 4; i += 1) hiss(t + 0.05 + i * 0.045, 0.035, 0.12 - i * 0.02, 6500, 4200, 'bandpass');
+        break;
+      case 'shurikenHit': tone('square', 2300, t, 0.05, 0.07, 1700); tone('triangle', 3400, t + 0.01, 0.09, 0.08); hiss(t, 0.04, 0.22, 7000, 2500, 'highpass'); break;
+      case 'ninjaDash': hiss(t, 0.11, 0.26, 1800, 7000, 'bandpass'); break;
       case 'apGain': notes(['E5', 'A5', 'D6'], t, 0.045, 'triangle', 0.16, 0.09); break;
       case 'hit': hiss(t, 0.09, 0.45, 2500, 300); tone('square', 160, t, 0.08, 0.2, 70); break;
       case 'bigHit': hiss(t, 0.28, 0.6, 1800, 120); tone('square', 110, t, 0.3, 0.28, 35); break;
@@ -539,6 +546,13 @@ export function createAudio(options = {}) {
         for (const note of ['D4', 'F#4', 'A4', 'D5']) tone('sawtooth', noteFrequency(note), t + 0.76, 0.72, 0.13);
         break;
       }
+      case 'titleSting':
+        // MATSUBARA HEROES logo: a quick rising D-major run into one held chord with a small sparkle.
+        notes(['D5', 'F#5', 'A5'], t, 0.07, 'square', 0.1, 0.1);
+        for (const note of ['D4', 'A4', 'D5', 'F#5']) tone('sawtooth', noteFrequency(note), t + 0.22, 0.85, 0.09);
+        tone('triangle', noteFrequency('D3'), t + 0.22, 0.9, 0.16);
+        notes(['A6', 'D7'], t + 0.3, 0.06, 'pulse', 0.06, 0.12);
+        break;
       case 'allySting':
         notes(['A4', 'D5', 'F5', 'A5'], t, 0.1, 'sawtooth', 0.12, 0.24);
         for (const note of ['Bb4', 'D5', 'F5']) tone('triangle', noteFrequency(note), t + 0.42, 0.48, 0.14);

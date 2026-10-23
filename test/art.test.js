@@ -4,7 +4,8 @@ import { ENEMIES, HEROES, SKILLS } from '../src/battle-data.js';
 import { createBattle } from '../src/battle-engine.js';
 import { ART_IDS, SPRITE_FRAMES, SPRITE_STATES, enemyRestState, eventSpriteStates, spriteStateCss } from '../src/battle-art.js';
 import { FRAMES, LOOPING, spriteSheet } from '../src/pixel-sprites.js';
-import { EFFECT_NAMES, backdropImage, effectSheet, iconImage } from '../src/pixel-effects.js';
+import { EFFECT_NAMES, backdropImage, effectSheet, iconImage, titleImage } from '../src/pixel-effects.js';
+import { BOOT_STORY } from '../src/story.js';
 import { battleHint, eventMessage } from '../src/battle-ui.js';
 
 const filled = (g) => g.d.some(Boolean);
@@ -84,6 +85,34 @@ test('skills, intents, items, effects and all four stages have pixel art', () =>
   for (const name of EFFECT_NAMES) assert.ok(effectSheet(name).frames >= 1, name);
   for (const name of ['slash', 'bigSlash', 'cleaveSweep', 'fireBlast', 'runeCircle', 'darkSlash', 'breath', 'quakeCrack', 'darkBurst', 'bloodMoon', 'barrierForm', 'healPillar', 'recoverFx', 'potionFx']) assert.ok(EFFECT_NAMES.includes(name), name);
   for (const stage of [1, 2, 3, 4]) assert.ok(backdropImage(stage), `stage ${stage}`);
+});
+
+test('the Ninja shuriken and the MATSUBARA HEROES title art are drawn in code', () => {
+  assert.equal(effectSheet('shurikenProj').frames, 4);
+  assert.ok(effectSheet('shurikenHit').frames >= 3);
+  const sky = titleImage('sky'), ground = titleImage('ground');
+  assert.deepEqual([sky.fw, sky.fh], [256, 112]);
+  assert.equal(ground.fw, 128);
+  // the sky reaches the horizon on every column, so the heroes' ground strip meets it with no gap
+  const bottom = sky.grids[0][0].d.slice(-256);
+  assert.ok(bottom.every(Boolean));
+  assert.equal(titleImage('nope'), null);
+});
+
+test('boot cinematic: city, threat, heroes, then the logo, in about nine seconds', () => {
+  const total = BOOT_STORY.reduce((sum, beat) => sum + beat.ms, 0);
+  assert.ok(total >= 8000 && total <= 15000, `${total} ms`);
+  assert.deepEqual(BOOT_STORY.map((beat) => beat.title?.en ?? null), ['MATSUBARA CITY', 'THE SHADOW HORDE IS COMING!', 'WHO WILL DEFEND THE CITY?', null]);
+  assert.ok(BOOT_STORY[2].heroes && BOOT_STORY.at(-1).reveal);
+  assert.ok(BOOT_STORY.every((beat) => !beat.card && !beat.hero), 'the boot cinematic chooses no hero and has no reading cards');
+});
+
+test('Ninja presentation pass leaves the Ninja numbers alone', () => {
+  const pick = (id) => { const { cost, damage, splashDamage, tier } = SKILLS[id]; return { cost, damage, splashDamage, tier }; };
+  assert.deepEqual(HEROES.ninja.skills, ['strike', 'dodge', 'doubleStrike', 'shadowStrike']);
+  assert.deepEqual(pick('strike'), { cost: 1, damage: 4, splashDamage: undefined, tier: 0 });
+  assert.deepEqual(pick('doubleStrike'), { cost: 2, damage: 5, splashDamage: undefined, tier: 1 });
+  assert.deepEqual(pick('shadowStrike'), { cost: 3, damage: 14, splashDamage: 9, tier: 2 });
 });
 
 test('battle events only ask for sprite states that exist', () => {

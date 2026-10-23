@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'esl-verbs-runtime-';
-const CACHE_VERSION = '2026-10-22-1';
+const CACHE_VERSION = '2026-10-23-1';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 self.addEventListener('install', () => {

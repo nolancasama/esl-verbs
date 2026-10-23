@@ -9,12 +9,12 @@ import {
   applyVictory, battleAp, battleSetup, campaignMaxHp, campaignSummary, chapterRest, createCampaign, recordDefeat, recordStage, resumeCampaign, retryHp, xpProgress,
 } from './campaign.js';
 import { createBattleView, defeatHpLine } from './battle-ui.js';
-import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, getIcon, groundClass, prewarmArt } from './battle-art.js';
+import { ART_IDS, SPRITE_STATES, backdropClass, battleArt, cityClass, effectArt, getIcon, groundClass, prewarmArt, titleClass } from './battle-art.js';
 import {
   ADVENTURE_RECORDS_KEY, FINAL_BOSSES, completedHeroes, heroTitle, nextHeroTitle, parseRecords, recordCompletion,
 } from './records.js';
 import { createApMeter } from './ap-meter.js';
-import { CITY_STORIES, ENDING_STORY, INTRO_STORY, cardMs, rubyParts } from './story.js';
+import { BOOT_STORY, CITY_STORIES, ENDING_STORY, INTRO_STORY, cardMs, rubyParts } from './story.js';
 import {
   CITIES, CITY_CAMPAIGNS, REGION_KEY, markCitySaved, parseRegion, serializeRegion, stageCheckpoint, stageCount, stageEncounterId, stageMode,
 } from './region.js';
@@ -126,30 +126,89 @@ window.addEventListener('resize', positionSoundPopover);
 
 /* ------------------------------------------------------------------ menus */
 
+// The boot cinematic plays before the first title screen of each page load
+// (debug URLs skip it); returning to the menu later goes straight to the title.
+let bootPending = !new URLSearchParams(location.search).get('debug');
+let titleArmedAt = 0; // the key that ended the boot cinematic must not also press START
+
+/**
+ * MATSUBARA HEROES title screen: the screen itself is the scene (Osaka at sunset,
+ * the three heroes on the ground in front of it), then START / CONTINUE, the
+ * saved progress, a small NEW ADVENTURE and SOUND in the corner. Practice is
+ * not offered here (?debug=study or the dev panel still reach it).
+ */
 function mainMenu() {
   clearScreen(); round = null; quizContext = null; campaign = null; stageResult = null; screen = 'menu';
-  audio.play('title');
-  const card = element('section', 'card menu-card'); card.append(element('h1', 'game-title', 'ESL VERBS'));
-  const actions = element('div', 'menu-actions');
+  rpgScreen(); app.classList.add('title-app');
   const region = readRegion(); const continuing = region.savedCities.length > 0;
-  // Adventure is the game: one big framed button with a play arrow. Practice is the quiet last choice.
-  const adventure = element('button', 'menu-choice adventure-choice px-button'); adventure.onclick = continuing ? osakaMapScreen : heroSelect;
-  adventure.setAttribute('aria-label', continuing ? 'Continue adventure / 大阪を まもる' : 'Start adventure / ぼうけんを はじめる');
-  // Hero sheets are slow to build on a Chromebook: paint the menu first, then add each hero as it is ready.
-  const trio = element('span', 'adventure-trio'); trio.setAttribute('aria-hidden', 'true');
-  const menuHeroes = continuing && region.heroId ? [region.heroId] : ART_IDS.heroes;
-  prewarmArt(menuHeroes.map((id) => [id]), (id) => trio.insertAdjacentHTML('beforeend', battleArt(id)));
-  const cta = element('span', 'adventure-cta'); cta.append(element('span', 'adventure-cta__arrow', '▶'), element('span', '', continuing ? 'CONTINUE ADVENTURE' : 'START ADVENTURE'));
-  adventure.append(trio, cta, element('small', '', continuing ? '大阪を まもる' : 'ぼうけんを はじめる！'));
+  const title = element('section', `title-screen${continuing ? ' title-screen--continue' : ''}`);
+  const sky = element('div', `title-screen__sky ${titleClass('sky')}`), ground = element('div', `title-screen__ground ${titleClass('ground')}`);
+  const sound = soundButton(); sound.classList.add('title-screen__sound');
+
+  const logo = element('h1', 'title-logo'); logo.setAttribute('aria-label', 'MATSUBARA HEROES');
+  ['MATSUBARA', 'HEROES'].forEach((word, index) => {
+    const line = element('span', `title-logo__line title-logo__line--${index ? 'big' : 'top'}`);
+    const depth = element('span', 'title-logo__depth', word); depth.setAttribute('aria-hidden', 'true');
+    line.append(depth, element('span', 'title-logo__face', word)); logo.append(line);
+  });
+  const tagline = element('p', 'title-tagline'); tagline.append(element('span', 'title-tagline__en', 'SAVE OSAKA!'), element('span', 'title-tagline__ja', '大阪を まもれ！'));
+
+  // The heroes defend the city in front of it; a returning player's hero stands centre front.
+  // Hero sheets are slow to build on a Chromebook: paint the screen first, then each hero as it is ready.
+  const chosen = continuing && HEROES[region.heroId] ? region.heroId : null;
+  const order = chosen ? [ART_IDS.heroes.find((id) => id !== chosen), chosen, ART_IDS.heroes.filter((id) => id !== chosen)[1]] : ART_IDS.heroes;
+  const heroes = element('div', 'title-heroes'); heroes.setAttribute('aria-hidden', 'true');
+  const slots = Object.fromEntries(order.map((id) => {
+    const slot = element('span', `title-hero${id === chosen ? ' is-chosen' : ''}`); slot.dataset.hero = id; heroes.append(slot);
+    return [id, slot];
+  }));
+  prewarmArt(ART_IDS.heroes.map((id) => [id]), (id) => { slots[id].innerHTML = battleArt(id); });
+
+  const actions = element('div', 'title-actions');
+  const start = element('button', 'title-start px-button'); start.type = 'button'; start.dataset.titleStart = '';
+  const cta = element('span', 'title-start__cta'); cta.append(element('span', 'title-start__arrow', '▶'), element('span', '', continuing ? 'CONTINUE ADVENTURE' : 'START ADVENTURE'));
+  start.append(cta, element('small', '', continuing ? '大阪を まもる！' : 'ぼうけんを はじめる！'));
+  start.setAttribute('aria-label', continuing ? 'Continue adventure / 大阪を まもる' : 'Start adventure / ぼうけんを はじめる');
+  start.onclick = () => { if (performance.now() >= titleArmedAt) (continuing ? osakaMapScreen : heroSelect)(); };
+  actions.append(start);
   if (continuing) {
-    const restart = element('button', 'menu-choice new-adventure-choice px-button secondary'); restart.onclick = confirmNewAdventure;
-    restart.append(element('span', '', 'START NEW ADVENTURE'), element('small', '', 'あたらしく はじめる'));
-    actions.append(adventure, restart);
-  } else actions.append(adventure);
-  const study = element('button', 'menu-choice practice-choice secondary'); study.onclick = levelSelect;
-  study.append(element('span', '', 'PRACTICE ONLY'), element('small', '', 'れんしゅうだけ'));
-  const toggles = element('div', 'menu-toggles'); toggles.append(soundButton());
-  actions.append(study); card.append(actions, toggles); app.append(card);
+    actions.append(titleProgress(region));
+    const restart = element('button', 'title-new px-button secondary'); restart.type = 'button';
+    restart.append(element('span', '', 'NEW ADVENTURE'), element('small', '', 'はじめから'));
+    restart.setAttribute('aria-label', 'New adventure / はじめから');
+    restart.onclick = () => { if (performance.now() >= titleArmedAt) confirmNewAdventure(); };
+    actions.append(restart);
+  }
+  title.append(sky, ground, sound, logo, tagline, heroes, actions); app.append(title);
+
+  if (!bootPending) { audio.play('title'); queueMicrotask(() => start.focus({ preventScroll: true })); return; }
+  bootPending = false;
+  // The cinematic plays over the finished title screen and fades into it.
+  title.classList.add('title-screen--booting'); title.inert = true;
+  playStory('boot', BOOT_STORY, ({ byKey }) => {
+    document.querySelector('.story--boot')?.remove();
+    title.classList.remove('title-screen--booting'); title.inert = false;
+    if (byKey) titleArmedAt = performance.now() + 400; // the key's release must not press START
+    audio.play('title');
+    start.focus({ preventScroll: true });
+  }, { host: app, onReveal: () => title.classList.add('title-screen--reveal') });
+}
+
+/** The returning player's progress line: hero and level, then each saved city ★ and the one under attack !. */
+function titleProgress(region) {
+  const line = element('p', 'title-progress');
+  if (HEROES[region.heroId]) line.append(element('b', 'title-progress__hero', `${HEROES[region.heroId].name.toUpperCase()} · LV ${region.level}`));
+  const current = nextMapCity(region);
+  const cities = element('span', 'title-progress__cities');
+  Object.keys(CITIES).filter((id) => region.savedCities.includes(id) || id === current).forEach((id) => {
+    const saved = region.savedCities.includes(id);
+    const city = element('span', `title-progress__city${saved ? ' is-saved' : ' is-danger'}`, `${CITIES[id].name} `);
+    city.append(element('i', '', saved ? '★' : '!'));
+    city.setAttribute('aria-label', `${CITIES[id].name}: ${saved ? 'saved' : 'under attack'}`);
+    cities.append(city);
+  });
+  line.append(cities);
+  return line;
 }
 
 function levelSelect() {
@@ -258,7 +317,8 @@ function heroQuizPose(strike = false) {
 const TRAINING_STRIKE = {
   fighter: { pose: 'attack', hit: 'slash', impact: 230, weapon: 'swordSwing', weaponAt: 40, impactSfx: 'swordHit' },
   mage: { pose: 'cast', projectile: 'boltProj', launch: 160, hit: 'boltHit', impact: 420, weapon: 'magicCast', weaponAt: 0, travelSfx: 'boltTravel', impactSfx: 'magicHit' },
-  ninja: { pose: 'attack', hit: 'strikeX', impact: 200, weapon: 'ninjaSlash', weaponAt: 30, impactSfx: 'ninjaHit' },
+  // The Ninja throws a shuriken, as in battle; a dash would cross the word in the middle of the scene.
+  ninja: { pose: 'attack', projectile: 'shurikenProj', launch: 90, hit: 'shurikenHit', impact: 300, weapon: 'shurikenThrow', weaponAt: 40, impactSfx: 'shurikenHit' },
 };
 let quizStrike = false; // set by a correct Adventure answer; the next render plays it once
 
@@ -889,9 +949,15 @@ function storyLine(line, big) {
   return node;
 }
 
-function playStory(kind, beats, onDone) {
-  clearScreen(); rpgScreen(); screen = 'cinematic';
-  const heroId = campaign.heroId;
+/**
+ * Plays a story script as its own screen, or with `host` over a screen that is
+ * already showing (the boot cinematic over the title). Hosted stories also skip
+ * on Escape / Enter / Space and move on at a tap on any beat; `onReveal` runs
+ * when a `reveal` beat starts fading the scene out.
+ */
+function playStory(kind, beats, onDone, { host = null, onReveal = null } = {}) {
+  if (!host) { clearScreen(); rpgScreen(); screen = 'cinematic'; }
+  const heroId = campaign?.heroId;
   const root = element('section', `cinematic cinematic--${kind} story story--${kind}`); root.setAttribute('aria-label', 'Story / ものがたり');
   const scene = element('div', 'cinematic__scene');
   // One layer per city mood; a beat fades the wanted one in over the others.
@@ -901,13 +967,15 @@ function playStory(kind, beats, onDone) {
   const core = element('div', 'story__core');
   const allySlot = element('div', 'cinematic__hero cinematic__ally');
   const heroSlot = element('div', 'cinematic__hero');
+  const trio = element('div', 'cinematic__trio'); // all three heroes, for the boot cinematic
+  ART_IDS.heroes.forEach((id) => { const slot = element('span', 'cinematic__trio-hero'); slot.dataset.hero = id; trio.append(slot); });
   const veil = element('div', 'story__veil');
   const title = element('div', 'story__title'); title.hidden = true;
   const crawl = element('div', 'story__crawl'); crawl.setAttribute('aria-live', 'polite');
   const tapHint = element('span', 'story__tap', 'タップで つぎへ ▶'); tapHint.setAttribute('aria-hidden', 'true');
-  scene.append(...Object.values(layers), monsters, citizens, core, allySlot, heroSlot, veil, title, crawl, tapHint);
+  scene.append(...Object.values(layers), monsters, citizens, core, allySlot, heroSlot, trio, veil, title, crawl, tapHint);
   const skip = element('button', 'cinematic__skip px-button secondary', 'SKIP ▶ スキップ'); skip.setAttribute('aria-label', 'Skip / スキップ');
-  root.append(scene, skip); app.append(root);
+  root.append(scene, skip); (host ?? app).append(root);
 
   const actor = (slot, id, pose) => {
     if (pose === 'gone') { slot.classList.remove('is-on'); return; }
@@ -920,6 +988,11 @@ function playStory(kind, beats, onDone) {
     if ('core' in beat) core.classList.toggle('is-on', Boolean(beat.core));
     if (beat.hero) actor(heroSlot, heroId, beat.hero);
     if (beat.ally) actor(allySlot, 'osakaDefender', beat.ally);
+    if (beat.heroes) {
+      trio.querySelectorAll('[data-hero]').forEach((slot) => { slot.innerHTML = battleArt(slot.dataset.hero); slot.firstElementChild?.setAttribute('aria-hidden', 'true'); });
+      trio.classList.add('is-on');
+    }
+    if (beat.reveal) { root.classList.add('cinematic--reveal'); onReveal?.(); }
     // Music: a cut is instant silence (the Horde arrives), stop fades, play switches track.
     if (beat.cut) audio.cut(); else if (beat.stop) audio.stop();
     if (beat.music) audio.play(beat.music);
@@ -939,7 +1012,13 @@ function playStory(kind, beats, onDone) {
   };
 
   let finished = false, index = -1;
-  const finish = () => { if (finished) return; finished = true; clearTimers(); onDone(); };
+  const onKey = (event) => {
+    if (!root.isConnected) { document.removeEventListener('keydown', onKey, true); return; }
+    if (!['Escape', 'Enter', ' '].includes(event.key)) return;
+    event.preventDefault(); event.stopImmediatePropagation(); finish({ byKey: true });
+  };
+  const finish = ({ byKey = false } = {}) => { if (finished) return; finished = true; document.removeEventListener('keydown', onKey, true); clearTimers(); onDone({ byKey }); };
+  if (host) document.addEventListener('keydown', onKey, true);
   const next = () => {
     if (finished) return;
     clearTimers();
@@ -949,8 +1028,8 @@ function playStory(kind, beats, onDone) {
     apply(beat);
     later(beat.ms ?? cardMs(beat.card), next);
   };
-  skip.onclick = finish;
-  scene.onclick = () => { if (beats[index]?.card) next(); };
+  skip.onclick = () => finish();
+  scene.onclick = () => { if (host || beats[index]?.card) next(); };
   root.addEventListener('keydown', (event) => { if (event.key === 'ArrowRight' && beats[index]?.card) { event.preventDefault(); next(); } });
   if (reducedMotion()) root.classList.add('cinematic--still');
   next();
@@ -1191,8 +1270,10 @@ function openDevPanel() {
     row.append(map);
     table.append(row);
   }
+  // Practice (Study mode) is not on the title screen; teachers reach it here or with ?debug=study.
+  const study = element('button', 'secondary', 'Practice / れんしゅう'); study.type = 'button'; study.onclick = () => { closeDevPanel(); levelSelect(); };
   const close = element('button', 'secondary', 'Close'); close.type = 'button'; close.onclick = closeDevPanel;
-  panel.append(title, note, settings, table, close);
+  panel.append(title, note, settings, table, study, close);
   devPanel.append(panel);
   devPanel.addEventListener('click', (event) => { if (event.target === devPanel) closeDevPanel(); });
   panel.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDevPanel(); } });
@@ -1206,4 +1287,4 @@ document.addEventListener('keydown', (event) => {
 }, true);
 
 const debugParams = new URLSearchParams(location.search);
-if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'quiz') debugQuiz(debugParams); else if (debugMode === 'map') debugMap(debugParams); else mainMenu();
+if (debugMode === 'battle') debugLauncher(); else if (debugMode === 'art') artGallery(); else if (debugMode === 'quiz') debugQuiz(debugParams); else if (debugMode === 'map') debugMap(debugParams); else if (debugMode === 'study') levelSelect(); else mainMenu();

@@ -165,6 +165,30 @@ const EFFECTS = {
     if (f === 1) star(g, 20, 20, 6, 'c2');
     if (f === 3) fade(g, 0.6);
   }),
+  // The Ninja's thrown star: four concave blades turning a quarter of a turn
+  // over the loop (the shape repeats every 90°), steel with a bright ridge.
+  shurikenProj: () => fxFrames(4, 15, 15, (g, f) => {
+    const c = 7, spin = rad(f * 22.5);
+    const at = (r, a) => [c + 0.5 + Math.cos(a) * r, c + 0.5 + Math.sin(a) * r];
+    const points = [];
+    for (let i = 0; i < 4; i += 1) points.push(at(7.4, spin + rad(i * 90)), at(2.3, spin + rad(i * 90 + 45)));
+    poly(g, points, 's');
+    for (let i = 0; i < 4; i += 1) {
+      const tip = at(6.6, spin + rad(i * 90)), valley = at(2.3, spin + rad(i * 90 + 45)), ridge = at(1.2, spin + rad(i * 90));
+      line(g, valley[0], valley[1], tip[0], tip[1], 'S');
+      line(g, ridge[0], ridge[1], tip[0], tip[1], 'i');
+      px(g, tip[0], tip[1], 'W');
+    }
+    outline(g, 'k');
+    rect(g, c - 1, c - 1, 3, 3, 'S'); px(g, c, c, 'k');
+    if (f % 2 === 0) px(g, ...at(5, spin + rad(45 + 180)).map(Math.round), 'c0');
+  }),
+  shurikenHit: () => fxFrames(4, 30, 30, (g, f) => {
+    if (f < 2) star(g, 15, 15, [5, 8][f], 'i', 'W');
+    burst(g, 15, 15, 3 + f * 3, 6 + f * 4, 6, f >= 2 ? 's' : 'c1', 1, 15 + f * 10);
+    if (f === 1) motes(g, 15, 15, 7, 11, ['W', 'i', 'c1'], 5);
+    if (f === 3) fade(g, 0.55);
+  }),
   boltProj: () => fxFrames(3, 22, 18, (g, f) => {
     disc(g, 14, 9, 5, ['c4', 'c3', 'c2', 'c0']);
     [[7, 9], [4, 8 + (f % 2)], [2, 10 - (f % 2)], [9, 6], [9, 12]].forEach(([x, y]) => px(g, x, y, 'c2'));
@@ -646,6 +670,120 @@ export function cityImage(mood) {
   const g = grid(BG_W, BG_H);
   if (mood === 'monsters') drawMonsters(g); else drawCity(g, mood);
   return image(`city-${mood}`, g, CITY[mood]);
+}
+
+/* ------------------------------------------------------------ title screen */
+
+// MATSUBARA HEROES title backdrop: Osaka at sunset seen from Matsubara. The sky
+// ends exactly at the horizon (its bottom row) so the title screen can stand the
+// heroes on a separate ground strip; the Shadow Horde gathers on the eastern
+// hills and the Black Star glints far off, quiet enough not to scare.
+const TITLE_W = 256, TITLE_H = 112;
+const TITLE_PAL = {
+  a: '#1b1f4a', b: '#2e2a66', c: '#553a7a', d: '#a2507a', e: '#f07a5a', f: '#ffb46a',
+  s: '#fff0b0', S: '#ffd36a', x: '#fff4c0', X: '#a9a6d8',
+  m: '#5a3f7e', M: '#4a3470', h: '#160d28', r: '#ff4a4a', v: '#7a4cc0', V: '#bd92f2',
+  q: '#3e2e66', Q: '#2c2150', y: '#ffd35a', Y: '#ffb347',
+  w: '#d8cbe4', W: '#b2a3c8', g: '#3d6a86', G: '#2c4d66', o: '#ffd35a', n: '#4a3a62',
+  p: '#21173b', P: '#3a2c5c', t: '#efe6d0', T: '#c8413a', u: '#ffe08a', H: '#1d1634', R: '#33203f', k: '#120a20',
+};
+const TITLE_GROUND_PAL = { l: '#6e6170', g: '#36463a', G: '#2c3a31', d: '#222c27', f: '#ffb46a', y: '#ffd35a', p: '#4c4150', P: '#3e3544' };
+
+function drawTitleSky(g) {
+  const bands = [[0, 'a'], [30, 'b'], [50, 'c'], [68, 'd'], [84, 'e'], [98, 'f']];
+  for (let y = 0; y < TITLE_H; y += 1) for (let x = 0; x < TITLE_W; x += 1) {
+    const at = bands.findLastIndex(([start]) => y >= start);
+    const next = bands[at + 1];
+    px(g, x, y, next && next[0] - y <= 3 && ditherMask(x, y, 0.5) ? next[1] : bands[at][1]);
+  }
+  const twinkle = rnd(11);
+  for (let i = 0; i < 34; i += 1) { const x = Math.floor(twinkle() * TITLE_W), y = Math.floor(twinkle() * 44); px(g, x, y, y < 24 && twinkle() < 0.4 ? 'x' : 'X'); }
+  // the Black Star, far to the north-east: a dark four-point star edged in violet
+  const blackStar = grid(21, 21), points = [];
+  for (let i = 0; i < 8; i += 1) { const r = i % 2 ? 2.2 : 9, a = rad(i * 45 - 90); points.push([10.5 + Math.cos(a) * r, 10.5 + Math.sin(a) * r]); }
+  poly(blackStar, points, 'k'); outline(blackStar, 'v');
+  blackStar.d.forEach((key, i) => { if (key) px(g, 198 + (i % 21), 20 + Math.floor(i / 21), key); });
+  px(g, 208, 30, 'V'); [[200, 23], [216, 37]].forEach(([x, y]) => px(g, x, y, 'V'));
+  // the setting sun behind the city
+  oval(g, 100, 74, 56, 56, 'S'); oval(g, 107, 81, 42, 42, 's');
+}
+
+function drawTitleHills(g) {
+  // Ikoma hills to the east, lower hills to the west
+  for (let x = 0; x < TITLE_W; x += 1) {
+    const east = x > 140 ? Math.round(80 - 12 * Math.sin(((x - 140) / 116) * Math.PI) - 3 * Math.sin(x / 7)) : 112;
+    const west = Math.round(94 - 4 * Math.sin(x / 19));
+    const top = Math.min(east, west);
+    for (let y = top; y < TITLE_H; y += 1) px(g, x, y, y < east + 3 && x > 140 ? 'm' : 'M');
+  }
+  // the Shadow Horde gathering on the ridge: small silhouettes with red eyes, one tall shadow behind
+  poly(g, [[236, 80], [240, 58], [246, 52], [252, 58], [256, 80]], 'h'); poly(g, [[241, 58], [240, 48], [245, 54]], 'h'); poly(g, [[250, 54], [253, 46], [253, 58]], 'h');
+  px(g, 245, 61, 'r'); px(g, 249, 61, 'r');
+  [[178, 76, 6, 5], [188, 72, 8, 7], [200, 70, 6, 6], [210, 70, 9, 8], [222, 72, 7, 6], [230, 75, 6, 5]].forEach(([x, y, w, h]) => {
+    oval(g, x, y, w, h, 'h'); px(g, x + w - 3, y + 2, 'r'); if (w > 7) px(g, x + w - 5, y + 2, 'r');
+  });
+}
+
+function drawTitleSkyline(g) {
+  const windows = (x0, y0, w, h, step = 4) => { for (let wy = y0 + 3; wy < y0 + h - 2; wy += step) for (let wx = x0 + 2; wx < x0 + w - 2; wx += 3) if ((wx * 7 + wy * 3) % 5) px(g, wx, wy, (wx + wy) % 3 ? 'y' : 'Y'); };
+  // Umeda towers (west) and the city between
+  [[2, 70, 12], [16, 62, 10], [28, 74, 14], [44, 80, 10], [96, 86, 12], [140, 84, 12], [154, 78, 12], [208, 82, 14], [224, 88, 12], [238, 84, 16]].forEach(([x, top, w]) => {
+    rect(g, x, top, w, TITLE_H - top, 'q'); windows(x, top, w, TITLE_H - top);
+  });
+  rect(g, 20, 56, 2, 6, 'q');
+  // Abeno Harukas: a tall stepped tower
+  rect(g, 166, 54, 16, 58, 'q'); rect(g, 168, 44, 12, 10, 'q'); rect(g, 170, 36, 8, 8, 'q'); rect(g, 173, 32, 2, 4, 'q');
+  windows(166, 54, 16, 50, 3); windows(168, 44, 12, 10, 3);
+  // Tsutenkaku: legs, column, observation deck, antenna
+  poly(g, [[188, 112], [194, 80], [198, 80], [204, 112]], 'q'); rect(g, 194, 64, 4, 18, 'q'); rect(g, 190, 58, 12, 7, 'q'); rect(g, 195, 48, 2, 10, 'q');
+  rect(g, 191, 60, 10, 1, 'Y'); px(g, 196, 47, 'r');
+  // Osaka Castle on its stone base: three tiers of green roofs with gold ornaments
+  poly(g, [[46, 112], [52, 94], [92, 94], [98, 112]], 'n');
+  for (let y = 98; y < 112; y += 4) for (let x = 48; x < 98; x += 6) px(g, x + (y % 8 ? 0 : 3), y, 'Q');
+  const tier = (x, y, w, wallH) => {
+    rect(g, x, y, w, wallH, 'w'); rect(g, x + w - 2, y, 2, wallH, 'W');
+    for (let wx = x + 2; wx < x + w - 2; wx += 4) rect(g, wx, y + 1, 2, 2, 'Q');
+    poly(g, [[x - 5, y + 1], [x - 2, y - 3], [x + w + 2, y - 3], [x + w + 5, y + 1]], 'g'); rect(g, x - 5, y, w + 10, 1, 'G');
+    px(g, x - 5, y - 1, 'g'); px(g, x + w + 4, y - 1, 'g');
+  };
+  tier(56, 88, 32, 6); tier(60, 80, 24, 5); tier(64, 72, 16, 5);
+  poly(g, [[66, 69], [72, 61], [78, 69]], 'g'); px(g, 66, 64, 'o'); px(g, 78, 64, 'o'); px(g, 72, 60, 'o'); px(g, 65, 65, 'o'); px(g, 79, 65, 'o');
+}
+
+function drawTitleForeground(g) {
+  // the Kintetsu viaduct across Matsubara, a train heading for the city
+  rect(g, 0, 98, TITLE_W, 3, 'P'); rect(g, 0, 97, TITLE_W, 1, 'p');
+  for (let x = 4; x < TITLE_W; x += 14) rect(g, x, 101, 3, 11, 'p');
+  rect(g, 194, 89, 62, 8, 't'); rect(g, 194, 95, 62, 1, 'T'); rect(g, 194, 89, 62, 1, 'W');
+  poly(g, [[194, 89], [190, 93], [190, 97], [194, 97]], 't'); px(g, 191, 93, 'u');
+  for (let x = 197; x < 256; x += 5) rect(g, x, 91, 3, 2, 'u');
+  [216, 238].forEach((x) => rect(g, x, 89, 1, 8, 'W'));
+  // Matsubara houses in the foreground, leaving the middle open for the sun
+  [[0, 18], [20, 14], [38, 16], [192, 16], [212, 14], [230, 18], [250, 12]].forEach(([x, w]) => {
+    rect(g, x, 104, w, 8, 'H');
+    poly(g, [[x - 2, 105], [x + w / 2, 98], [x + w + 2, 105]], 'R');
+    rect(g, x + 3, 106, 3, 3, 'y'); if (w > 14) rect(g, x + w - 7, 106, 3, 3, 'Y');
+  });
+  [[60, 104], [96, 106], [168, 105]].forEach(([x, y]) => { oval(g, x - 5, y - 2, 11, 10, 'H'); oval(g, x - 3, y - 3, 7, 5, 'R'); });
+}
+
+/** The title screen art: 'sky' (city skyline down to the horizon) or 'ground' (a repeating strip under the heroes). */
+export function titleImage(part) {
+  if (part === 'ground') {
+    const g = grid(128, 40);
+    for (let y = 0; y < 40; y += 1) for (let x = 0; x < 128; x += 1) {
+      let c = y < 1 ? 'l' : y < 14 ? (ditherMask(x, y, 0.3) ? 'G' : 'g') : y < 26 ? (ditherMask(x, y, 0.5) ? 'd' : 'G') : (ditherMask(x, y, 0.2) ? 'G' : 'd');
+      if (y >= 1 && y < 3 && ditherMask(x, y, 0.5)) c = 'l';
+      px(g, x, y, c);
+    }
+    [[10, 6], [36, 10], [62, 5], [90, 9], [114, 7]].forEach(([x, y], i) => { px(g, x, y, 'l'); px(g, x + 1, y - 1, 'l'); px(g, x + 2, y, 'l'); if (i % 2) px(g, x + 1, y - 2, i % 4 === 1 ? 'f' : 'y'); });
+    [[24, 18], [76, 21], [104, 16]].forEach(([x, y]) => { rect(g, x, y, 4, 2, 'p'); px(g, x, y + 2, 'P'); });
+    return image('title-ground', g, TITLE_GROUND_PAL);
+  }
+  if (part !== 'sky') return null;
+  const g = grid(TITLE_W, TITLE_H);
+  drawTitleSky(g); drawTitleHills(g); drawTitleSkyline(g); drawTitleForeground(g);
+  return image('title-sky', g, TITLE_PAL);
 }
 
 /* ------------------------------------------------------- Osaka campaign map */

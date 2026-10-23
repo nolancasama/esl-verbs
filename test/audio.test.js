@@ -181,7 +181,7 @@ test('live music gain keeps the track and SFX remains independent of music and d
     audio.sfx('cursor');
     assert.equal(soundStarts, muted, 'microphone listening still suppresses SFX');
     audio.duck('stt', false);
-    for (const name of ['swordSwing', 'swordHit', 'magicCast', 'boltTravel', 'magicHit', 'ninjaSlash', 'ninjaHit', 'apGain']) {
+    for (const name of ['swordSwing', 'swordHit', 'magicCast', 'boltTravel', 'magicHit', 'ninjaSlash', 'ninjaHit', 'shurikenThrow', 'shurikenHit', 'ninjaDash', 'titleSting', 'apGain']) {
       const before = soundStarts;
       audio.sfx(name);
       assert.ok(soundStarts > before, `${name} synthesizes a sound`);

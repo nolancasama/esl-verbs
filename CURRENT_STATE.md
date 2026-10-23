@@ -1,6 +1,26 @@
 # Current State
 
-## Status (2026-10-22)
+## Status (2026-10-23)
+
+The game is now presented as **MATSUBARA HEROES** (SAVE OSAKA! / 大阪を
+まもれ！); storage keys keep their `esl-verbs-*` names, so saves are untouched.
+A fresh page load plays a ~9 s skippable boot cinematic (city → Horde →
+three heroes → logo) that fades into a redesigned title screen: Osaka-at-
+sunset pixel scene, the heroes on the horizon, a gold START / CONTINUE
+button, the real progress line and a small NEW ADVENTURE for returning
+players, SOUND top-right, no Practice (now `?debug=study` / dev panel).
+Ninja attacks are cosmetic shuriken / dash-slash moves (Strike alternates,
+Double Strike throws then dashes, Shadow Strike vanishes in), and the verb
+training Ninja throws a shuriken. Cache version 2026-10-23-1.
+Verified 2026-10-23: `npm test` 240/240; `npm run balance` byte-identical to
+the previous commit (19,565 bytes); `npm run test:browser` passes with new
+title/boot (new + returning, skip by click/Esc/Enter/Space, auto-play
+timing, no replay on menu, no stored flag, save unchanged) and Ninja checks
+(normal + reduced motion, return home, far-right target, skip mid-dash).
+The new checks were shown failing against deliberate breakage (Practice
+restored, boot replaying, dash not moving, no shuriken). Screenshots
+reviewed at 1024×600, 1366×768, 1920×1080 and 412×860. Not heard: the new
+sfx and `titleSting` (no audio device).
 
 The whole five-city campaign is implemented: Matsubara → Sakai → Yao →
 Higashiosaka → Osaka City. Saving Higashiosaka unlocks Osaka City's four
@@ -91,6 +111,8 @@ Matsubara and Sakai combat numbers and behavior are unchanged. Pushing `master` 
 https://nolancasama.github.io/esl-verbs/).
 
 What a player sees now:
+- Page load → boot cinematic (once per load) → MATSUBARA HEROES title →
+  START (hero select) or CONTINUE (Osaka map).
 - Hero select → short intro (~10 s, four lower-third title beats over the city:
   まつばら市 → あぶない！ with the Horde → the chosen hero on the left, facing
   the Horde on the right, まもろう！ → STAGE 1)
@@ -239,7 +261,11 @@ Verified 2026-09-30:
 
 - Frozen contract for the expansion: `.ai/osaka-spec.md`.
 - `src/story.js` — story scripts (beats, `{漢字|かな}` furigana, `cardMs`).
-  `playStory()` in `src/app.js` plays them (finish-once, SKIP, tap to advance).
+  `playStory()` in `src/app.js` plays them (finish-once, SKIP, tap to advance);
+  with `host` it plays over a live screen (BOOT_STORY over the title, which
+  `mainMenu()` builds; title art is `titleImage()` / `titleClass()`).
+- Ninja moves: `fx-player.js` "ninja moves" (`blinkTo` / `blinkHome` Web
+  Animation, `throwShuriken`); `.battle-hero.fx-blink` lifts the hero in front.
   At 1024×600 a normal line holds ~17 characters and a large one ~8.
 - Quiz scene: `renderAdventureQuestion()` / `trainingStrike()` in `src/app.js`;
   `rpg.css` "RPG quiz" section (field rows banner | 1fr | scene | 1fr | answer |
@@ -267,11 +293,14 @@ Verified 2026-09-30:
   then Quiz / Battle 1–4 or Map for each playable city); it rewrites this
   browser's regional save (earlier cities saved, later progress cleared).
 - Debug: `?debug=quiz&stage=N&hero=X`, `?debug=map&preset=fresh|matsubara|sakai|yao|higashiosaka|osakaCity[&justSaved=id]`
-  (writes the regional save), `?debug=battle` (city encounters, start wave),
+  (writes the regional save), `?debug=study` (Practice / Study mode), `?debug=battle` (city encounters, start wave),
   `?debug=art` (Sakai intro / ending / city results previews).
 
 ## Next Steps
 
+0. Classroom check of the new presentation: does the boot cinematic feel
+   short enough on repeat loads, does the title read on a projector, and do
+   the Ninja's shuriken / dash moves stay readable at Chromebook frame rates.
 1. Classroom checks of the complete five-city campaign: difficulty, story length,
    call telegraphs, bomb countdowns, Orc protection and the → コア / GUARD THE
    CORE telegraphs (hig-2 at low AP is deliberately harsh when the Core is

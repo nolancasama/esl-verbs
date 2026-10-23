@@ -2,7 +2,7 @@
 // (a character in a state, an icon, a backdrop) and never see how pixels are
 // drawn, so the art can be replaced without touching battle logic.
 import { DURATION_MS, ENEMY_IDS, FRAMES, HERO_IDS, LOOPING, ROWS, hasSpriteSheet, spriteSheet } from './pixel-sprites.js';
-import { backdropImage, cityImage, effectSheet, groundImage, iconImage, osakaMapImage } from './pixel-effects.js';
+import { backdropImage, cityImage, effectSheet, groundImage, iconImage, osakaMapImage, titleImage } from './pixel-effects.js';
 import { sheetClass } from './pixel-core.js';
 
 export { createEffectsPlayer } from './fx-player.js';
@@ -105,6 +105,12 @@ export function effectArt(name) {
 export function cityClass(mood) {
   const s = cityImage(mood);
   return s ? sheetClass('pxc', mood, s) : '';
+}
+
+/** Class name that paints the title screen art: 'sky' (skyline to the horizon) or 'ground' (the strip under the heroes). */
+export function titleClass(part) {
+  const s = titleImage(part);
+  return s ? sheetClass('pxt', part, s) : '';
 }
 
 /** Sprite row for an enemy's standing condition. A defeated enemy is not drawn at all. */

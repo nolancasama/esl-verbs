@@ -3,27 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ESL Verbs</title>
-  <link rel="stylesheet" href="styles.css?v=2026-10-22-1">
-  <link rel="stylesheet" href="rpg.css?v=2026-10-22-1">
-  <link rel="stylesheet" href="fx.css?v=2026-10-22-1">
-  <link rel="stylesheet" href="station-map.css?v=2026-10-22-1">
+  <title>Matsubara Heroes</title>
+  <link rel="stylesheet" href="styles.css?v=2026-10-23-1">
+  <link rel="stylesheet" href="rpg.css?v=2026-10-23-1">
+  <link rel="stylesheet" href="fx.css?v=2026-10-23-1">
+  <link rel="stylesheet" href="station-map.css?v=2026-10-23-1">
 </head>
 <body>
   <main id="app" class="app" aria-live="polite"></main>
   <script>
     if ('serviceWorker' in navigator) {
-      const reloadKey = 'esl-verbs-sw-reload-2026-10-22-1';
+      const reloadKey = 'esl-verbs-sw-reload-2026-10-23-1';
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (sessionStorage.getItem(reloadKey)) return;
         sessionStorage.setItem(reloadKey, '1');
         location.reload();
       });
-      navigator.serviceWorker.register('./sw.js?v=2026-10-22-1', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=2026-10-23-1', { updateViaCache: 'none' })
         .then((registration) => registration.update())
         .catch(() => {});
     }
   </script>
-  <script type="module" src="src/app.js?v=2026-10-22-1"></script>
+  <script type="module" src="src/app.js?v=2026-10-23-1"></script>
 </body>
 </html>
